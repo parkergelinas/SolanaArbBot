@@ -1,151 +1,155 @@
-//! Raydium account decoders.
+//! Raydium AMM-style placeholder decoder.
 
-use common::{PoolUpdate, Pubkey, Result};
+use common::{Error, Pubkey, Result, Token};
 
-use crate::layout::{read_pubkey, read_u64};
+use crate::{DexType, PoolDecoder, PoolState};
 
-const DECODER: &str = "raydium_amm_v4";
+const DECODER: &str = "raydium";
+const TOKEN_A_MINT_OFFSET: usize = 0;
+const TOKEN_B_MINT_OFFSET: usize = 32;
+const TOKEN_A_DECIMALS_OFFSET: usize = 64;
+const TOKEN_B_DECIMALS_OFFSET: usize = 65;
+const LIQUIDITY_OFFSET: usize = 66;
+const RESERVE_A_OFFSET: usize = 82;
+const RESERVE_B_OFFSET: usize = 90;
 
-/// Raydium AMM v4 liquidity state account size.
-pub const AMM_V4_ACCOUNT_LEN: usize = 752;
+/// Simplified Raydium placeholder layout length.
+pub const RAYDIUM_POOL_DATA_LEN: usize = 98;
 
-const STATUS_OFFSET: usize = 0;
-const NONCE_OFFSET: usize = 8;
-const BASE_DECIMAL_OFFSET: usize = 32;
-const QUOTE_DECIMAL_OFFSET: usize = 40;
-const TRADE_FEE_NUMERATOR_OFFSET: usize = 144;
-const TRADE_FEE_DENOMINATOR_OFFSET: usize = 152;
-const SWAP_FEE_NUMERATOR_OFFSET: usize = 176;
-const SWAP_FEE_DENOMINATOR_OFFSET: usize = 184;
-const BASE_VAULT_OFFSET: usize = 336;
-const QUOTE_VAULT_OFFSET: usize = 368;
-const BASE_MINT_OFFSET: usize = 400;
-const QUOTE_MINT_OFFSET: usize = 432;
-const LP_MINT_OFFSET: usize = 464;
-const OPEN_ORDERS_OFFSET: usize = 496;
-const MARKET_ID_OFFSET: usize = 528;
-const MARKET_PROGRAM_ID_OFFSET: usize = 560;
+/// Raydium AMM-style pool decoder.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RaydiumDecoder;
 
-/// Raydium AMM v4 pool account snapshot.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct RaydiumAmmV4Pool {
-    pub status: u64,
-    pub nonce: u64,
-    pub base_decimal: u64,
-    pub quote_decimal: u64,
-    pub trade_fee_numerator: u64,
-    pub trade_fee_denominator: u64,
-    pub swap_fee_numerator: u64,
-    pub swap_fee_denominator: u64,
-    pub base_vault: Pubkey,
-    pub quote_vault: Pubkey,
-    pub base_mint: Pubkey,
-    pub quote_mint: Pubkey,
-    pub lp_mint: Pubkey,
-    pub open_orders: Pubkey,
-    pub market_id: Pubkey,
-    pub market_program_id: Pubkey,
-}
-
-impl From<RaydiumAmmV4Pool> for PoolUpdate {
-    fn from(pool: RaydiumAmmV4Pool) -> Self {
-        Self {
-            pool: None,
-            token_a_mint: Some(pool.base_mint),
-            token_b_mint: Some(pool.quote_mint),
-            liquidity: None,
-            sqrt_price: None,
-            fee_rate: None,
-        }
+impl RaydiumDecoder {
+    /// Creates a Raydium decoder.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self
     }
 }
 
-/// Returns true when account bytes match the Raydium AMM v4 account length.
-#[must_use]
-pub fn is_raydium_amm_v4(data: &[u8]) -> bool {
-    data.len() == AMM_V4_ACCOUNT_LEN
+impl PoolDecoder for RaydiumDecoder {
+    fn decode(&self, data: &[u8]) -> Result<PoolState> {
+        ensure_len(data, RAYDIUM_POOL_DATA_LEN)?;
+
+        let token_a = Token::new(
+            read_pubkey(data, TOKEN_A_MINT_OFFSET)?,
+            read_u8(data, TOKEN_A_DECIMALS_OFFSET)?,
+            None,
+        );
+        let token_b = Token::new(
+            read_pubkey(data, TOKEN_B_MINT_OFFSET)?,
+            read_u8(data, TOKEN_B_DECIMALS_OFFSET)?,
+            None,
+        );
+
+        Ok(PoolState {
+            dex: DexType::Raydium,
+            token_a,
+            token_b,
+            liquidity: read_u128(data, LIQUIDITY_OFFSET)?,
+            reserves: Some((
+                read_u64(data, RESERVE_A_OFFSET)?,
+                read_u64(data, RESERVE_B_OFFSET)?,
+            )),
+        })
+    }
 }
 
-/// Decodes a Raydium AMM v4 liquidity state account.
-pub fn decode_amm_v4(data: &[u8]) -> Result<RaydiumAmmV4Pool> {
-    Ok(RaydiumAmmV4Pool {
-        status: read_u64(data, STATUS_OFFSET, DECODER)?,
-        nonce: read_u64(data, NONCE_OFFSET, DECODER)?,
-        base_decimal: read_u64(data, BASE_DECIMAL_OFFSET, DECODER)?,
-        quote_decimal: read_u64(data, QUOTE_DECIMAL_OFFSET, DECODER)?,
-        trade_fee_numerator: read_u64(data, TRADE_FEE_NUMERATOR_OFFSET, DECODER)?,
-        trade_fee_denominator: read_u64(data, TRADE_FEE_DENOMINATOR_OFFSET, DECODER)?,
-        swap_fee_numerator: read_u64(data, SWAP_FEE_NUMERATOR_OFFSET, DECODER)?,
-        swap_fee_denominator: read_u64(data, SWAP_FEE_DENOMINATOR_OFFSET, DECODER)?,
-        base_vault: read_pubkey(data, BASE_VAULT_OFFSET, DECODER)?,
-        quote_vault: read_pubkey(data, QUOTE_VAULT_OFFSET, DECODER)?,
-        base_mint: read_pubkey(data, BASE_MINT_OFFSET, DECODER)?,
-        quote_mint: read_pubkey(data, QUOTE_MINT_OFFSET, DECODER)?,
-        lp_mint: read_pubkey(data, LP_MINT_OFFSET, DECODER)?,
-        open_orders: read_pubkey(data, OPEN_ORDERS_OFFSET, DECODER)?,
-        market_id: read_pubkey(data, MARKET_ID_OFFSET, DECODER)?,
-        market_program_id: read_pubkey(data, MARKET_PROGRAM_ID_OFFSET, DECODER)?,
+fn ensure_len(data: &[u8], expected: usize) -> Result<()> {
+    if data.len() < expected {
+        return Err(Error::DecodeError(format!(
+            "{DECODER} pool data too short: expected at least {expected} bytes, got {}",
+            data.len()
+        )));
+    }
+
+    Ok(())
+}
+
+fn read_pubkey(data: &[u8], offset: usize) -> Result<Pubkey> {
+    let mut bytes = [0; 32];
+    bytes.copy_from_slice(read_slice(data, offset, 32)?);
+    Ok(Pubkey::new(bytes))
+}
+
+fn read_u8(data: &[u8], offset: usize) -> Result<u8> {
+    Ok(*read_slice(data, offset, 1)?
+        .first()
+        .expect("slice length checked"))
+}
+
+fn read_u64(data: &[u8], offset: usize) -> Result<u64> {
+    let mut bytes = [0; 8];
+    bytes.copy_from_slice(read_slice(data, offset, 8)?);
+    Ok(u64::from_le_bytes(bytes))
+}
+
+fn read_u128(data: &[u8], offset: usize) -> Result<u128> {
+    let mut bytes = [0; 16];
+    bytes.copy_from_slice(read_slice(data, offset, 16)?);
+    Ok(u128::from_le_bytes(bytes))
+}
+
+fn read_slice(data: &[u8], offset: usize, len: usize) -> Result<&[u8]> {
+    let end = offset
+        .checked_add(len)
+        .ok_or_else(|| Error::DecodeError(format!("{DECODER} offset overflow")))?;
+    data.get(offset..end).ok_or_else(|| {
+        Error::DecodeError(format!(
+            "{DECODER} pool data too short: expected at least {end} bytes, got {}",
+            data.len()
+        ))
     })
 }
 
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use common::Error;
 
-    pub(crate) fn amm_v4_fixture() -> Vec<u8> {
-        let mut data = vec![0; AMM_V4_ACCOUNT_LEN];
-        write_u64(&mut data, STATUS_OFFSET, 6);
-        write_u64(&mut data, NONCE_OFFSET, 255);
-        write_u64(&mut data, BASE_DECIMAL_OFFSET, 9);
-        write_u64(&mut data, QUOTE_DECIMAL_OFFSET, 6);
-        write_u64(&mut data, TRADE_FEE_NUMERATOR_OFFSET, 25);
-        write_u64(&mut data, TRADE_FEE_DENOMINATOR_OFFSET, 10_000);
-        write_u64(&mut data, SWAP_FEE_NUMERATOR_OFFSET, 25);
-        write_u64(&mut data, SWAP_FEE_DENOMINATOR_OFFSET, 10_000);
-        write_pubkey(&mut data, BASE_VAULT_OFFSET, Pubkey::new([1; 32]));
-        write_pubkey(&mut data, QUOTE_VAULT_OFFSET, Pubkey::new([2; 32]));
-        write_pubkey(&mut data, BASE_MINT_OFFSET, Pubkey::new([3; 32]));
-        write_pubkey(&mut data, QUOTE_MINT_OFFSET, Pubkey::new([4; 32]));
-        write_pubkey(&mut data, LP_MINT_OFFSET, Pubkey::new([5; 32]));
-        write_pubkey(&mut data, OPEN_ORDERS_OFFSET, Pubkey::new([6; 32]));
-        write_pubkey(&mut data, MARKET_ID_OFFSET, Pubkey::new([7; 32]));
-        write_pubkey(&mut data, MARKET_PROGRAM_ID_OFFSET, Pubkey::new([8; 32]));
+    pub(crate) fn raydium_fixture() -> Vec<u8> {
+        let mut data = vec![0; RAYDIUM_POOL_DATA_LEN];
+        write_pubkey(&mut data, TOKEN_A_MINT_OFFSET, Pubkey::new([1; 32]));
+        write_pubkey(&mut data, TOKEN_B_MINT_OFFSET, Pubkey::new([2; 32]));
+        data[TOKEN_A_DECIMALS_OFFSET] = 9;
+        data[TOKEN_B_DECIMALS_OFFSET] = 6;
+        write_u128(&mut data, LIQUIDITY_OFFSET, 10_000);
+        write_u64(&mut data, RESERVE_A_OFFSET, 1_000);
+        write_u64(&mut data, RESERVE_B_OFFSET, 2_000);
         data
     }
 
     #[test]
-    fn detects_raydium_amm_v4_by_size() {
-        assert!(is_raydium_amm_v4(&amm_v4_fixture()));
-        assert!(!is_raydium_amm_v4(&[]));
+    fn decodes_raydium_pool_state() {
+        let state = RaydiumDecoder::new()
+            .decode(&raydium_fixture())
+            .expect("decode raydium");
+
+        assert_eq!(state.dex, DexType::Raydium);
+        assert_eq!(state.token_a.mint(), Pubkey::new([1; 32]));
+        assert_eq!(state.token_a.decimals(), 9);
+        assert_eq!(state.token_b.mint(), Pubkey::new([2; 32]));
+        assert_eq!(state.token_b.decimals(), 6);
+        assert_eq!(state.liquidity, 10_000);
+        assert_eq!(state.reserves, Some((1_000, 2_000)));
     }
 
     #[test]
-    fn decodes_raydium_amm_v4_pool_state() {
-        let pool = decode_amm_v4(&amm_v4_fixture()).expect("decode raydium");
-
-        assert_eq!(pool.status, 6);
-        assert_eq!(pool.nonce, 255);
-        assert_eq!(pool.base_decimal, 9);
-        assert_eq!(pool.quote_decimal, 6);
-        assert_eq!(pool.trade_fee_denominator, 10_000);
-        assert_eq!(pool.base_vault, Pubkey::new([1; 32]));
-        assert_eq!(pool.quote_mint, Pubkey::new([4; 32]));
-        assert_eq!(pool.market_program_id, Pubkey::new([8; 32]));
-    }
-
-    #[test]
-    fn rejects_short_raydium_amm_v4_input() {
-        let err = decode_amm_v4(&[0; 16]).expect_err("short input");
+    fn rejects_short_raydium_pool_data() {
+        let err = RaydiumDecoder::new().decode(&[0; 8]).expect_err("short");
 
         assert!(matches!(err, Error::DecodeError(_)));
+    }
+
+    fn write_pubkey(data: &mut [u8], offset: usize, value: Pubkey) {
+        data[offset..offset + 32].copy_from_slice(value.as_bytes());
     }
 
     fn write_u64(data: &mut [u8], offset: usize, value: u64) {
         data[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
     }
 
-    fn write_pubkey(data: &mut [u8], offset: usize, value: Pubkey) {
-        data[offset..offset + 32].copy_from_slice(value.as_bytes());
+    fn write_u128(data: &mut [u8], offset: usize, value: u128) {
+        data[offset..offset + 16].copy_from_slice(&value.to_le_bytes());
     }
 }

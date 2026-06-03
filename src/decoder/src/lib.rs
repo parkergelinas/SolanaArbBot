@@ -1,83 +1,94 @@
 //! DEX decoding boundary.
 //!
-//! This crate will decode Solana account and instruction data into market events.
+//! This crate converts raw RPC account bytes into structured pool state. The
+//! current decoders intentionally use simplified placeholder layouts so the
+//! abstraction can evolve before full Solana binary layouts are implemented.
 
 #![forbid(unsafe_code)]
 
-mod layout;
 pub mod orca;
 pub mod raydium;
 
-pub mod dex {
-    //! DEX-specific decoder entry points.
+use common::{Result, Token};
+use tracing::trace;
 
-    use common::{MarketEvent, Result};
-    use tracing::trace;
+/// Supported DEX families.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum DexType {
+    /// Raydium AMM-style pools.
+    Raydium,
+    /// Orca concentrated-liquidity pools.
+    OrcaCLMM,
+}
 
-    use crate::{orca, raydium};
+/// Structured pool state emitted by DEX decoders.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PoolState {
+    pub dex: DexType,
+    pub token_a: Token,
+    pub token_b: Token,
+    pub liquidity: u128,
+    pub reserves: Option<(u64, u64)>,
+}
 
-    /// Decoder for supported DEX account layouts.
-    #[derive(Clone, Copy, Debug, Default)]
-    pub struct DexDecoder;
+/// Shared decoder interface for pool-state decoders.
+pub trait PoolDecoder {
+    /// Decodes raw RPC bytes into structured pool state.
+    fn decode(&self, data: &[u8]) -> Result<PoolState>;
+}
 
-    impl DexDecoder {
-        /// Creates a decoder.
-        #[must_use]
-        pub const fn new() -> Self {
-            Self
+/// Unified decoder that routes to a DEX-specific decoder by `DexType`.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UnifiedDecoder {
+    raydium: raydium::RaydiumDecoder,
+    orca: orca::OrcaDecoder,
+}
+
+impl UnifiedDecoder {
+    /// Creates a unified decoder.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            raydium: raydium::RaydiumDecoder::new(),
+            orca: orca::OrcaDecoder::new(),
         }
+    }
 
-        /// Decodes a supported DEX account into a market event.
-        pub fn decode(&self, data: &[u8]) -> Result<Option<MarketEvent>> {
-            if raydium::is_raydium_amm_v4(data) {
-                trace!(len = data.len(), "decoding raydium amm v4 account");
-                return raydium::decode_amm_v4(data)
-                    .map(|pool| Some(MarketEvent::PoolUpdate(pool.into())));
-            }
-
-            if orca::is_orca_whirlpool(data) {
-                trace!(len = data.len(), "decoding orca whirlpool account");
-                return orca::decode_whirlpool(data)
-                    .map(|pool| Some(MarketEvent::PoolUpdate(pool.into())));
-            }
-
-            trace!(len = data.len(), "unsupported dex account layout");
-            Ok(None)
+    /// Decodes raw bytes using the requested DEX parser.
+    pub fn decode(&self, dex: DexType, data: &[u8]) -> Result<PoolState> {
+        trace!(?dex, len = data.len(), "decoding pool state");
+        match dex {
+            DexType::Raydium => self.raydium.decode(data),
+            DexType::OrcaCLMM => self.orca.decode(data),
         }
     }
 }
 
-pub use dex::DexDecoder;
+/// Backwards-compatible alias for existing scaffold code.
+pub type DexDecoder = UnifiedDecoder;
 
 #[cfg(test)]
 mod tests {
-    use super::{orca, raydium, DexDecoder};
-    use common::MarketEvent;
+    use super::{raydium, DexType, UnifiedDecoder};
+    use crate::orca;
 
     #[test]
-    fn decoder_returns_none_for_unknown_layout() {
-        assert!(DexDecoder::new().decode(&[]).expect("decode").is_none());
+    fn unified_decoder_routes_raydium() {
+        let state = UnifiedDecoder::new()
+            .decode(DexType::Raydium, &raydium::tests::raydium_fixture())
+            .expect("decode raydium");
+
+        assert_eq!(state.dex, DexType::Raydium);
+        assert_eq!(state.reserves, Some((1_000, 2_000)));
     }
 
     #[test]
-    fn decoder_dispatches_raydium_layout() {
-        let data = raydium::tests::amm_v4_fixture();
-        let event = DexDecoder::new()
-            .decode(&data)
-            .expect("decode")
-            .expect("event");
+    fn unified_decoder_routes_orca_clmm() {
+        let state = UnifiedDecoder::new()
+            .decode(DexType::OrcaCLMM, &orca::tests::orca_fixture())
+            .expect("decode orca");
 
-        assert!(matches!(event, MarketEvent::PoolUpdate(_)));
-    }
-
-    #[test]
-    fn decoder_dispatches_orca_layout() {
-        let data = orca::tests::whirlpool_fixture();
-        let event = DexDecoder::new()
-            .decode(&data)
-            .expect("decode")
-            .expect("event");
-
-        assert!(matches!(event, MarketEvent::PoolUpdate(_)));
+        assert_eq!(state.dex, DexType::OrcaCLMM);
+        assert_eq!(state.reserves, None);
     }
 }

@@ -108,7 +108,6 @@ mod tests {
         let engine = MarketAnalysisEngine::scaffold();
 
         assert!(engine.ready().is_ok());
-        assert!(engine.decoder().decode(&[]).expect("decode").is_none());
         assert!(engine.routing().graph().validate().is_ok());
     }
 }

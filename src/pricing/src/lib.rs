@@ -48,6 +48,5 @@ mod tests {
         let pricing = PricingEngine::new(DexDecoder::new());
 
         assert!(pricing.ready().is_ok());
-        assert!(pricing.decoder().decode(&[]).expect("decode").is_none());
     }
 }
