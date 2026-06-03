@@ -19,45 +19,31 @@ pub mod runtime {
     use rpc_client::RpcClient;
     use stream::StreamIngestor;
 
+    /// Placeholder bundle for engine component boundaries.
+    #[derive(Clone, Copy, Debug)]
+    pub struct MarketAnalysisComponents {
+        pub accounts: AccountCache,
+        pub decoder: DexDecoder,
+        pub execution: ExecutionSimulator,
+        pub graph: MarketGraph,
+        pub pricing: PricingEngine,
+        pub risk: RiskEngine,
+        pub routing: Router,
+        pub rpc_client: RpcClient,
+        pub stream: StreamIngestor,
+    }
+
     /// Placeholder top-level engine handle.
     #[derive(Clone, Copy, Debug)]
     pub struct MarketAnalysisEngine {
-        accounts: AccountCache,
-        decoder: DexDecoder,
-        execution: ExecutionSimulator,
-        graph: MarketGraph,
-        pricing: PricingEngine,
-        risk: RiskEngine,
-        routing: Router,
-        rpc_client: RpcClient,
-        stream: StreamIngestor,
+        components: MarketAnalysisComponents,
     }
 
     impl MarketAnalysisEngine {
-        /// Creates a placeholder engine with all workspace boundaries wired.
+        /// Creates a placeholder engine from already-wired component boundaries.
         #[must_use]
-        pub const fn new(
-            accounts: AccountCache,
-            decoder: DexDecoder,
-            execution: ExecutionSimulator,
-            graph: MarketGraph,
-            pricing: PricingEngine,
-            risk: RiskEngine,
-            routing: Router,
-            rpc_client: RpcClient,
-            stream: StreamIngestor,
-        ) -> Self {
-            Self {
-                accounts,
-                decoder,
-                execution,
-                graph,
-                pricing,
-                risk,
-                routing,
-                rpc_client,
-                stream,
-            }
+        pub const fn new(components: MarketAnalysisComponents) -> Self {
+            Self { components }
         }
 
         /// Creates a scaffold engine using placeholder components.
@@ -71,45 +57,45 @@ pub mod runtime {
             let rpc_client = RpcClient::new();
             let stream = StreamIngestor::new(rpc_client);
 
-            Self::new(
-                AccountCache::new(),
+            Self::new(MarketAnalysisComponents {
+                accounts: AccountCache::new(),
                 decoder,
                 execution,
                 graph,
                 pricing,
-                RiskEngine::new(),
+                risk: RiskEngine::new(),
                 routing,
                 rpc_client,
                 stream,
-            )
+            })
         }
 
         /// Performs no-op readiness checks across scaffolded boundaries.
         pub fn ready(&self) -> Result<()> {
-            self.accounts.validate()?;
-            self.execution.ready()?;
-            self.graph.validate()?;
-            self.pricing.ready()?;
-            self.risk.ready()?;
-            self.rpc_client.ready()?;
-            self.stream.ready()
+            self.components.accounts.validate()?;
+            self.components.execution.ready()?;
+            self.components.graph.validate()?;
+            self.components.pricing.ready()?;
+            self.components.risk.ready()?;
+            self.components.rpc_client.ready()?;
+            self.components.stream.ready()
         }
 
         /// Returns the decoder boundary used by the engine.
         #[must_use]
         pub const fn decoder(&self) -> DexDecoder {
-            self.decoder
+            self.components.decoder
         }
 
         /// Returns the routing boundary used by the engine.
         #[must_use]
         pub const fn routing(&self) -> Router {
-            self.routing
+            self.components.routing
         }
     }
 }
 
-pub use runtime::MarketAnalysisEngine;
+pub use runtime::{MarketAnalysisComponents, MarketAnalysisEngine};
 
 #[cfg(test)]
 mod tests {
