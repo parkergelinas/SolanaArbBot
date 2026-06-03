@@ -1,0 +1,40 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/accounts",
+    "crates/common",
+    "crates/decoder",
+    "crates/engine",
+    "crates/execution",
+    "crates/graph",
+    "crates/pricing",
+    "crates/risk",
+    "crates/routing",
+    "crates/rpc_client",
+    "crates/stream",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/parkergelinas/SolanaArbBot"
+
+[workspace.dependencies]
+accounts = { path = "crates/accounts" }
+common = { path = "crates/common" }
+decoder = { path = "crates/decoder" }
+engine = { path = "crates/engine" }
+execution = { path = "crates/execution" }
+graph = { path = "crates/graph" }
+pricing = { path = "crates/pricing" }
+risk = { path = "crates/risk" }
+routing = { path = "crates/routing" }
+rpc_client = { path = "crates/rpc_client" }
+stream = { path = "crates/stream" }
+
+crossbeam-channel = "0.5.15"
+dashmap = "6.2.1"
+thiserror = "2.0.18"
+tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread", "time", "sync"] }
+tracing = "0.1.44"
