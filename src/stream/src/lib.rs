@@ -1,386 +1,540 @@
-//! Real-time Solana ingestion boundary.
+//! Real-time market data streaming backbone.
 //!
-//! This crate will own subscription streams and hand raw updates to decoders.
+//! This crate owns the in-process event bus used to fan out decoded market
+//! events to pricing, graph, routing, and simulation components.
 
 #![forbid(unsafe_code)]
 
-pub mod ingestion {
-    //! Stream setup, lifecycle, and update handoff responsibilities.
+pub mod bus {
+    //! Multi-producer, multi-consumer fan-out event bus.
 
-    use common::{Error, Pubkey, Result};
-    use rpc_client::RpcClient;
-    use tokio::sync::mpsc;
+    use std::{
+        sync::{
+            atomic::{AtomicU64, Ordering},
+            Arc,
+        },
+        time::Duration,
+    };
+
+    use common::{Error, MarketEvent, Result};
+    use crossbeam_channel::{
+        bounded, Receiver, RecvTimeoutError, Sender, TryRecvError, TrySendError,
+    };
+    use dashmap::DashMap;
     use tracing::{debug, trace, warn};
 
-    /// Default number of account updates buffered between RPC ingestion and consumers.
+    /// Default bounded channel size for each subscriber.
     pub const DEFAULT_CHANNEL_CAPACITY: usize = 4_096;
 
-    /// Slot associated with an ingested Solana update.
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub struct Slot(u64);
+    /// Subscriber identifier assigned by the event bus.
+    pub type SubscriberId = u64;
 
-    impl Slot {
-        /// Creates a slot wrapper.
-        #[must_use]
-        pub const fn new(value: u64) -> Self {
-            Self(value)
-        }
-
-        /// Returns the raw slot value.
-        #[must_use]
-        pub const fn get(self) -> u64 {
-            self.0
-        }
-    }
-
-    /// Commitment requested for a stream subscription.
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-    pub enum CommitmentLevel {
-        /// Processed commitment.
-        #[default]
-        Processed,
-        /// Confirmed commitment.
-        Confirmed,
-        /// Finalized commitment.
-        Finalized,
-    }
-
-    /// Stream subscription target.
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-    pub enum SubscriptionKind {
-        /// Subscribe to a single account.
-        Account(Pubkey),
-        /// Subscribe to all accounts owned by a program.
-        Program(Pubkey),
-        /// Subscribe to slot updates.
-        Slots,
-    }
-
-    /// Subscription request metadata.
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-    pub struct Subscription {
-        kind: SubscriptionKind,
-        commitment: CommitmentLevel,
-    }
-
-    impl Subscription {
-        /// Creates a subscription request.
-        #[must_use]
-        pub const fn new(kind: SubscriptionKind, commitment: CommitmentLevel) -> Self {
-            Self { kind, commitment }
-        }
-
-        /// Returns the subscription target.
-        #[must_use]
-        pub const fn kind(self) -> SubscriptionKind {
-            self.kind
-        }
-
-        /// Returns the requested commitment.
-        #[must_use]
-        pub const fn commitment(self) -> CommitmentLevel {
-            self.commitment
-        }
-    }
-
-    /// Stream ingestion configuration.
+    /// Backpressure behavior when a subscriber channel is full.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub struct StreamConfig {
-        channel_capacity: usize,
-        commitment: CommitmentLevel,
+    pub enum BackpressureStrategy {
+        /// Drop the newest event for the full subscriber and continue fan-out.
+        DropNewest,
+        /// Block the publishing thread until each subscriber accepts the event.
+        Block,
     }
 
-    impl StreamConfig {
-        /// Creates stream configuration with a bounded update channel.
-        pub fn new(channel_capacity: usize, commitment: CommitmentLevel) -> Result<Self> {
+    /// Event bus configuration.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct EventBusConfig {
+        channel_capacity: usize,
+        backpressure: BackpressureStrategy,
+    }
+
+    impl EventBusConfig {
+        /// Creates event bus configuration.
+        pub fn new(channel_capacity: usize, backpressure: BackpressureStrategy) -> Result<Self> {
             if channel_capacity == 0 {
                 return Err(Error::InvalidState(
-                    "stream channel capacity must be greater than zero".to_owned(),
+                    "event bus channel capacity must be greater than zero".to_owned(),
                 ));
             }
 
             Ok(Self {
                 channel_capacity,
-                commitment,
+                backpressure,
             })
         }
 
-        /// Returns the bounded update channel capacity.
+        /// Returns per-subscriber channel capacity.
         #[must_use]
         pub const fn channel_capacity(self) -> usize {
             self.channel_capacity
         }
 
-        /// Returns the default commitment for subscriptions.
+        /// Returns configured backpressure behavior.
         #[must_use]
-        pub const fn commitment(self) -> CommitmentLevel {
-            self.commitment
+        pub const fn backpressure(self) -> BackpressureStrategy {
+            self.backpressure
         }
     }
 
-    impl Default for StreamConfig {
+    impl Default for EventBusConfig {
         fn default() -> Self {
             Self {
                 channel_capacity: DEFAULT_CHANNEL_CAPACITY,
-                commitment: CommitmentLevel::Processed,
+                backpressure: BackpressureStrategy::DropNewest,
             }
         }
     }
 
-    /// Raw account data update accepted by the ingestion layer.
-    #[derive(Clone, Debug, PartialEq, Eq)]
-    pub struct AccountUpdate {
-        pubkey: Pubkey,
-        slot: Slot,
-        write_version: u64,
-        data: Vec<u8>,
+    /// Fan-out publish result.
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct PublishReport {
+        delivered: usize,
+        dropped: usize,
+        disconnected: usize,
     }
 
-    impl AccountUpdate {
-        /// Creates an account update from owned bytes without copying.
+    impl PublishReport {
+        /// Number of subscriber channels that accepted the event.
         #[must_use]
-        pub fn from_vec(pubkey: Pubkey, slot: Slot, write_version: u64, data: Vec<u8>) -> Self {
-            Self {
-                pubkey,
-                slot,
-                write_version,
-                data,
-            }
+        pub const fn delivered(self) -> usize {
+            self.delivered
         }
 
-        /// Creates an account update by copying bytes from a slice.
+        /// Number of subscriber channels that dropped the event due to backpressure.
         #[must_use]
-        pub fn from_slice(pubkey: Pubkey, slot: Slot, write_version: u64, data: &[u8]) -> Self {
-            Self::from_vec(pubkey, slot, write_version, data.to_vec())
+        pub const fn dropped(self) -> usize {
+            self.dropped
         }
 
-        /// Returns the updated account public key.
+        /// Number of closed subscriber channels removed during publish.
         #[must_use]
-        pub const fn pubkey(&self) -> Pubkey {
-            self.pubkey
-        }
-
-        /// Returns the update slot.
-        #[must_use]
-        pub const fn slot(&self) -> Slot {
-            self.slot
-        }
-
-        /// Returns the write version emitted by upstream ingestion.
-        #[must_use]
-        pub const fn write_version(&self) -> u64 {
-            self.write_version
-        }
-
-        /// Returns account data bytes.
-        #[must_use]
-        pub fn data(&self) -> &[u8] {
-            &self.data
-        }
-
-        /// Consumes the update and returns owned account data.
-        #[must_use]
-        pub fn into_data(self) -> Vec<u8> {
-            self.data
+        pub const fn disconnected(self) -> usize {
+            self.disconnected
         }
     }
 
-    /// Receives account updates from the ingestion queue.
-    #[derive(Debug)]
-    pub struct StreamReceiver {
-        receiver: mpsc::Receiver<AccountUpdate>,
-    }
-
-    impl StreamReceiver {
-        /// Receives the next account update.
-        pub async fn recv(&mut self) -> Result<AccountUpdate> {
-            match self.receiver.recv().await {
-                Some(update) => {
-                    trace!(
-                        slot = update.slot().get(),
-                        write_version = update.write_version(),
-                        "received account update"
-                    );
-                    Ok(update)
-                }
-                None => {
-                    warn!("stream receiver closed");
-                    Err(Error::InternalError("stream queue is closed".to_owned()))
-                }
-            }
-        }
-    }
-
-    /// Stream ingestion handle.
+    /// Multi-producer, multi-consumer market event bus.
     #[derive(Clone, Debug)]
-    pub struct StreamIngestor {
-        rpc_client: RpcClient,
-        config: StreamConfig,
-        sender: mpsc::Sender<AccountUpdate>,
+    pub struct EventBus {
+        config: EventBusConfig,
+        next_subscriber_id: Arc<AtomicU64>,
+        subscribers: Arc<DashMap<SubscriberId, Sender<MarketEvent>>>,
     }
 
-    impl StreamIngestor {
-        /// Creates a stream ingestor and receiver with default configuration.
+    impl EventBus {
+        /// Creates an event bus with default configuration.
         #[must_use]
-        pub fn new(rpc_client: RpcClient) -> (Self, StreamReceiver) {
-            Self::with_config(rpc_client, StreamConfig::default()).expect("valid config")
+        pub fn new() -> Self {
+            Self::with_config(EventBusConfig::default()).expect("valid default config")
         }
 
-        /// Creates a stream ingestor and paired receiver.
-        pub fn with_config(
-            rpc_client: RpcClient,
-            config: StreamConfig,
-        ) -> Result<(Self, StreamReceiver)> {
-            rpc_client.ready()?;
-
-            let (sender, receiver) = mpsc::channel(config.channel_capacity());
+        /// Creates an event bus with explicit configuration.
+        pub fn with_config(config: EventBusConfig) -> Result<Self> {
             debug!(
                 channel_capacity = config.channel_capacity(),
-                commitment = ?config.commitment(),
-                "created stream ingestor"
+                backpressure = ?config.backpressure(),
+                "created event bus"
             );
-
-            Ok((
-                Self {
-                    rpc_client,
-                    config,
-                    sender,
-                },
-                StreamReceiver { receiver },
-            ))
+            Ok(Self {
+                config,
+                next_subscriber_id: Arc::new(AtomicU64::new(1)),
+                subscribers: Arc::new(DashMap::new()),
+            })
         }
 
-        /// Registers a subscription request with the ingestion layer.
-        pub fn register_subscription(&self, subscription: Subscription) -> Result<()> {
-            self.ready()?;
-            debug!(
-                kind = ?subscription.kind(),
-                commitment = ?subscription.commitment(),
-                "registered stream subscription"
-            );
-            Ok(())
+        /// Registers a new subscriber and returns its receiver handle.
+        pub fn subscribe(&self) -> EventSubscriber {
+            let id = self.next_subscriber_id.fetch_add(1, Ordering::Relaxed);
+            let (sender, receiver) = bounded(self.config.channel_capacity());
+            self.subscribers.insert(id, sender);
+            debug!(subscriber_id = id, "registered event subscriber");
+
+            EventSubscriber {
+                id,
+                receiver,
+                subscribers: Arc::clone(&self.subscribers),
+            }
         }
 
-        /// Enqueues an account update for downstream consumers.
-        pub fn enqueue_account_update(&self, update: AccountUpdate) -> Result<()> {
-            let slot = update.slot().get();
-            let write_version = update.write_version();
+        /// Publishes an event to every active subscriber.
+        ///
+        /// With [`BackpressureStrategy::Block`], this method may block the caller.
+        /// Async ingestion code should call [`Self::publish_async`] instead.
+        pub fn publish(&self, event: MarketEvent) -> Result<PublishReport> {
+            let mut report = PublishReport::default();
+            let mut disconnected = Vec::new();
 
-            match self.sender.try_send(update) {
-                Ok(()) => {
-                    trace!(slot, write_version, "enqueued account update");
-                    Ok(())
+            for subscriber in self.subscribers.iter() {
+                match self.config.backpressure() {
+                    BackpressureStrategy::DropNewest => {
+                        match subscriber.value().try_send(event.clone()) {
+                            Ok(()) => report.delivered += 1,
+                            Err(TrySendError::Full(_)) => {
+                                report.dropped += 1;
+                                trace!(
+                                    subscriber_id = *subscriber.key(),
+                                    "dropped event for full subscriber channel"
+                                );
+                            }
+                            Err(TrySendError::Disconnected(_)) => {
+                                report.disconnected += 1;
+                                disconnected.push(*subscriber.key());
+                            }
+                        }
+                    }
+                    BackpressureStrategy::Block => {
+                        if subscriber.value().send(event.clone()).is_ok() {
+                            report.delivered += 1;
+                        } else {
+                            report.disconnected += 1;
+                            disconnected.push(*subscriber.key());
+                        }
+                    }
                 }
-                Err(mpsc::error::TrySendError::Full(_)) => {
-                    warn!(slot, write_version, "stream queue full");
-                    Err(Error::InvalidState("stream queue is full".to_owned()))
-                }
-                Err(mpsc::error::TrySendError::Closed(_)) => {
-                    warn!(slot, write_version, "stream queue closed");
-                    Err(Error::InternalError("stream queue is closed".to_owned()))
+            }
+
+            for subscriber_id in disconnected {
+                self.subscribers.remove(&subscriber_id);
+                warn!(subscriber_id, "removed disconnected subscriber");
+            }
+
+            Ok(report)
+        }
+
+        /// Publishes from async code without blocking the Tokio worker thread.
+        pub async fn publish_async(&self, event: MarketEvent) -> Result<PublishReport> {
+            match self.config.backpressure() {
+                BackpressureStrategy::DropNewest => self.publish(event),
+                BackpressureStrategy::Block => {
+                    let bus = self.clone();
+                    tokio::task::spawn_blocking(move || bus.publish(event))
+                        .await
+                        .map_err(|err| {
+                            Error::InternalError(format!("event bus publish task failed: {err}"))
+                        })?
                 }
             }
         }
 
-        /// Returns the RPC boundary used by ingestion.
+        /// Returns the current number of active subscribers.
         #[must_use]
-        pub const fn rpc_client(&self) -> &RpcClient {
-            &self.rpc_client
+        pub fn subscriber_count(&self) -> usize {
+            self.subscribers.len()
         }
 
-        /// Returns the stream configuration.
+        /// Returns event bus configuration.
         #[must_use]
-        pub const fn config(&self) -> StreamConfig {
+        pub const fn config(&self) -> EventBusConfig {
             self.config
         }
+    }
 
-        /// Performs a readiness check for the stream boundary.
-        pub fn ready(&self) -> Result<()> {
-            self.rpc_client.ready()
+    impl Default for EventBus {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    /// Receiver handle for one event-bus subscription.
+    #[derive(Debug)]
+    pub struct EventSubscriber {
+        id: SubscriberId,
+        receiver: Receiver<MarketEvent>,
+        subscribers: Arc<DashMap<SubscriberId, Sender<MarketEvent>>>,
+    }
+
+    impl EventSubscriber {
+        /// Returns this subscriber's bus id.
+        #[must_use]
+        pub const fn id(&self) -> SubscriberId {
+            self.id
+        }
+
+        /// Blocks until the next event is available.
+        pub fn recv(&self) -> Result<MarketEvent> {
+            self.receiver
+                .recv()
+                .map_err(|err| Error::InternalError(format!("event subscriber closed: {err}")))
+        }
+
+        /// Receives the next event if one is immediately available.
+        pub fn try_recv(&self) -> Result<Option<MarketEvent>> {
+            match self.receiver.try_recv() {
+                Ok(event) => Ok(Some(event)),
+                Err(TryRecvError::Empty) => Ok(None),
+                Err(TryRecvError::Disconnected) => Err(Error::InternalError(
+                    "event subscriber disconnected".to_owned(),
+                )),
+            }
+        }
+
+        /// Blocks up to `timeout` while waiting for the next event.
+        pub fn recv_timeout(&self, timeout: Duration) -> Result<Option<MarketEvent>> {
+            match self.receiver.recv_timeout(timeout) {
+                Ok(event) => Ok(Some(event)),
+                Err(RecvTimeoutError::Timeout) => Ok(None),
+                Err(RecvTimeoutError::Disconnected) => Err(Error::InternalError(
+                    "event subscriber disconnected".to_owned(),
+                )),
+            }
+        }
+    }
+
+    impl Drop for EventSubscriber {
+        fn drop(&mut self) {
+            self.subscribers.remove(&self.id);
+            debug!(subscriber_id = self.id, "dropped event subscriber");
         }
     }
 }
 
-pub use ingestion::{
-    AccountUpdate, CommitmentLevel, Slot, StreamConfig, StreamIngestor, StreamReceiver,
-    Subscription, SubscriptionKind, DEFAULT_CHANNEL_CAPACITY,
+pub mod ingestion {
+    //! Placeholder Tokio ingestion task that publishes market events.
+
+    use common::{MarketEvent, PoolUpdate, Result};
+    use tokio::task::JoinHandle;
+    use tracing::{debug, trace};
+
+    use crate::EventBus;
+
+    /// Default number of placeholder events emitted by the ingestion task.
+    pub const DEFAULT_PLACEHOLDER_EVENT_LIMIT: usize = 1_024;
+
+    /// Ingestion task configuration.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct IngestionConfig {
+        event_limit: usize,
+        yield_every: usize,
+    }
+
+    impl IngestionConfig {
+        /// Creates ingestion configuration for a placeholder source.
+        #[must_use]
+        pub const fn new(event_limit: usize, yield_every: usize) -> Self {
+            Self {
+                event_limit,
+                yield_every,
+            }
+        }
+
+        /// Returns the number of placeholder events to emit.
+        #[must_use]
+        pub const fn event_limit(self) -> usize {
+            self.event_limit
+        }
+
+        /// Returns how often the ingestion task yields to the runtime.
+        #[must_use]
+        pub const fn yield_every(self) -> usize {
+            self.yield_every
+        }
+    }
+
+    impl Default for IngestionConfig {
+        fn default() -> Self {
+            Self {
+                event_limit: DEFAULT_PLACEHOLDER_EVENT_LIMIT,
+                yield_every: 256,
+            }
+        }
+    }
+
+    /// Async ingestion engine for a placeholder Solana market-data source.
+    #[derive(Clone, Debug)]
+    pub struct IngestionEngine {
+        event_bus: EventBus,
+        config: IngestionConfig,
+    }
+
+    impl IngestionEngine {
+        /// Creates an ingestion engine.
+        #[must_use]
+        pub fn new(event_bus: EventBus, config: IngestionConfig) -> Self {
+            Self { event_bus, config }
+        }
+
+        /// Starts the placeholder ingestion loop on the Tokio runtime.
+        pub fn start(self) -> JoinHandle<Result<usize>> {
+            tokio::spawn(async move { self.run().await })
+        }
+
+        /// Runs the placeholder ingestion loop to completion.
+        pub async fn run(self) -> Result<usize> {
+            debug!(
+                event_limit = self.config.event_limit(),
+                yield_every = self.config.yield_every(),
+                "starting placeholder ingestion"
+            );
+
+            let mut published = 0;
+            for index in 0..self.config.event_limit() {
+                let event = placeholder_event();
+                let report = self.event_bus.publish_async(event).await?;
+                trace!(
+                    index,
+                    delivered = report.delivered(),
+                    dropped = report.dropped(),
+                    "published placeholder market event"
+                );
+                published += 1;
+
+                if self.config.yield_every() != 0 && index % self.config.yield_every() == 0 {
+                    tokio::task::yield_now().await;
+                }
+            }
+
+            debug!(published, "finished placeholder ingestion");
+            Ok(published)
+        }
+
+        /// Returns the event bus used by this ingestion engine.
+        #[must_use]
+        pub const fn event_bus(&self) -> &EventBus {
+            &self.event_bus
+        }
+
+        /// Returns ingestion configuration.
+        #[must_use]
+        pub const fn config(&self) -> IngestionConfig {
+            self.config
+        }
+    }
+
+    fn placeholder_event() -> MarketEvent {
+        MarketEvent::PoolUpdate(PoolUpdate {
+            pool: None,
+            token_a_mint: None,
+            token_b_mint: None,
+            liquidity: None,
+            sqrt_price: None,
+            fee_rate: None,
+        })
+    }
+}
+
+pub use bus::{
+    BackpressureStrategy, EventBus, EventBusConfig, EventSubscriber, PublishReport, SubscriberId,
+    DEFAULT_CHANNEL_CAPACITY,
 };
+pub use ingestion::{IngestionConfig, IngestionEngine, DEFAULT_PLACEHOLDER_EVENT_LIMIT};
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        AccountUpdate, CommitmentLevel, Slot, StreamConfig, StreamIngestor, Subscription,
-        SubscriptionKind,
-    };
-    use common::{Error, Pubkey};
-    use rpc_client::RpcClient;
+    use std::{thread, time::Duration};
+
+    use common::{MarketEvent, PoolUpdate, Pubkey, SwapEvent};
+
+    use super::{BackpressureStrategy, EventBus, EventBusConfig, IngestionConfig, IngestionEngine};
 
     #[test]
-    fn stream_config_rejects_zero_capacity() {
-        let err = StreamConfig::new(0, CommitmentLevel::Processed).expect_err("invalid capacity");
+    fn event_bus_supports_multi_producer() {
+        let bus = EventBus::with_config(
+            EventBusConfig::new(256, BackpressureStrategy::DropNewest).expect("config"),
+        )
+        .expect("bus");
+        let subscriber = bus.subscribe();
 
-        assert!(matches!(err, Error::InvalidState(_)));
+        let producers = (0..4)
+            .map(|producer_id| {
+                let bus = bus.clone();
+                thread::spawn(move || {
+                    for sequence in 0..25 {
+                        bus.publish(swap_event(producer_id, sequence))
+                            .expect("publish");
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+
+        for producer in producers {
+            producer.join().expect("producer joined");
+        }
+
+        let mut received = Vec::with_capacity(100);
+        for _ in 0..100 {
+            received.push(
+                subscriber
+                    .recv_timeout(Duration::from_secs(1))
+                    .expect("receive")
+                    .expect("event"),
+            );
+        }
+
+        assert_eq!(received.len(), 100);
     }
 
     #[test]
-    fn stream_ingestor_is_ready() {
-        let (ingestor, _receiver) = StreamIngestor::new(RpcClient::new());
+    fn event_bus_fans_out_to_multi_consumer() {
+        let bus = EventBus::new();
+        let first = bus.subscribe();
+        let second = bus.subscribe();
+        let event = pool_event();
 
-        assert!(ingestor.ready().is_ok());
-        assert!(ingestor.rpc_client().ready().is_ok());
+        let report = bus.publish(event.clone()).expect("publish");
+
+        assert_eq!(report.delivered(), 2);
+        assert_eq!(first.recv().expect("first event"), event);
+        assert_eq!(second.recv().expect("second event"), event);
     }
 
     #[test]
-    fn stream_ingestor_registers_subscription() {
-        let (ingestor, _receiver) = StreamIngestor::new(RpcClient::new());
-        let subscription = Subscription::new(
-            SubscriptionKind::Account(Pubkey::new([1; 32])),
-            CommitmentLevel::Confirmed,
-        );
+    fn event_bus_preserves_message_integrity() {
+        let bus = EventBus::new();
+        let subscriber = bus.subscribe();
+        let event = swap_event(7, 11);
 
-        assert!(ingestor.register_subscription(subscription).is_ok());
+        bus.publish(event.clone()).expect("publish");
+
+        assert_eq!(subscriber.recv().expect("event"), event);
+    }
+
+    #[test]
+    fn event_bus_drop_newest_reports_backpressure() {
+        let bus = EventBus::with_config(
+            EventBusConfig::new(1, BackpressureStrategy::DropNewest).expect("config"),
+        )
+        .expect("bus");
+        let _subscriber = bus.subscribe();
+
+        assert_eq!(bus.publish(pool_event()).expect("first").delivered(), 1);
+        let report = bus.publish(pool_event()).expect("second");
+
+        assert_eq!(report.delivered(), 0);
+        assert_eq!(report.dropped(), 1);
     }
 
     #[tokio::test]
-    async fn stream_ingestor_enqueues_and_receives_update() {
-        let config = StreamConfig::new(8, CommitmentLevel::Processed).expect("valid config");
-        let (ingestor, mut receiver) =
-            StreamIngestor::with_config(RpcClient::new(), config).expect("ingestor");
-        let update = AccountUpdate::from_slice(Pubkey::new([2; 32]), Slot::new(42), 7, &[1, 2, 3]);
+    async fn ingestion_engine_publishes_placeholder_events() {
+        let bus = EventBus::new();
+        let subscriber = bus.subscribe();
+        let engine = IngestionEngine::new(bus, IngestionConfig::new(4, 1));
 
-        ingestor
-            .enqueue_account_update(update.clone())
-            .expect("enqueue update");
+        let published = engine.run().await.expect("ingestion");
 
-        assert_eq!(receiver.recv().await.expect("receive update"), update);
+        assert_eq!(published, 4);
+        for _ in 0..4 {
+            assert!(matches!(
+                subscriber.recv().expect("event"),
+                MarketEvent::PoolUpdate(_)
+            ));
+        }
     }
 
-    #[tokio::test]
-    async fn stream_ingestor_reports_closed_receiver() {
-        let config = StreamConfig::new(1, CommitmentLevel::Processed).expect("valid config");
-        let (ingestor, mut receiver) =
-            StreamIngestor::with_config(RpcClient::new(), config).expect("ingestor");
-
-        drop(ingestor);
-
-        let err = receiver.recv().await.expect_err("closed stream");
-        assert!(matches!(err, Error::InternalError(_)));
+    fn pool_event() -> MarketEvent {
+        MarketEvent::PoolUpdate(PoolUpdate {
+            pool: Some(Pubkey::new([1; 32])),
+            token_a_mint: Some(Pubkey::new([2; 32])),
+            token_b_mint: Some(Pubkey::new([3; 32])),
+            liquidity: Some(42),
+            sqrt_price: Some(64),
+            fee_rate: Some(25),
+        })
     }
 
-    #[test]
-    fn stream_ingestor_reports_full_queue() {
-        let config = StreamConfig::new(1, CommitmentLevel::Processed).expect("valid config");
-        let (ingestor, _receiver) =
-            StreamIngestor::with_config(RpcClient::new(), config).expect("ingestor");
-        let update = AccountUpdate::from_vec(Pubkey::default(), Slot::new(1), 1, Vec::new());
-
-        ingestor
-            .enqueue_account_update(update.clone())
-            .expect("first update");
-        let err = ingestor
-            .enqueue_account_update(update)
-            .expect_err("queue full");
-
-        assert!(matches!(err, Error::InvalidState(_)));
+    fn swap_event(producer_id: u8, sequence: u8) -> MarketEvent {
+        MarketEvent::SwapEvent(SwapEvent {
+            pool: Pubkey::new([producer_id; 32]),
+            input_mint: Pubkey::new([sequence; 32]),
+            output_mint: Pubkey::new([producer_id.wrapping_add(sequence); 32]),
+            amount_in: u128::from(sequence),
+            amount_out: u128::from(sequence) + 1,
+        })
     }
 }

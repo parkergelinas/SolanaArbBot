@@ -17,7 +17,7 @@ pub mod runtime {
     use risk::RiskEngine;
     use routing::Router;
     use rpc_client::RpcClient;
-    use stream::{StreamIngestor, StreamReceiver};
+    use stream::{EventBus, IngestionConfig, IngestionEngine};
 
     /// Placeholder bundle for engine component boundaries.
     #[derive(Debug)]
@@ -30,8 +30,8 @@ pub mod runtime {
         pub risk: RiskEngine,
         pub routing: Router,
         pub rpc_client: RpcClient,
-        pub stream: StreamIngestor,
-        pub stream_receiver: StreamReceiver,
+        pub event_bus: EventBus,
+        pub ingestion: IngestionEngine,
     }
 
     /// Placeholder top-level engine handle.
@@ -56,7 +56,8 @@ pub mod runtime {
             let routing = Router::new(graph, pricing);
             let execution = ExecutionSimulator::new(routing);
             let rpc_client = RpcClient::new();
-            let (stream, stream_receiver) = StreamIngestor::new(rpc_client);
+            let event_bus = EventBus::new();
+            let ingestion = IngestionEngine::new(event_bus.clone(), IngestionConfig::default());
 
             Self::new(MarketAnalysisComponents {
                 accounts: AccountCache::new(),
@@ -67,8 +68,8 @@ pub mod runtime {
                 risk: RiskEngine::new(),
                 routing,
                 rpc_client,
-                stream,
-                stream_receiver,
+                event_bus,
+                ingestion,
             })
         }
 
@@ -79,8 +80,7 @@ pub mod runtime {
             self.components.graph.validate()?;
             self.components.pricing.ready()?;
             self.components.risk.ready()?;
-            self.components.rpc_client.ready()?;
-            self.components.stream.ready()
+            self.components.rpc_client.ready()
         }
 
         /// Returns the decoder boundary used by the engine.
