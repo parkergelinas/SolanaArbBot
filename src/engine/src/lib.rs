@@ -16,7 +16,7 @@ pub mod runtime {
     use pricing::PricingEngine;
     use risk::RiskEngine;
     use routing::Router;
-    use rpc_client::RpcClient;
+    use rpc_client::MockRpcClient;
     use stream::{EventBus, IngestionConfig, IngestionEngine};
 
     /// Placeholder bundle for engine component boundaries.
@@ -29,7 +29,7 @@ pub mod runtime {
         pub pricing: PricingEngine,
         pub risk: RiskEngine,
         pub routing: Router,
-        pub rpc_client: RpcClient,
+        pub rpc_client: MockRpcClient,
         pub event_bus: EventBus,
         pub ingestion: IngestionEngine,
     }
@@ -55,7 +55,7 @@ pub mod runtime {
             let pricing = PricingEngine::new(decoder);
             let routing = Router::new(graph, pricing);
             let execution = ExecutionSimulator::new(routing);
-            let rpc_client = RpcClient::new();
+            let rpc_client = MockRpcClient::new();
             let event_bus = EventBus::new();
             let ingestion = IngestionEngine::new(event_bus.clone(), IngestionConfig::default());
 
