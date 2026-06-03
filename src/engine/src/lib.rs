@@ -12,9 +12,9 @@ pub mod runtime {
 
     use accounts::AccountCache;
     use common::{Error, MarketEvent, Result};
-    use decoder::{DexDecoder, DexType, PoolState};
+    use decoder::{DexDecoder, DexType};
     use execution::ExecutionSimulator;
-    use graph::{Edge, MarketGraph};
+    use graph::MarketGraph;
     use pricing::PricingEngine;
     use risk::RiskEngine;
     use routing::Router;
@@ -250,7 +250,7 @@ pub mod runtime {
             report.pool_state_updates += 1;
 
             self.components.pricing.ready()?;
-            update_graph_from_pool(&mut self.components.graph, &pool)?;
+            self.components.graph.apply_pool_state(&pool)?;
             report.graph_edges = self.components.graph.edge_count();
 
             self.components.routing =
@@ -328,35 +328,6 @@ pub mod runtime {
         .await
         .map_err(|err| Error::InternalError(format!("engine stream receive failed: {err}")))
         .and_then(|(subscriber, event)| event.map(|event| (subscriber, event)))
-    }
-
-    fn update_graph_from_pool(graph: &mut MarketGraph, pool: &PoolState) -> Result<()> {
-        let liquidity = pool.liquidity as f64;
-        let (forward_price, reverse_price) = match pool.reserves {
-            Some((reserve_a, reserve_b)) if reserve_a > 0 && reserve_b > 0 => (
-                reserve_b as f64 / reserve_a as f64,
-                reserve_a as f64 / reserve_b as f64,
-            ),
-            _ => (1.0, 1.0),
-        };
-
-        let forward = Edge::new(
-            pool.token_a.clone(),
-            pool.token_b.clone(),
-            forward_price,
-            liquidity,
-            25,
-        );
-        let reverse = Edge::new(
-            pool.token_b.clone(),
-            pool.token_a.clone(),
-            reverse_price,
-            liquidity,
-            25,
-        );
-
-        graph.replace_edges(pool.token_a.clone(), pool.token_b.clone(), vec![forward])?;
-        graph.replace_edges(pool.token_b.clone(), pool.token_a.clone(), vec![reverse])
     }
 }
 

@@ -6,3 +6,4 @@ license.workspace = true
 
 [dependencies]
 common = { path = "../common" }
+decoder = { version = "0.1.0", path = "../decoder" }

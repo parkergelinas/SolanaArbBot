@@ -10,6 +10,9 @@ pub mod market_graph {
     use std::collections::HashMap;
 
     use common::{Error, Result, Token};
+    use decoder::PoolState;
+
+    const DEFAULT_POOL_FEE_BPS: u64 = 25;
 
     /// Directed weighted swap edge between two tokens.
     #[derive(Clone, Debug, PartialEq)]
@@ -61,6 +64,33 @@ pub mod market_graph {
                 .push(edge);
             self.edge_count += 1;
             Ok(())
+        }
+
+        /// Applies a pool state update by replacing its directed token-pair edges.
+        ///
+        /// Nodes are implicit: adding edges makes each token discoverable through
+        /// adjacency traversal. Weights are encoded on each edge as price and
+        /// liquidity.
+        pub fn apply_pool_state(&mut self, pool: &PoolState) -> Result<()> {
+            let liquidity = pool_liquidity(pool)?;
+            let (forward_price, reverse_price) = pool_prices(pool)?;
+            let forward = Edge::new(
+                pool.token_a.clone(),
+                pool.token_b.clone(),
+                forward_price,
+                liquidity,
+                DEFAULT_POOL_FEE_BPS,
+            );
+            let reverse = Edge::new(
+                pool.token_b.clone(),
+                pool.token_a.clone(),
+                reverse_price,
+                liquidity,
+                DEFAULT_POOL_FEE_BPS,
+            );
+
+            self.replace_edges(pool.token_a.clone(), pool.token_b.clone(), vec![forward])?;
+            self.replace_edges(pool.token_b.clone(), pool.token_a.clone(), vec![reverse])
         }
 
         /// Replaces all edges for one directed token pair.
@@ -209,6 +239,40 @@ pub mod market_graph {
 
         Ok(())
     }
+
+    fn pool_liquidity(pool: &PoolState) -> Result<f64> {
+        let liquidity = pool.liquidity as f64;
+        if !liquidity.is_finite() || liquidity <= 0.0 {
+            return Err(Error::InvalidState(
+                "pool liquidity must be finite and positive".to_owned(),
+            ));
+        }
+
+        Ok(liquidity)
+    }
+
+    fn pool_prices(pool: &PoolState) -> Result<(f64, f64)> {
+        let (forward, reverse) = match pool.reserves {
+            Some((reserve_a, reserve_b)) if reserve_a > 0 && reserve_b > 0 => (
+                reserve_b as f64 / reserve_a as f64,
+                reserve_a as f64 / reserve_b as f64,
+            ),
+            Some(_) => {
+                return Err(Error::InvalidState(
+                    "pool reserves must be positive".to_owned(),
+                ))
+            }
+            None => (1.0, 1.0),
+        };
+
+        if !forward.is_finite() || !reverse.is_finite() || forward <= 0.0 || reverse <= 0.0 {
+            return Err(Error::InvalidState(
+                "pool prices must be finite and positive".to_owned(),
+            ));
+        }
+
+        Ok((forward, reverse))
+    }
 }
 
 pub use market_graph::{Edge, MarketGraph};
@@ -217,6 +281,7 @@ pub use market_graph::{Edge, MarketGraph};
 mod tests {
     use super::{Edge, MarketGraph};
     use common::{Pubkey, Token};
+    use decoder::{DexType, PoolState};
 
     #[test]
     fn graph_adds_and_looks_up_directed_edges() {
@@ -310,7 +375,85 @@ mod tests {
         assert!(matches!(err, common::Error::InvalidState(_)));
     }
 
+    #[test]
+    fn graph_builds_edges_from_pool_state_update() {
+        let sol = token(1, "SOL");
+        let usdc = token(2, "USDC");
+        let mut graph = MarketGraph::new();
+        let pool = pool_state(sol.clone(), usdc.clone(), 10_000, Some((1_000, 2_000)));
+
+        graph.apply_pool_state(&pool).expect("apply pool");
+
+        let forward = graph.edges(&sol, &usdc).expect("forward edge");
+        let reverse = graph.edges(&usdc, &sol).expect("reverse edge");
+        assert_eq!(forward.len(), 1);
+        assert_eq!(reverse.len(), 1);
+        assert_eq!(forward[0].price, 2.0);
+        assert_eq!(reverse[0].price, 0.5);
+        assert_eq!(forward[0].liquidity, 10_000.0);
+        assert_eq!(graph.edge_count(), 2);
+        assert_eq!(graph.node_count(), 2);
+    }
+
+    #[test]
+    fn graph_replaces_edges_from_repeated_pool_state_update() {
+        let sol = token(1, "SOL");
+        let usdc = token(2, "USDC");
+        let mut graph = MarketGraph::new();
+
+        graph
+            .apply_pool_state(&pool_state(
+                sol.clone(),
+                usdc.clone(),
+                10_000,
+                Some((1_000, 2_000)),
+            ))
+            .expect("initial update");
+        graph
+            .apply_pool_state(&pool_state(
+                sol.clone(),
+                usdc.clone(),
+                20_000,
+                Some((1_000, 2_500)),
+            ))
+            .expect("replacement update");
+
+        let forward = graph.edges(&sol, &usdc).expect("forward edge");
+        assert_eq!(forward.len(), 1);
+        assert_eq!(forward[0].price, 2.5);
+        assert_eq!(forward[0].liquidity, 20_000.0);
+        assert_eq!(graph.edge_count(), 2);
+    }
+
+    #[test]
+    fn graph_rejects_invalid_pool_state_liquidity() {
+        let sol = token(1, "SOL");
+        let usdc = token(2, "USDC");
+        let mut graph = MarketGraph::new();
+
+        let err = graph
+            .apply_pool_state(&pool_state(sol, usdc, 0, Some((1_000, 2_000))))
+            .expect_err("invalid liquidity");
+
+        assert!(matches!(err, common::Error::InvalidState(_)));
+    }
+
     fn token(byte: u8, symbol: &str) -> Token {
         Token::new(Pubkey::new([byte; 32]), 6, Some(symbol.to_owned()))
+    }
+
+    fn pool_state(
+        token_a: Token,
+        token_b: Token,
+        liquidity: u128,
+        reserves: Option<(u64, u64)>,
+    ) -> PoolState {
+        PoolState {
+            dex: DexType::Raydium,
+            token_a,
+            token_b,
+            liquidity,
+            reserves,
+        }
     }
 }
