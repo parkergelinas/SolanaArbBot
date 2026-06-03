@@ -146,6 +146,11 @@ pub mod market_graph {
             self.adjacency.get(from).into_iter().flat_map(HashMap::keys)
         }
 
+        /// Iterates tokens with at least one outgoing edge.
+        pub fn source_tokens(&self) -> impl Iterator<Item = &Token> {
+            self.adjacency.keys()
+        }
+
         /// Returns the number of nodes that have outgoing edges.
         #[must_use]
         pub fn node_count(&self) -> usize {

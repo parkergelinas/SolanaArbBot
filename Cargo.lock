@@ -188,8 +188,10 @@ dependencies = [
 name = "routing"
 version = "0.1.0"
 dependencies = [
+ "common",
  "graph",
  "pricing",
+ "tracing",
 ]
 
 [[package]]
