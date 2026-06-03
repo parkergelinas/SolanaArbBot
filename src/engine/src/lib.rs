@@ -11,8 +11,8 @@ pub mod runtime {
     use std::time::Duration;
 
     use accounts::AccountCache;
-    use common::{Error, MarketEvent, Pubkey, Result};
-    use decoder::{raydium, DexDecoder, DexType, PoolState};
+    use common::{Error, MarketEvent, Result};
+    use decoder::{DexDecoder, DexType, PoolState};
     use execution::ExecutionSimulator;
     use graph::{Edge, MarketGraph};
     use pricing::PricingEngine;
@@ -22,13 +22,6 @@ pub mod runtime {
     use stream::{EventBus, EventSubscriber, IngestionConfig, IngestionEngine};
     use tracing::{debug, trace};
 
-    const RAYDIUM_TOKEN_A_OFFSET: usize = 0;
-    const RAYDIUM_TOKEN_B_OFFSET: usize = 32;
-    const RAYDIUM_TOKEN_A_DECIMALS_OFFSET: usize = 64;
-    const RAYDIUM_TOKEN_B_DECIMALS_OFFSET: usize = 65;
-    const RAYDIUM_LIQUIDITY_OFFSET: usize = 66;
-    const RAYDIUM_RESERVE_A_OFFSET: usize = 82;
-    const RAYDIUM_RESERVE_B_OFFSET: usize = 90;
     const DEFAULT_EVENT_TIMEOUT_MS: u64 = 100;
 
     /// Bundle for engine component boundaries.
@@ -52,6 +45,7 @@ pub mod runtime {
         max_events: usize,
         event_timeout: Duration,
         initial_amount: f64,
+        event_dex: DexType,
     }
 
     impl EngineConfig {
@@ -81,7 +75,15 @@ pub mod runtime {
                 max_events,
                 event_timeout,
                 initial_amount,
+                event_dex: DexType::Raydium,
             })
+        }
+
+        /// Returns a copy of this config using the supplied event DEX.
+        #[must_use]
+        pub const fn with_event_dex(mut self, event_dex: DexType) -> Self {
+            self.event_dex = event_dex;
+            self
         }
 
         /// Returns maximum events processed before a loop exits.
@@ -101,6 +103,12 @@ pub mod runtime {
         pub const fn initial_amount(self) -> f64 {
             self.initial_amount
         }
+
+        /// Returns the DEX used to normalize generic stream events.
+        #[must_use]
+        pub const fn event_dex(self) -> DexType {
+            self.event_dex
+        }
     }
 
     impl Default for EngineConfig {
@@ -109,6 +117,7 @@ pub mod runtime {
                 max_events: 16,
                 event_timeout: Duration::from_millis(DEFAULT_EVENT_TIMEOUT_MS),
                 initial_amount: 10.0,
+                event_dex: DexType::Raydium,
             }
         }
     }
@@ -118,16 +127,12 @@ pub mod runtime {
     pub struct PipelineReport {
         pub stream_events: usize,
         pub decoded_pools: usize,
+        pub pool_state_updates: usize,
         pub graph_edges: usize,
         pub routes_found: usize,
         pub simulated_routes: usize,
         pub allowed_routes: usize,
         pub rejected_routes: usize,
-    }
-
-    struct RawPoolUpdate {
-        dex: DexType,
-        data: Vec<u8>,
     }
 
     /// Top-level runtime engine handle.
@@ -237,9 +242,12 @@ pub mod runtime {
             trace!(?event, "engine received stream event");
             report.stream_events += 1;
 
-            let raw = placeholder_raw_update(report.stream_events);
-            let pool = self.components.decoder.decode(raw.dex, &raw.data)?;
+            let pool = self
+                .components
+                .decoder
+                .decode_event(self.config.event_dex(), &event)?;
             report.decoded_pools += 1;
+            report.pool_state_updates += 1;
 
             self.components.pricing.ready()?;
             update_graph_from_pool(&mut self.components.graph, &pool)?;
@@ -350,38 +358,6 @@ pub mod runtime {
         graph.replace_edges(pool.token_a.clone(), pool.token_b.clone(), vec![forward])?;
         graph.replace_edges(pool.token_b.clone(), pool.token_a.clone(), vec![reverse])
     }
-
-    fn placeholder_raw_update(sequence: usize) -> RawPoolUpdate {
-        let _ = sequence;
-        RawPoolUpdate {
-            dex: DexType::Raydium,
-            data: raydium_placeholder_pool(),
-        }
-    }
-
-    fn raydium_placeholder_pool() -> Vec<u8> {
-        let mut data = vec![0; raydium::RAYDIUM_POOL_DATA_LEN];
-        write_pubkey(&mut data, RAYDIUM_TOKEN_A_OFFSET, Pubkey::new([1; 32]));
-        write_pubkey(&mut data, RAYDIUM_TOKEN_B_OFFSET, Pubkey::new([2; 32]));
-        data[RAYDIUM_TOKEN_A_DECIMALS_OFFSET] = 6;
-        data[RAYDIUM_TOKEN_B_DECIMALS_OFFSET] = 6;
-        write_u128(&mut data, RAYDIUM_LIQUIDITY_OFFSET, 100_000);
-        write_u64(&mut data, RAYDIUM_RESERVE_A_OFFSET, 1_000);
-        write_u64(&mut data, RAYDIUM_RESERVE_B_OFFSET, 2_000);
-        data
-    }
-
-    fn write_pubkey(data: &mut [u8], offset: usize, value: Pubkey) {
-        data[offset..offset + 32].copy_from_slice(value.as_bytes());
-    }
-
-    fn write_u64(data: &mut [u8], offset: usize, value: u64) {
-        data[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
-    }
-
-    fn write_u128(data: &mut [u8], offset: usize, value: u128) {
-        data[offset..offset + 16].copy_from_slice(&value.to_le_bytes());
-    }
 }
 
 pub use runtime::{Engine, EngineConfig, MarketAnalysisComponents, PipelineReport};
@@ -412,6 +388,7 @@ mod tests {
 
         assert_eq!(report.stream_events, 4);
         assert_eq!(report.decoded_pools, 4);
+        assert_eq!(report.pool_state_updates, 4);
         assert!(report.graph_edges >= 2);
         assert!(report.routes_found > 0);
         assert!(report.simulated_routes > 0);

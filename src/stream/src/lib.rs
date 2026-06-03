@@ -443,11 +443,11 @@ pub mod ingestion {
     fn placeholder_event() -> MarketEvent {
         MarketEvent::PoolUpdate(PoolUpdate {
             pool: None,
-            token_a_mint: None,
-            token_b_mint: None,
-            liquidity: None,
-            sqrt_price: None,
-            fee_rate: None,
+            token_a_mint: Some(common::Pubkey::new([1; 32])),
+            token_b_mint: Some(common::Pubkey::new([2; 32])),
+            liquidity: Some(100_000),
+            sqrt_price: Some(1_000),
+            fee_rate: Some(25),
         })
     }
 
