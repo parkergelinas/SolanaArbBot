@@ -86,7 +86,9 @@ name = "execution"
 version = "0.1.0"
 dependencies = [
  "common",
+ "graph",
  "routing",
+ "tracing",
 ]
 
 [[package]]
