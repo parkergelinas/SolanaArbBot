@@ -27,6 +27,18 @@ pub enum Error {
     /// Token decimals exceeded the workspace sanity limit.
     #[error("invalid token decimals: {decimals} exceeds max {max}")]
     InvalidTokenDecimals { decimals: u8, max: u8 },
+
+    /// Stream ingestion configuration was invalid.
+    #[error("invalid stream config: {0}")]
+    InvalidStreamConfig(&'static str),
+
+    /// Stream ingestion queue is full.
+    #[error("stream queue is full")]
+    StreamQueueFull,
+
+    /// Stream ingestion queue has closed.
+    #[error("stream queue is closed")]
+    StreamClosed,
 }
 
 /// Workspace result alias.

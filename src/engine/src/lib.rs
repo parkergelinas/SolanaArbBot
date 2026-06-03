@@ -17,10 +17,10 @@ pub mod runtime {
     use risk::RiskEngine;
     use routing::Router;
     use rpc_client::RpcClient;
-    use stream::StreamIngestor;
+    use stream::{StreamIngestor, StreamReceiver};
 
     /// Placeholder bundle for engine component boundaries.
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Debug)]
     pub struct MarketAnalysisComponents {
         pub accounts: AccountCache,
         pub decoder: DexDecoder,
@@ -31,10 +31,11 @@ pub mod runtime {
         pub routing: Router,
         pub rpc_client: RpcClient,
         pub stream: StreamIngestor,
+        pub stream_receiver: StreamReceiver,
     }
 
     /// Placeholder top-level engine handle.
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Debug)]
     pub struct MarketAnalysisEngine {
         components: MarketAnalysisComponents,
     }
@@ -55,7 +56,7 @@ pub mod runtime {
             let routing = Router::new(graph, pricing);
             let execution = ExecutionSimulator::new(routing);
             let rpc_client = RpcClient::new();
-            let stream = StreamIngestor::new(rpc_client);
+            let (stream, stream_receiver) = StreamIngestor::new(rpc_client);
 
             Self::new(MarketAnalysisComponents {
                 accounts: AccountCache::new(),
@@ -67,6 +68,7 @@ pub mod runtime {
                 routing,
                 rpc_client,
                 stream,
+                stream_receiver,
             })
         }
 

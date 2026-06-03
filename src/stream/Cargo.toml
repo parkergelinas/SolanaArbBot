@@ -7,3 +7,5 @@ license.workspace = true
 [dependencies]
 common = { path = "../common" }
 rpc_client = { path = "../rpc_client" }
+tokio = { version = "1.52.3", default-features = false, features = ["macros", "rt", "sync"] }
+tracing = "0.1.44"
