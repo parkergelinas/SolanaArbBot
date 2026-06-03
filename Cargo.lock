@@ -79,6 +79,8 @@ dependencies = [
  "routing",
  "rpc_client",
  "stream",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

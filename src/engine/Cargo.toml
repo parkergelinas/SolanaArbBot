@@ -15,3 +15,5 @@ risk = { path = "../risk" }
 routing = { path = "../routing" }
 rpc_client = { path = "../rpc_client" }
 stream = { path = "../stream" }
+tokio = { version = "1.52.3", default-features = false, features = ["macros", "rt", "sync"] }
+tracing = "0.1.44"
