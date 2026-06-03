@@ -184,6 +184,10 @@ name = "risk"
 version = "0.1.0"
 dependencies = [
  "common",
+ "execution",
+ "graph",
+ "routing",
+ "tracing",
 ]
 
 [[package]]
