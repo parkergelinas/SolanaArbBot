@@ -94,8 +94,6 @@ where
             match self.client.connect().await {
                 Ok(()) => {
                     stats.successful_connections += 1;
-                    reconnect_attempts = 0;
-                    reconnect_delay = self.config.reconnect_initial_delay;
                     info!(
                         connection_attempts = stats.connection_attempts,
                         "market ingestion stream connected"
@@ -136,6 +134,8 @@ where
                                 stats.events_received += 1;
                                 let outcome = self.event_bus.try_publish(event);
                                 Self::record_publish_outcome(&mut stats, outcome);
+                                reconnect_attempts = 0;
+                                reconnect_delay = self.config.reconnect_initial_delay;
                             }
                             Err(error) if error.is_recoverable() => {
                                 stats.stream_failures += 1;
@@ -237,7 +237,7 @@ mod tests {
     use super::*;
     use crate::stream::{
         event::{EventMeta, EventSource, MarketEvent, PoolUpdate},
-        event_bus::{BackpressurePolicy, EventBusConfig},
+        event_bus::{BackpressurePolicy, EventBusConfig, EventBusReceiver},
     };
 
     enum ScriptStep {
@@ -300,6 +300,24 @@ mod tests {
         }
     }
 
+    async fn recv_event(subscriber: &EventBusReceiver) -> MarketEvent {
+        timeout(Duration::from_secs(1), async {
+            loop {
+                match subscriber.try_recv() {
+                    Ok(event) => break event,
+                    Err(crossbeam_channel::TryRecvError::Empty) => {
+                        tokio::time::sleep(Duration::from_millis(1)).await;
+                    }
+                    Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                        panic!("event bus subscriber disconnected")
+                    }
+                }
+            }
+        })
+        .await
+        .unwrap()
+    }
+
     #[tokio::test]
     async fn publishes_rpc_events_to_event_bus() {
         let (client, _connect_calls) =
@@ -311,7 +329,7 @@ mod tests {
 
         let handle = tokio::spawn(ingestion.run_until_shutdown(shutdown_rx));
 
-        assert_eq!(subscriber.recv().unwrap(), test_event(1));
+        assert_eq!(recv_event(&subscriber).await, test_event(1));
         shutdown_tx.send(true).unwrap();
 
         let stats = timeout(Duration::from_secs(1), handle)
@@ -340,8 +358,8 @@ mod tests {
 
         let handle = tokio::spawn(ingestion.run_until_shutdown(shutdown_rx));
 
-        assert_eq!(subscriber.recv().unwrap(), test_event(1));
-        assert_eq!(subscriber.recv().unwrap(), test_event(2));
+        assert_eq!(recv_event(&subscriber).await, test_event(1));
+        assert_eq!(recv_event(&subscriber).await, test_event(2));
         shutdown_tx.send(true).unwrap();
 
         let stats = timeout(Duration::from_secs(1), handle)
