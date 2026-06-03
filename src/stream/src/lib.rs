@@ -13,7 +13,7 @@ pub mod bus {
             atomic::{AtomicU64, Ordering},
             Arc,
         },
-        time::Duration,
+        time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     };
 
     use common::{Error, MarketEvent, Result};
@@ -158,6 +158,8 @@ pub mod bus {
         /// With [`BackpressureStrategy::Block`], this method may block the caller.
         /// Async ingestion code should call [`Self::publish_async`] instead.
         pub fn publish(&self, event: MarketEvent) -> Result<PublishReport> {
+            let stage_started_at = Instant::now();
+            let event_timestamp_micros = unix_timestamp_micros();
             let mut report = PublishReport::default();
             let mut disconnected = Vec::new();
 
@@ -195,20 +197,47 @@ pub mod bus {
                 warn!(subscriber_id, "removed disconnected subscriber");
             }
 
+            debug!(
+                event_timestamp_micros,
+                latency_micros = stage_started_at.elapsed().as_micros(),
+                delivered = report.delivered(),
+                dropped = report.dropped(),
+                disconnected = report.disconnected(),
+                subscribers = self.subscriber_count(),
+                backpressure = ?self.config.backpressure(),
+                "event bus publish complete"
+            );
+
             Ok(report)
         }
 
         /// Publishes from async code without blocking the Tokio worker thread.
         pub async fn publish_async(&self, event: MarketEvent) -> Result<PublishReport> {
+            let stage_started_at = Instant::now();
+            let event_timestamp_micros = unix_timestamp_micros();
             match self.config.backpressure() {
-                BackpressureStrategy::DropNewest => self.publish(event),
+                BackpressureStrategy::DropNewest => {
+                    let report = self.publish(event)?;
+                    trace!(
+                        event_timestamp_micros,
+                        latency_micros = stage_started_at.elapsed().as_micros(),
+                        "event bus async publish complete"
+                    );
+                    Ok(report)
+                }
                 BackpressureStrategy::Block => {
                     let bus = self.clone();
-                    tokio::task::spawn_blocking(move || bus.publish(event))
+                    let report = tokio::task::spawn_blocking(move || bus.publish(event))
                         .await
                         .map_err(|err| {
                             Error::InternalError(format!("event bus publish task failed: {err}"))
-                        })?
+                        })??;
+                    trace!(
+                        event_timestamp_micros,
+                        latency_micros = stage_started_at.elapsed().as_micros(),
+                        "event bus async blocking publish complete"
+                    );
+                    Ok(report)
                 }
             }
         }
@@ -283,10 +312,20 @@ pub mod bus {
             debug!(subscriber_id = self.id, "dropped event subscriber");
         }
     }
+
+    fn unix_timestamp_micros() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |duration| {
+                u64::try_from(duration.as_micros()).unwrap_or(u64::MAX)
+            })
+    }
 }
 
 pub mod ingestion {
     //! Placeholder Tokio ingestion task that publishes market events.
+
+    use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
     use common::{MarketEvent, PoolUpdate, Result};
     use tokio::task::JoinHandle;
@@ -365,13 +404,17 @@ pub mod ingestion {
 
             let mut published = 0;
             for index in 0..self.config.event_limit() {
+                let stage_started_at = Instant::now();
+                let event_timestamp_micros = unix_timestamp_micros();
                 let event = placeholder_event();
                 let report = self.event_bus.publish_async(event).await?;
                 trace!(
                     index,
+                    event_timestamp_micros,
                     delivered = report.delivered(),
                     dropped = report.dropped(),
-                    "published placeholder market event"
+                    latency_micros = stage_started_at.elapsed().as_micros(),
+                    "stream ingestion published market event"
                 );
                 published += 1;
 
@@ -406,6 +449,14 @@ pub mod ingestion {
             sqrt_price: None,
             fee_rate: None,
         })
+    }
+
+    fn unix_timestamp_micros() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |duration| {
+                u64::try_from(duration.as_micros()).unwrap_or(u64::MAX)
+            })
     }
 }
 

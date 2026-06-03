@@ -9,8 +9,10 @@
 pub mod orca;
 pub mod raydium;
 
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+
 use common::{Result, Token};
-use tracing::trace;
+use tracing::{debug, trace};
 
 /// Supported DEX families.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -56,16 +58,43 @@ impl UnifiedDecoder {
 
     /// Decodes raw bytes using the requested DEX parser.
     pub fn decode(&self, dex: DexType, data: &[u8]) -> Result<PoolState> {
-        trace!(?dex, len = data.len(), "decoding pool state");
-        match dex {
+        let stage_started_at = Instant::now();
+        let event_timestamp_micros = unix_timestamp_micros();
+        trace!(
+            ?dex,
+            len = data.len(),
+            event_timestamp_micros,
+            "decoder received pool bytes"
+        );
+
+        let result = match dex {
             DexType::Raydium => self.raydium.decode(data),
             DexType::OrcaCLMM => self.orca.decode(data),
-        }
+        };
+
+        debug!(
+            ?dex,
+            len = data.len(),
+            event_timestamp_micros,
+            latency_micros = stage_started_at.elapsed().as_micros(),
+            success = result.is_ok(),
+            "decoder stage complete"
+        );
+
+        result
     }
 }
 
 /// Backwards-compatible alias for existing scaffold code.
 pub type DexDecoder = UnifiedDecoder;
+
+fn unix_timestamp_micros() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| {
+            u64::try_from(duration.as_micros()).unwrap_or(u64::MAX)
+        })
+}
 
 #[cfg(test)]
 mod tests {
