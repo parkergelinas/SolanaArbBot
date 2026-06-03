@@ -1,0 +1,9 @@
+[package]
+name = "execution"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+common = { path = "../common" }
+routing = { path = "../routing" }

@@ -1,0 +1,9 @@
+[package]
+name = "pricing"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+common = { path = "../common" }
+decoder = { path = "../decoder" }

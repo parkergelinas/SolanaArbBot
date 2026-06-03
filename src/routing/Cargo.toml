@@ -1,0 +1,9 @@
+[package]
+name = "routing"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+graph = { path = "../graph" }
+pricing = { path = "../pricing" }
