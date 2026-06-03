@@ -1,0 +1,11 @@
+[package]
+name = "workspace"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+crossbeam-channel = "0.5.15"
+dashmap = "6.2.1"
+thiserror = "2.0.18"
+tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread", "time", "sync"] }
+tracing = "0.1.44"
