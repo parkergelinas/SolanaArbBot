@@ -39,6 +39,21 @@ pub enum Error {
     /// Stream ingestion queue has closed.
     #[error("stream queue is closed")]
     StreamClosed,
+
+    /// A decoder received fewer bytes than required for a known account layout.
+    #[error("{decoder} decode input too short: expected at least {expected} bytes, got {actual}")]
+    DecodeInputTooShort {
+        decoder: &'static str,
+        expected: usize,
+        actual: usize,
+    },
+
+    /// A decoder received bytes that failed layout validation.
+    #[error("{decoder} decode input invalid: {reason}")]
+    DecodeInputInvalid {
+        decoder: &'static str,
+        reason: &'static str,
+    },
 }
 
 /// Workspace result alias.

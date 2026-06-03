@@ -11,7 +11,7 @@ pub mod pubkey;
 pub mod token;
 
 pub use error::{Error, Result};
-pub use event::MarketEvent;
+pub use event::{MarketEvent, OrcaWhirlpoolPool, RaydiumAmmV4Pool};
 pub use pubkey::{Pubkey, PUBKEY_BYTES};
 pub use token::{Token, MAX_TOKEN_DECIMALS};
 
