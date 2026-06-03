@@ -1,13 +1,11 @@
 use std::time::Duration;
 
+use rpc_client::{MarketRpcClient, RpcClientError};
 use thiserror::Error;
 use tokio::sync::watch;
 use tracing::{debug, info, warn};
 
-use super::{
-    event_bus::{EventBus, PublishOutcome},
-    rpc_client::{MarketRpcClient, RpcClientError},
-};
+use crate::event_bus::{EventBus, PublishOutcome};
 
 const DEFAULT_RECONNECT_INITIAL_DELAY: Duration = Duration::from_millis(100);
 const DEFAULT_RECONNECT_MAX_DELAY: Duration = Duration::from_secs(5);
@@ -232,13 +230,11 @@ mod tests {
         time::Duration,
     };
 
+    use common::{EventMeta, EventSource, MarketEvent, PoolUpdate};
     use tokio::{sync::watch, time::timeout};
 
     use super::*;
-    use crate::stream::{
-        event::{EventMeta, EventSource, MarketEvent, PoolUpdate},
-        event_bus::{BackpressurePolicy, EventBusConfig, EventBusReceiver},
-    };
+    use crate::event_bus::{BackpressurePolicy, EventBusConfig, EventBusReceiver};
 
     enum ScriptStep {
         Event(MarketEvent),

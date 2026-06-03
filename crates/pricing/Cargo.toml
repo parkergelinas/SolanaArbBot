@@ -1,0 +1,11 @@
+[package]
+name = "pricing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+accounts.workspace = true
+common.workspace = true
+thiserror.workspace = true

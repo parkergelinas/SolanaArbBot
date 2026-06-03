@@ -1,8 +1,4 @@
-use std::future::Future;
-
 use thiserror::Error;
-
-use super::event::MarketEvent;
 
 #[derive(Debug, Error)]
 pub enum RpcClientError {
@@ -32,12 +28,6 @@ impl RpcClientError {
                 | Self::Transport(_)
         )
     }
-}
-
-pub trait MarketRpcClient: Send {
-    fn connect(&mut self) -> impl Future<Output = Result<(), RpcClientError>> + Send;
-
-    fn next_event(&mut self) -> impl Future<Output = Result<MarketEvent, RpcClientError>> + Send;
 }
 
 #[cfg(test)]

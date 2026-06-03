@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-pub type AccountKey = [u8; 32];
-pub type SignatureBytes = [u8; 64];
+use crate::{AccountKey, ProgramId, SignatureBytes, Slot, UnixNanos};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EventSource {
@@ -12,9 +11,9 @@ pub enum EventSource {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct EventMeta {
-    pub slot: u64,
+    pub slot: Slot,
     pub source: EventSource,
-    pub received_at_unix_nanos: u64,
+    pub received_at_unix_nanos: UnixNanos,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -28,7 +27,7 @@ pub enum MarketEvent {
 pub struct PoolUpdate {
     pub meta: EventMeta,
     pub pool: AccountKey,
-    pub program: AccountKey,
+    pub program: ProgramId,
     pub account_data: Arc<[u8]>,
 }
 
@@ -45,7 +44,7 @@ pub struct TickUpdate {
     pub meta: EventMeta,
     pub pool: AccountKey,
     pub tick_array: AccountKey,
-    pub program: AccountKey,
+    pub program: ProgramId,
     pub account_data: Arc<[u8]>,
 }
 

@@ -1,9 +1,7 @@
-pub mod event;
 pub mod event_bus;
 pub mod ingestion;
-pub mod rpc_client;
 
-pub use event::{
+pub use common::{
     AccountKey, EventMeta, EventSource, MarketEvent, PoolUpdate, SignatureBytes, SwapEvent,
     TickUpdate,
 };

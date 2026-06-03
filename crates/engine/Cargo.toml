@@ -1,0 +1,20 @@
+[package]
+name = "engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+accounts.workspace = true
+common.workspace = true
+decoder.workspace = true
+execution.workspace = true
+graph.workspace = true
+pricing.workspace = true
+risk.workspace = true
+routing.workspace = true
+rpc_client.workspace = true
+stream.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

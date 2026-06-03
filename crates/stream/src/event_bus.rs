@@ -3,11 +3,10 @@ use std::sync::{
     Arc,
 };
 
+use common::MarketEvent;
 use crossbeam_channel::{bounded, Receiver, Sender, TryRecvError, TrySendError};
 use dashmap::DashMap;
 use thiserror::Error;
-
-use super::event::MarketEvent;
 
 const DEFAULT_SUBSCRIBER_QUEUE_CAPACITY: usize = 65_536;
 
@@ -206,8 +205,9 @@ impl Drop for EventBusReceiver {
 mod tests {
     use std::{sync::Arc, thread};
 
+    use common::{EventMeta, EventSource, PoolUpdate};
+
     use super::*;
-    use crate::stream::event::{EventMeta, EventSource, PoolUpdate};
 
     fn test_event(slot: u64) -> MarketEvent {
         MarketEvent::PoolUpdate(PoolUpdate {
