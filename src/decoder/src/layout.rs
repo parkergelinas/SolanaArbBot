@@ -32,14 +32,14 @@ fn read_array<const N: usize>(
     offset: usize,
     decoder: &'static str,
 ) -> Result<[u8; N]> {
-    let end = offset.checked_add(N).ok_or(Error::DecodeInputInvalid {
-        decoder,
-        reason: "offset overflow",
-    })?;
-    let bytes = data.get(offset..end).ok_or(Error::DecodeInputTooShort {
-        decoder,
-        expected: end,
-        actual: data.len(),
+    let end = offset
+        .checked_add(N)
+        .ok_or_else(|| Error::DecodeError(format!("{decoder} offset overflow")))?;
+    let bytes = data.get(offset..end).ok_or_else(|| {
+        Error::DecodeError(format!(
+            "{decoder} input too short: expected at least {end} bytes, got {}",
+            data.len()
+        ))
     })?;
 
     let mut out = [0; N];
@@ -56,13 +56,6 @@ mod tests {
     fn read_u64_rejects_short_input() {
         let err = read_u64(&[1, 2, 3], 0, "test").expect_err("short input");
 
-        assert!(matches!(
-            err,
-            Error::DecodeInputTooShort {
-                decoder: "test",
-                expected: 8,
-                actual: 3
-            }
-        ));
+        assert!(matches!(err, Error::DecodeError(_)));
     }
 }

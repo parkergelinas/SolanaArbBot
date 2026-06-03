@@ -1,34 +1,24 @@
 //! Token identity primitives.
 
-use crate::{Error, Pubkey, Result};
-
-/// Maximum token decimal precision accepted by the workspace.
-pub const MAX_TOKEN_DECIMALS: u8 = 18;
+use crate::Pubkey;
 
 /// Minimal token descriptor shared by pricing, routing, and graph layers.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Token {
     mint: Pubkey,
     decimals: u8,
+    symbol: Option<String>,
 }
 
 impl Token {
     /// Creates a token descriptor.
     #[must_use]
-    pub const fn new(mint: Pubkey, decimals: u8) -> Self {
-        Self { mint, decimals }
-    }
-
-    /// Creates a token descriptor after validating its decimal precision.
-    pub const fn try_new(mint: Pubkey, decimals: u8) -> Result<Self> {
-        if decimals > MAX_TOKEN_DECIMALS {
-            return Err(Error::InvalidTokenDecimals {
-                decimals,
-                max: MAX_TOKEN_DECIMALS,
-            });
+    pub fn new(mint: Pubkey, decimals: u8, symbol: Option<String>) -> Self {
+        Self {
+            mint,
+            decimals,
+            symbol,
         }
-
-        Ok(Self::new(mint, decimals))
     }
 
     /// Returns the token mint.
@@ -42,32 +32,33 @@ impl Token {
     pub const fn decimals(&self) -> u8 {
         self.decimals
     }
+
+    /// Returns the optional token symbol.
+    #[must_use]
+    pub fn symbol(&self) -> Option<&str> {
+        self.symbol.as_deref()
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Token, MAX_TOKEN_DECIMALS};
-    use crate::{Error, Pubkey};
+    use super::Token;
+    use crate::Pubkey;
 
     #[test]
-    fn token_try_new_accepts_valid_decimals() {
+    fn token_keeps_identity_fields() {
         let mint = Pubkey::new([3; 32]);
-        let token = Token::try_new(mint, MAX_TOKEN_DECIMALS).expect("valid token");
+        let token = Token::new(mint, 9, Some("SOL".to_owned()));
 
         assert_eq!(token.mint(), mint);
-        assert_eq!(token.decimals(), MAX_TOKEN_DECIMALS);
+        assert_eq!(token.decimals(), 9);
+        assert_eq!(token.symbol(), Some("SOL"));
     }
 
     #[test]
-    fn token_try_new_rejects_out_of_range_decimals() {
-        let err = Token::try_new(Pubkey::default(), MAX_TOKEN_DECIMALS + 1).expect_err("invalid");
+    fn token_allows_missing_symbol() {
+        let token = Token::new(Pubkey::default(), 6, None);
 
-        assert!(matches!(
-            err,
-            Error::InvalidTokenDecimals {
-                decimals: 19,
-                max: MAX_TOKEN_DECIMALS
-            }
-        ));
+        assert_eq!(token.symbol(), None);
     }
 }

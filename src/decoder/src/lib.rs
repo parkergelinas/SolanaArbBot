@@ -32,13 +32,13 @@ pub mod dex {
             if raydium::is_raydium_amm_v4(data) {
                 trace!(len = data.len(), "decoding raydium amm v4 account");
                 return raydium::decode_amm_v4(data)
-                    .map(|pool| Some(MarketEvent::RaydiumAmmV4(pool)));
+                    .map(|pool| Some(MarketEvent::PoolUpdate(pool.into())));
             }
 
             if orca::is_orca_whirlpool(data) {
                 trace!(len = data.len(), "decoding orca whirlpool account");
                 return orca::decode_whirlpool(data)
-                    .map(|pool| Some(MarketEvent::OrcaWhirlpool(pool)));
+                    .map(|pool| Some(MarketEvent::PoolUpdate(pool.into())));
             }
 
             trace!(len = data.len(), "unsupported dex account layout");
@@ -67,7 +67,7 @@ mod tests {
             .expect("decode")
             .expect("event");
 
-        assert!(matches!(event, MarketEvent::RaydiumAmmV4(_)));
+        assert!(matches!(event, MarketEvent::PoolUpdate(_)));
     }
 
     #[test]
@@ -78,6 +78,6 @@ mod tests {
             .expect("decode")
             .expect("event");
 
-        assert!(matches!(event, MarketEvent::OrcaWhirlpool(_)));
+        assert!(matches!(event, MarketEvent::PoolUpdate(_)));
     }
 }

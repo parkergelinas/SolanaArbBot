@@ -1,6 +1,6 @@
 //! Orca account decoders.
 
-use common::{Error, OrcaWhirlpoolPool, Result};
+use common::{Error, PoolUpdate, Pubkey, Result};
 
 use crate::layout::{read_i32, read_pubkey, read_u128, read_u16};
 
@@ -27,6 +27,37 @@ const TOKEN_MINT_B_OFFSET: usize = 181;
 const TOKEN_VAULT_B_OFFSET: usize = 213;
 const FEE_GROWTH_GLOBAL_B_OFFSET: usize = 245;
 
+/// Orca Whirlpool account snapshot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OrcaWhirlpoolPool {
+    pub whirlpools_config: Pubkey,
+    pub tick_spacing: u16,
+    pub fee_rate: u16,
+    pub protocol_fee_rate: u16,
+    pub liquidity: u128,
+    pub sqrt_price: u128,
+    pub tick_current_index: i32,
+    pub token_mint_a: Pubkey,
+    pub token_vault_a: Pubkey,
+    pub token_mint_b: Pubkey,
+    pub token_vault_b: Pubkey,
+    pub fee_growth_global_a: u128,
+    pub fee_growth_global_b: u128,
+}
+
+impl From<OrcaWhirlpoolPool> for PoolUpdate {
+    fn from(pool: OrcaWhirlpoolPool) -> Self {
+        Self {
+            pool: None,
+            token_a_mint: Some(pool.token_mint_a),
+            token_b_mint: Some(pool.token_mint_b),
+            liquidity: Some(pool.liquidity),
+            sqrt_price: Some(pool.sqrt_price),
+            fee_rate: Some(u64::from(pool.fee_rate)),
+        }
+    }
+}
+
 /// Returns true when account bytes match the Orca Whirlpool discriminator and size.
 #[must_use]
 pub fn is_orca_whirlpool(data: &[u8]) -> bool {
@@ -38,18 +69,16 @@ pub fn is_orca_whirlpool(data: &[u8]) -> bool {
 /// Decodes an Orca Whirlpool account.
 pub fn decode_whirlpool(data: &[u8]) -> Result<OrcaWhirlpoolPool> {
     if data.len() < WHIRLPOOL_ACCOUNT_LEN {
-        return Err(Error::DecodeInputTooShort {
-            decoder: DECODER,
-            expected: WHIRLPOOL_ACCOUNT_LEN,
-            actual: data.len(),
-        });
+        return Err(Error::DecodeError(format!(
+            "{DECODER} input too short: expected at least {WHIRLPOOL_ACCOUNT_LEN} bytes, got {}",
+            data.len()
+        )));
     }
 
     if !is_orca_whirlpool(data) {
-        return Err(Error::DecodeInputInvalid {
-            decoder: DECODER,
-            reason: "invalid whirlpool discriminator or account length",
-        });
+        return Err(Error::DecodeError(format!(
+            "{DECODER} invalid whirlpool discriminator or account length"
+        )));
     }
 
     Ok(OrcaWhirlpoolPool {
@@ -72,7 +101,6 @@ pub fn decode_whirlpool(data: &[u8]) -> Result<OrcaWhirlpoolPool> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use common::Pubkey;
 
     pub(crate) fn whirlpool_fixture() -> Vec<u8> {
         let mut data = vec![0; WHIRLPOOL_ACCOUNT_LEN];
@@ -120,27 +148,14 @@ pub(crate) mod tests {
     fn rejects_short_orca_whirlpool_input() {
         let err = decode_whirlpool(&[0; 16]).expect_err("short input");
 
-        assert!(matches!(
-            err,
-            Error::DecodeInputTooShort {
-                decoder: "orca_whirlpool",
-                expected: WHIRLPOOL_ACCOUNT_LEN,
-                actual: 16
-            }
-        ));
+        assert!(matches!(err, Error::DecodeError(_)));
     }
 
     #[test]
     fn rejects_invalid_orca_whirlpool_discriminator() {
         let err = decode_whirlpool(&[0; WHIRLPOOL_ACCOUNT_LEN]).expect_err("invalid input");
 
-        assert!(matches!(
-            err,
-            Error::DecodeInputInvalid {
-                decoder: "orca_whirlpool",
-                ..
-            }
-        ));
+        assert!(matches!(err, Error::DecodeError(_)));
     }
 
     fn write_u16(data: &mut [u8], offset: usize, value: u16) {

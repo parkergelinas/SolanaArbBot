@@ -1,6 +1,6 @@
 //! Lightweight public key wrapper used across the workspace.
 
-use core::{fmt, str::FromStr};
+use core::fmt;
 
 use crate::{Error, Result};
 
@@ -45,17 +45,7 @@ impl AsRef<[u8]> for Pubkey {
 
 impl fmt::Debug for Pubkey {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_tuple("Pubkey")
-            .field(&self.to_string())
-            .finish()
-    }
-}
-
-impl fmt::Display for Pubkey {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let encoded = bs58::encode(self.0).into_string();
-        formatter.write_str(&encoded)
+        formatter.debug_tuple("Pubkey").field(&self.0).finish()
     }
 }
 
@@ -76,9 +66,10 @@ impl TryFrom<&[u8]> for Pubkey {
 
     fn try_from(bytes: &[u8]) -> Result<Self> {
         if bytes.len() != PUBKEY_BYTES {
-            return Err(Error::InvalidPubkeyLength {
-                actual: bytes.len(),
-            });
+            return Err(Error::InvalidState(format!(
+                "invalid pubkey length: expected {PUBKEY_BYTES}, got {}",
+                bytes.len()
+            )));
         }
 
         let mut pubkey = [0; PUBKEY_BYTES];
@@ -87,30 +78,10 @@ impl TryFrom<&[u8]> for Pubkey {
     }
 }
 
-impl FromStr for Pubkey {
-    type Err = Error;
-
-    fn from_str(value: &str) -> Result<Self> {
-        let mut bytes = [0; PUBKEY_BYTES];
-        let decoded_len = bs58::decode(value)
-            .onto(&mut bytes)
-            .map_err(|source| Error::InvalidPubkeyEncoding { source })?;
-
-        if decoded_len != PUBKEY_BYTES {
-            return Err(Error::InvalidPubkeyLength {
-                actual: decoded_len,
-            });
-        }
-
-        Ok(Self::new(bytes))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{Pubkey, PUBKEY_BYTES};
     use crate::Error;
-    use core::str::FromStr;
 
     #[test]
     fn pubkey_round_trips_bytes() {
@@ -126,21 +97,6 @@ mod tests {
     fn pubkey_rejects_invalid_slice_length() {
         let err = Pubkey::try_from_slice(&[1, 2, 3]).expect_err("invalid length");
 
-        assert!(matches!(err, Error::InvalidPubkeyLength { actual: 3 }));
-    }
-
-    #[test]
-    fn pubkey_round_trips_base58() {
-        let pubkey = Pubkey::new([1; PUBKEY_BYTES]);
-        let encoded = pubkey.to_string();
-
-        assert_eq!(Pubkey::from_str(&encoded).expect("valid base58"), pubkey);
-    }
-
-    #[test]
-    fn pubkey_rejects_invalid_base58() {
-        let err = Pubkey::from_str("not a pubkey!").expect_err("invalid base58");
-
-        assert!(matches!(err, Error::InvalidPubkeyEncoding { .. }));
+        assert!(matches!(err, Error::InvalidState(_)));
     }
 }

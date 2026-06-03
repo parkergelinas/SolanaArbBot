@@ -92,10 +92,10 @@ pub mod ingestion {
 
     impl StreamConfig {
         /// Creates stream configuration with a bounded update channel.
-        pub const fn new(channel_capacity: usize, commitment: CommitmentLevel) -> Result<Self> {
+        pub fn new(channel_capacity: usize, commitment: CommitmentLevel) -> Result<Self> {
             if channel_capacity == 0 {
-                return Err(Error::InvalidStreamConfig(
-                    "channel capacity must be greater than zero",
+                return Err(Error::InvalidState(
+                    "stream channel capacity must be greater than zero".to_owned(),
                 ));
             }
 
@@ -205,7 +205,7 @@ pub mod ingestion {
                 }
                 None => {
                     warn!("stream receiver closed");
-                    Err(Error::StreamClosed)
+                    Err(Error::InternalError("stream queue is closed".to_owned()))
                 }
             }
         }
@@ -273,11 +273,11 @@ pub mod ingestion {
                 }
                 Err(mpsc::error::TrySendError::Full(_)) => {
                     warn!(slot, write_version, "stream queue full");
-                    Err(Error::StreamQueueFull)
+                    Err(Error::InvalidState("stream queue is full".to_owned()))
                 }
                 Err(mpsc::error::TrySendError::Closed(_)) => {
                     warn!(slot, write_version, "stream queue closed");
-                    Err(Error::StreamClosed)
+                    Err(Error::InternalError("stream queue is closed".to_owned()))
                 }
             }
         }
@@ -319,7 +319,7 @@ mod tests {
     fn stream_config_rejects_zero_capacity() {
         let err = StreamConfig::new(0, CommitmentLevel::Processed).expect_err("invalid capacity");
 
-        assert!(matches!(err, Error::InvalidStreamConfig(_)));
+        assert!(matches!(err, Error::InvalidState(_)));
     }
 
     #[test]
@@ -364,7 +364,7 @@ mod tests {
         drop(ingestor);
 
         let err = receiver.recv().await.expect_err("closed stream");
-        assert!(matches!(err, Error::StreamClosed));
+        assert!(matches!(err, Error::InternalError(_)));
     }
 
     #[test]
@@ -381,6 +381,6 @@ mod tests {
             .enqueue_account_update(update)
             .expect_err("queue full");
 
-        assert!(matches!(err, Error::StreamQueueFull));
+        assert!(matches!(err, Error::InvalidState(_)));
     }
 }

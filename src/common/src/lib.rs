@@ -11,9 +11,9 @@ pub mod pubkey;
 pub mod token;
 
 pub use error::{Error, Result};
-pub use event::{MarketEvent, OrcaWhirlpoolPool, RaydiumAmmV4Pool};
+pub use event::{MarketEvent, PoolUpdate, SwapEvent, TickUpdate};
 pub use pubkey::{Pubkey, PUBKEY_BYTES};
-pub use token::{Token, MAX_TOKEN_DECIMALS};
+pub use token::Token;
 
 #[cfg(test)]
 mod tests {
@@ -22,9 +22,10 @@ mod tests {
     #[test]
     fn token_keeps_core_identity_fields() {
         let mint = Pubkey::new([7; 32]);
-        let token = Token::try_new(mint, 6).expect("valid token");
+        let token = Token::new(mint, 6, Some("USDC".to_owned()));
 
         assert_eq!(token.mint(), mint);
         assert_eq!(token.decimals(), 6);
+        assert_eq!(token.symbol(), Some("USDC"));
     }
 }

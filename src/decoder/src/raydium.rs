@@ -1,6 +1,6 @@
 //! Raydium account decoders.
 
-use common::{RaydiumAmmV4Pool, Result};
+use common::{PoolUpdate, Pubkey, Result};
 
 use crate::layout::{read_pubkey, read_u64};
 
@@ -25,6 +25,40 @@ const LP_MINT_OFFSET: usize = 464;
 const OPEN_ORDERS_OFFSET: usize = 496;
 const MARKET_ID_OFFSET: usize = 528;
 const MARKET_PROGRAM_ID_OFFSET: usize = 560;
+
+/// Raydium AMM v4 pool account snapshot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RaydiumAmmV4Pool {
+    pub status: u64,
+    pub nonce: u64,
+    pub base_decimal: u64,
+    pub quote_decimal: u64,
+    pub trade_fee_numerator: u64,
+    pub trade_fee_denominator: u64,
+    pub swap_fee_numerator: u64,
+    pub swap_fee_denominator: u64,
+    pub base_vault: Pubkey,
+    pub quote_vault: Pubkey,
+    pub base_mint: Pubkey,
+    pub quote_mint: Pubkey,
+    pub lp_mint: Pubkey,
+    pub open_orders: Pubkey,
+    pub market_id: Pubkey,
+    pub market_program_id: Pubkey,
+}
+
+impl From<RaydiumAmmV4Pool> for PoolUpdate {
+    fn from(pool: RaydiumAmmV4Pool) -> Self {
+        Self {
+            pool: None,
+            token_a_mint: Some(pool.base_mint),
+            token_b_mint: Some(pool.quote_mint),
+            liquidity: None,
+            sqrt_price: None,
+            fee_rate: None,
+        }
+    }
+}
 
 /// Returns true when account bytes match the Raydium AMM v4 account length.
 #[must_use]
@@ -57,7 +91,7 @@ pub fn decode_amm_v4(data: &[u8]) -> Result<RaydiumAmmV4Pool> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use common::{Error, Pubkey};
+    use common::Error;
 
     pub(crate) fn amm_v4_fixture() -> Vec<u8> {
         let mut data = vec![0; AMM_V4_ACCOUNT_LEN];
@@ -104,13 +138,7 @@ pub(crate) mod tests {
     fn rejects_short_raydium_amm_v4_input() {
         let err = decode_amm_v4(&[0; 16]).expect_err("short input");
 
-        assert!(matches!(
-            err,
-            Error::DecodeInputTooShort {
-                decoder: "raydium_amm_v4",
-                ..
-            }
-        ));
+        assert!(matches!(err, Error::DecodeError(_)));
     }
 
     fn write_u64(data: &mut [u8], offset: usize, value: u64) {
