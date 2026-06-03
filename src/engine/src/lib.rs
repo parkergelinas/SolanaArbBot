@@ -43,7 +43,7 @@ pub mod runtime {
     impl MarketAnalysisEngine {
         /// Creates a placeholder engine from already-wired component boundaries.
         #[must_use]
-        pub const fn new(components: MarketAnalysisComponents) -> Self {
+        pub fn new(components: MarketAnalysisComponents) -> Self {
             Self { components }
         }
 
@@ -53,8 +53,8 @@ pub mod runtime {
             let decoder = DexDecoder::new();
             let graph = MarketGraph::new();
             let pricing = PricingEngine::new(decoder);
-            let routing = Router::new(graph, pricing);
-            let execution = ExecutionSimulator::new(routing);
+            let routing = Router::new(graph.clone(), pricing);
+            let execution = ExecutionSimulator::new(routing.clone());
             let rpc_client = MockRpcClient::new();
             let event_bus = EventBus::new();
             let ingestion = IngestionEngine::new(event_bus.clone(), IngestionConfig::default());
@@ -91,8 +91,8 @@ pub mod runtime {
 
         /// Returns the routing boundary used by the engine.
         #[must_use]
-        pub const fn routing(&self) -> Router {
-            self.components.routing
+        pub const fn routing(&self) -> &Router {
+            &self.components.routing
         }
     }
 }

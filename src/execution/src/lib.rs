@@ -11,7 +11,7 @@ pub mod simulator {
     use routing::Router;
 
     /// Placeholder execution simulator handle.
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Clone, Debug)]
     pub struct ExecutionSimulator {
         router: Router,
     }
@@ -19,14 +19,14 @@ pub mod simulator {
     impl ExecutionSimulator {
         /// Creates a placeholder execution simulator.
         #[must_use]
-        pub const fn new(router: Router) -> Self {
+        pub fn new(router: Router) -> Self {
             Self { router }
         }
 
         /// Returns the router boundary used by execution.
         #[must_use]
-        pub const fn router(&self) -> Router {
-            self.router
+        pub const fn router(&self) -> &Router {
+            &self.router
         }
 
         /// Performs a no-op readiness check for the scaffold.

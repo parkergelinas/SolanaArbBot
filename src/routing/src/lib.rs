@@ -11,7 +11,7 @@ pub mod router {
     use pricing::PricingEngine;
 
     /// Placeholder route planner handle.
-    #[derive(Clone, Copy, Debug, Default)]
+    #[derive(Clone, Debug, Default)]
     pub struct Router {
         graph: MarketGraph,
         pricing: PricingEngine,
@@ -20,14 +20,14 @@ pub mod router {
     impl Router {
         /// Creates a placeholder router.
         #[must_use]
-        pub const fn new(graph: MarketGraph, pricing: PricingEngine) -> Self {
+        pub fn new(graph: MarketGraph, pricing: PricingEngine) -> Self {
             Self { graph, pricing }
         }
 
         /// Returns the graph boundary used by routing.
         #[must_use]
-        pub const fn graph(&self) -> MarketGraph {
-            self.graph
+        pub const fn graph(&self) -> &MarketGraph {
+            &self.graph
         }
 
         /// Returns the pricing boundary used by routing.
