@@ -7,9 +7,15 @@
 pub mod market_graph {
     //! Market graph storage and update responsibilities.
 
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
 
     use common::{Error, Result, Token};
+    use decoder::PoolState;
+
+    const DEFAULT_POOL_FEE_BPS: u64 = 25;
+    const MAX_CYCLE_DEPTH: usize = 3;
+
+    type EdgeSignature = ([u8; 32], [u8; 32], u64, u64, u64);
 
     /// Directed weighted swap edge between two tokens.
     #[derive(Clone, Debug, PartialEq)]
@@ -33,6 +39,13 @@ pub mod market_graph {
                 fee_bps,
             }
         }
+    }
+
+    /// Directed token cycle discovered in the market graph.
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct TokenCycle {
+        pub path: Vec<Edge>,
+        pub raw_return: f64,
     }
 
     /// Token relationship graph backed by an adjacency list.
@@ -61,6 +74,64 @@ pub mod market_graph {
                 .push(edge);
             self.edge_count += 1;
             Ok(())
+        }
+
+        /// Applies a pool state update by replacing its directed token-pair edges.
+        ///
+        /// Nodes are implicit: adding edges makes each token discoverable through
+        /// adjacency traversal. Weights are encoded on each edge as price and
+        /// liquidity.
+        pub fn apply_pool_state(&mut self, pool: &PoolState) -> Result<()> {
+            let liquidity = pool_liquidity(pool)?;
+            let (forward_price, reverse_price) = pool_prices(pool)?;
+            let forward = Edge::new(
+                pool.token_a.clone(),
+                pool.token_b.clone(),
+                forward_price,
+                liquidity,
+                DEFAULT_POOL_FEE_BPS,
+            );
+            let reverse = Edge::new(
+                pool.token_b.clone(),
+                pool.token_a.clone(),
+                reverse_price,
+                liquidity,
+                DEFAULT_POOL_FEE_BPS,
+            );
+
+            self.replace_edges(pool.token_a.clone(), pool.token_b.clone(), vec![forward])?;
+            self.replace_edges(pool.token_b.clone(), pool.token_a.clone(), vec![reverse])
+        }
+
+        /// Finds all unique directed token cycles up to depth 3.
+        ///
+        /// Raw return is the product of edge prices only; fees and slippage are
+        /// intentionally left to routing/execution layers.
+        pub fn find_cycles(&self) -> Vec<TokenCycle> {
+            self.find_cycles_up_to_depth(MAX_CYCLE_DEPTH)
+                .expect("constant max depth is valid")
+        }
+
+        /// Finds all unique directed token cycles up to the requested depth.
+        pub fn find_cycles_up_to_depth(&self, max_depth: usize) -> Result<Vec<TokenCycle>> {
+            if !(2..=MAX_CYCLE_DEPTH).contains(&max_depth) {
+                return Err(Error::InvalidState(
+                    "graph cycle depth must be between 2 and 3".to_owned(),
+                ));
+            }
+
+            let starts = self.source_tokens().cloned().collect::<Vec<_>>();
+            let mut search = CycleSearch::new(self, max_depth);
+
+            for start in starts {
+                let mut visited = vec![start.clone()];
+                let mut path = Vec::with_capacity(max_depth);
+                search.search(&start, &start, &mut visited, &mut path);
+            }
+
+            let mut cycles = search.into_cycles();
+            cycles.sort_by_key(|cycle| canonical_signature(&cycle.path));
+            Ok(cycles)
         }
 
         /// Replaces all edges for one directed token pair.
@@ -194,6 +265,69 @@ pub mod market_graph {
         }
     }
 
+    struct CycleSearch<'a> {
+        graph: &'a MarketGraph,
+        max_depth: usize,
+        cycles: Vec<TokenCycle>,
+        seen: HashSet<Vec<EdgeSignature>>,
+    }
+
+    impl<'a> CycleSearch<'a> {
+        fn new(graph: &'a MarketGraph, max_depth: usize) -> Self {
+            Self {
+                graph,
+                max_depth,
+                cycles: Vec::new(),
+                seen: HashSet::new(),
+            }
+        }
+
+        fn into_cycles(self) -> Vec<TokenCycle> {
+            self.cycles
+        }
+
+        fn search(
+            &mut self,
+            start: &Token,
+            current: &Token,
+            visited: &mut Vec<Token>,
+            path: &mut Vec<Edge>,
+        ) {
+            if path.len() >= self.max_depth {
+                return;
+            }
+
+            for edge in self.graph.outgoing_edges(current) {
+                let next_depth = path.len() + 1;
+
+                if &edge.to == start {
+                    if next_depth >= 2 {
+                        path.push(edge.clone());
+                        let signature = canonical_signature(path);
+                        if self.seen.insert(signature) {
+                            self.cycles.push(TokenCycle {
+                                raw_return: raw_return(path),
+                                path: path.clone(),
+                            });
+                        }
+                        path.pop();
+                    }
+                    continue;
+                }
+
+                if next_depth >= self.max_depth || visited.iter().any(|token| token == &edge.to) {
+                    continue;
+                }
+
+                path.push(edge.clone());
+                visited.push(edge.to.clone());
+                self.search(start, &edge.to, visited, path);
+                visited.pop();
+                path.pop();
+            }
+        }
+    }
+
     fn validate_edge(edge: &Edge) -> Result<()> {
         if !edge.price.is_finite() || edge.price <= 0.0 {
             return Err(Error::InvalidState(
@@ -209,14 +343,81 @@ pub mod market_graph {
 
         Ok(())
     }
+
+    fn pool_liquidity(pool: &PoolState) -> Result<f64> {
+        let liquidity = pool.liquidity as f64;
+        if !liquidity.is_finite() || liquidity <= 0.0 {
+            return Err(Error::InvalidState(
+                "pool liquidity must be finite and positive".to_owned(),
+            ));
+        }
+
+        Ok(liquidity)
+    }
+
+    fn pool_prices(pool: &PoolState) -> Result<(f64, f64)> {
+        let (forward, reverse) = match pool.reserves {
+            Some((reserve_a, reserve_b)) if reserve_a > 0 && reserve_b > 0 => (
+                reserve_b as f64 / reserve_a as f64,
+                reserve_a as f64 / reserve_b as f64,
+            ),
+            Some(_) => {
+                return Err(Error::InvalidState(
+                    "pool reserves must be positive".to_owned(),
+                ))
+            }
+            None => (1.0, 1.0),
+        };
+
+        if !forward.is_finite() || !reverse.is_finite() || forward <= 0.0 || reverse <= 0.0 {
+            return Err(Error::InvalidState(
+                "pool prices must be finite and positive".to_owned(),
+            ));
+        }
+
+        Ok((forward, reverse))
+    }
+
+    fn raw_return(path: &[Edge]) -> f64 {
+        path.iter().map(|edge| edge.price).product()
+    }
+
+    fn canonical_signature(path: &[Edge]) -> Vec<EdgeSignature> {
+        let edge_signatures = path.iter().map(edge_signature).collect::<Vec<_>>();
+        let mut best = edge_signatures.clone();
+
+        for offset in 1..edge_signatures.len() {
+            let rotated = edge_signatures[offset..]
+                .iter()
+                .chain(edge_signatures[..offset].iter())
+                .copied()
+                .collect::<Vec<_>>();
+            if rotated < best {
+                best = rotated;
+            }
+        }
+
+        best
+    }
+
+    fn edge_signature(edge: &Edge) -> EdgeSignature {
+        (
+            edge.from.mint().to_bytes(),
+            edge.to.mint().to_bytes(),
+            edge.price.to_bits(),
+            edge.liquidity.to_bits(),
+            edge.fee_bps,
+        )
+    }
 }
 
-pub use market_graph::{Edge, MarketGraph};
+pub use market_graph::{Edge, MarketGraph, TokenCycle};
 
 #[cfg(test)]
 mod tests {
     use super::{Edge, MarketGraph};
     use common::{Pubkey, Token};
+    use decoder::{DexType, PoolState};
 
     #[test]
     fn graph_adds_and_looks_up_directed_edges() {
@@ -310,7 +511,183 @@ mod tests {
         assert!(matches!(err, common::Error::InvalidState(_)));
     }
 
+    #[test]
+    fn graph_builds_edges_from_pool_state_update() {
+        let sol = token(1, "SOL");
+        let usdc = token(2, "USDC");
+        let mut graph = MarketGraph::new();
+        let pool = pool_state(sol.clone(), usdc.clone(), 10_000, Some((1_000, 2_000)));
+
+        graph.apply_pool_state(&pool).expect("apply pool");
+
+        let forward = graph.edges(&sol, &usdc).expect("forward edge");
+        let reverse = graph.edges(&usdc, &sol).expect("reverse edge");
+        assert_eq!(forward.len(), 1);
+        assert_eq!(reverse.len(), 1);
+        assert_eq!(forward[0].price, 2.0);
+        assert_eq!(reverse[0].price, 0.5);
+        assert_eq!(forward[0].liquidity, 10_000.0);
+        assert_eq!(graph.edge_count(), 2);
+        assert_eq!(graph.node_count(), 2);
+    }
+
+    #[test]
+    fn graph_replaces_edges_from_repeated_pool_state_update() {
+        let sol = token(1, "SOL");
+        let usdc = token(2, "USDC");
+        let mut graph = MarketGraph::new();
+
+        graph
+            .apply_pool_state(&pool_state(
+                sol.clone(),
+                usdc.clone(),
+                10_000,
+                Some((1_000, 2_000)),
+            ))
+            .expect("initial update");
+        graph
+            .apply_pool_state(&pool_state(
+                sol.clone(),
+                usdc.clone(),
+                20_000,
+                Some((1_000, 2_500)),
+            ))
+            .expect("replacement update");
+
+        let forward = graph.edges(&sol, &usdc).expect("forward edge");
+        assert_eq!(forward.len(), 1);
+        assert_eq!(forward[0].price, 2.5);
+        assert_eq!(forward[0].liquidity, 20_000.0);
+        assert_eq!(graph.edge_count(), 2);
+    }
+
+    #[test]
+    fn graph_rejects_invalid_pool_state_liquidity() {
+        let sol = token(1, "SOL");
+        let usdc = token(2, "USDC");
+        let mut graph = MarketGraph::new();
+
+        let err = graph
+            .apply_pool_state(&pool_state(sol, usdc, 0, Some((1_000, 2_000))))
+            .expect_err("invalid liquidity");
+
+        assert!(matches!(err, common::Error::InvalidState(_)));
+    }
+
+    #[test]
+    fn graph_finds_two_hop_cycle_with_raw_return() {
+        let sol = token(1, "SOL");
+        let usdc = token(2, "USDC");
+        let mut graph = MarketGraph::new();
+
+        graph
+            .add_edge(Edge::new(sol.clone(), usdc.clone(), 2.0, 1_000.0, 25))
+            .expect("sol-usdc");
+        graph
+            .add_edge(Edge::new(usdc, sol, 0.6, 1_000.0, 25))
+            .expect("usdc-sol");
+
+        let cycles = graph.find_cycles();
+
+        assert_eq!(cycles.len(), 1);
+        assert_eq!(cycles[0].path.len(), 2);
+        assert!((cycles[0].raw_return - 1.2).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn graph_finds_three_hop_cycle() {
+        let sol = token(1, "SOL");
+        let usdc = token(2, "USDC");
+        let usdt = token(3, "USDT");
+        let mut graph = MarketGraph::new();
+
+        graph
+            .add_edge(Edge::new(sol.clone(), usdc.clone(), 2.0, 1_000.0, 25))
+            .expect("sol-usdc");
+        graph
+            .add_edge(Edge::new(usdc.clone(), usdt.clone(), 1.1, 1_000.0, 25))
+            .expect("usdc-usdt");
+        graph
+            .add_edge(Edge::new(usdt, sol, 0.55, 1_000.0, 25))
+            .expect("usdt-sol");
+
+        let cycles = graph.find_cycles();
+
+        assert_eq!(cycles.len(), 1);
+        assert_eq!(cycles[0].path.len(), 3);
+        assert!((cycles[0].raw_return - 1.21).abs() < 0.0000000001);
+    }
+
+    #[test]
+    fn graph_keeps_distinct_multi_edge_cycles() {
+        let sol = token(1, "SOL");
+        let usdc = token(2, "USDC");
+        let mut graph = MarketGraph::new();
+
+        graph
+            .add_edge(Edge::new(sol.clone(), usdc.clone(), 2.0, 1_000.0, 25))
+            .expect("first sol-usdc");
+        graph
+            .add_edge(Edge::new(sol.clone(), usdc.clone(), 2.1, 1_000.0, 25))
+            .expect("second sol-usdc");
+        graph
+            .add_edge(Edge::new(usdc, sol, 0.5, 1_000.0, 25))
+            .expect("usdc-sol");
+
+        let cycles = graph.find_cycles();
+
+        assert_eq!(cycles.len(), 2);
+        assert!(cycles
+            .iter()
+            .any(|cycle| (cycle.raw_return - 1.0).abs() < f64::EPSILON));
+        assert!(cycles
+            .iter()
+            .any(|cycle| (cycle.raw_return - 1.05).abs() < 0.0000000001));
+    }
+
+    #[test]
+    fn graph_deduplicates_cycle_rotations() {
+        let sol = token(1, "SOL");
+        let usdc = token(2, "USDC");
+        let mut graph = MarketGraph::new();
+
+        graph
+            .add_edge(Edge::new(sol.clone(), usdc.clone(), 2.0, 1_000.0, 25))
+            .expect("sol-usdc");
+        graph
+            .add_edge(Edge::new(usdc, sol, 0.5, 1_000.0, 25))
+            .expect("usdc-sol");
+
+        assert_eq!(graph.find_cycles().len(), 1);
+    }
+
+    #[test]
+    fn graph_rejects_cycle_depth_above_three() {
+        let graph = MarketGraph::new();
+
+        let err = graph
+            .find_cycles_up_to_depth(4)
+            .expect_err("depth too high");
+
+        assert!(matches!(err, common::Error::InvalidState(_)));
+    }
+
     fn token(byte: u8, symbol: &str) -> Token {
         Token::new(Pubkey::new([byte; 32]), 6, Some(symbol.to_owned()))
+    }
+
+    fn pool_state(
+        token_a: Token,
+        token_b: Token,
+        liquidity: u128,
+        reserves: Option<(u64, u64)>,
+    ) -> PoolState {
+        PoolState {
+            dex: DexType::Raydium,
+            token_a,
+            token_b,
+            liquidity,
+            reserves,
+        }
     }
 }
