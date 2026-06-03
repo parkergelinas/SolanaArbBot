@@ -3,7 +3,7 @@
 use thiserror::Error;
 
 /// Common error variants shared by infrastructure crates.
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Error)]
 pub enum Error {
     /// Placeholder for APIs that are intentionally scaffolded only.
     #[error("operation is not implemented: {0}")]
@@ -12,6 +12,21 @@ pub enum Error {
     /// Input or decoded data failed validation.
     #[error("invalid data: {0}")]
     InvalidData(&'static str),
+
+    /// A byte slice did not contain exactly 32 bytes for a Solana public key.
+    #[error("invalid pubkey length: expected 32 bytes, got {actual}")]
+    InvalidPubkeyLength { actual: usize },
+
+    /// A base58 public key string could not be decoded.
+    #[error("invalid pubkey encoding")]
+    InvalidPubkeyEncoding {
+        #[source]
+        source: bs58::decode::Error,
+    },
+
+    /// Token decimals exceeded the workspace sanity limit.
+    #[error("invalid token decimals: {decimals} exceeds max {max}")]
+    InvalidTokenDecimals { decimals: u8, max: u8 },
 }
 
 /// Workspace result alias.

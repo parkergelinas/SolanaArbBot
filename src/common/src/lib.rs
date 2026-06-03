@@ -12,8 +12,8 @@ pub mod token;
 
 pub use error::{Error, Result};
 pub use event::MarketEvent;
-pub use pubkey::Pubkey;
-pub use token::Token;
+pub use pubkey::{Pubkey, PUBKEY_BYTES};
+pub use token::{Token, MAX_TOKEN_DECIMALS};
 
 #[cfg(test)]
 mod tests {
@@ -22,7 +22,7 @@ mod tests {
     #[test]
     fn token_keeps_core_identity_fields() {
         let mint = Pubkey::new([7; 32]);
-        let token = Token::new(mint, 6);
+        let token = Token::try_new(mint, 6).expect("valid token");
 
         assert_eq!(token.mint(), mint);
         assert_eq!(token.decimals(), 6);
