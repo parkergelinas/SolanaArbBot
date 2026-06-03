@@ -1,8 +1,8 @@
 //! Orca CLMM-style placeholder decoder.
 
-use common::{Error, Pubkey, Result, Token};
+use common::{Error, MarketEvent, PoolUpdate, Pubkey, Result, Token};
 
-use crate::{DexType, PoolDecoder, PoolState};
+use crate::{DexType, EventPoolDecoder, PoolDecoder, PoolState};
 
 const DECODER: &str = "orca_clmm";
 const TOKEN_A_MINT_OFFSET: usize = 0;
@@ -15,6 +15,7 @@ const TICK_SPACING_OFFSET: usize = 86;
 
 /// Simplified Orca CLMM placeholder layout length.
 pub const ORCA_POOL_DATA_LEN: usize = 88;
+const DEFAULT_EVENT_DECIMALS: u8 = 0;
 
 /// Orca CLMM pool decoder.
 #[derive(Clone, Copy, Debug, Default)]
@@ -53,6 +54,38 @@ impl PoolDecoder for OrcaDecoder {
             reserves: None,
         })
     }
+}
+
+impl EventPoolDecoder for OrcaDecoder {
+    fn decode_event(&self, event: &MarketEvent) -> Result<PoolState> {
+        let MarketEvent::PoolUpdate(update) = event else {
+            return Err(Error::DecodeError(
+                "orca decoder only transforms pool update events".to_owned(),
+            ));
+        };
+
+        pool_update_to_state(update)
+    }
+}
+
+fn pool_update_to_state(update: &PoolUpdate) -> Result<PoolState> {
+    let token_a_mint = required_pubkey(update.token_a_mint, "orca token_a_mint")?;
+    let token_b_mint = required_pubkey(update.token_b_mint, "orca token_b_mint")?;
+    let liquidity = update
+        .liquidity
+        .ok_or_else(|| Error::DecodeError("orca pool update missing liquidity".to_owned()))?;
+
+    Ok(PoolState {
+        dex: DexType::OrcaCLMM,
+        token_a: Token::new(token_a_mint, DEFAULT_EVENT_DECIMALS, None),
+        token_b: Token::new(token_b_mint, DEFAULT_EVENT_DECIMALS, None),
+        liquidity,
+        reserves: None,
+    })
+}
+
+fn required_pubkey(value: Option<Pubkey>, field: &'static str) -> Result<Pubkey> {
+    value.ok_or_else(|| Error::DecodeError(format!("{field} is required")))
 }
 
 fn ensure_len(data: &[u8], expected: usize) -> Result<()> {
@@ -142,6 +175,47 @@ pub(crate) mod tests {
     #[test]
     fn rejects_short_orca_pool_data() {
         let err = OrcaDecoder::new().decode(&[0; 8]).expect_err("short");
+
+        assert!(matches!(err, Error::DecodeError(_)));
+    }
+
+    #[test]
+    fn transforms_orca_pool_update_event() {
+        let event = MarketEvent::PoolUpdate(PoolUpdate {
+            pool: Some(Pubkey::new([9; 32])),
+            token_a_mint: Some(Pubkey::new([3; 32])),
+            token_b_mint: Some(Pubkey::new([4; 32])),
+            liquidity: Some(7_000),
+            sqrt_price: Some(123),
+            fee_rate: Some(30),
+        });
+
+        let state = OrcaDecoder::new()
+            .decode_event(&event)
+            .expect("transform orca");
+
+        assert_eq!(state.dex, DexType::OrcaCLMM);
+        assert_eq!(state.token_a.mint(), Pubkey::new([3; 32]));
+        assert_eq!(state.token_a.decimals(), DEFAULT_EVENT_DECIMALS);
+        assert_eq!(state.token_b.mint(), Pubkey::new([4; 32]));
+        assert_eq!(state.liquidity, 7_000);
+        assert_eq!(state.reserves, None);
+    }
+
+    #[test]
+    fn rejects_orca_event_with_missing_liquidity() {
+        let event = MarketEvent::PoolUpdate(PoolUpdate {
+            pool: None,
+            token_a_mint: Some(Pubkey::new([3; 32])),
+            token_b_mint: Some(Pubkey::new([4; 32])),
+            liquidity: None,
+            sqrt_price: None,
+            fee_rate: None,
+        });
+
+        let err = OrcaDecoder::new()
+            .decode_event(&event)
+            .expect_err("missing liquidity");
 
         assert!(matches!(err, Error::DecodeError(_)));
     }

@@ -11,7 +11,7 @@ pub mod raydium;
 
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use common::{Result, Token};
+use common::{MarketEvent, Result, Token};
 use tracing::{debug, trace};
 
 /// Supported DEX families.
@@ -37,6 +37,12 @@ pub struct PoolState {
 pub trait PoolDecoder {
     /// Decodes raw RPC bytes into structured pool state.
     fn decode(&self, data: &[u8]) -> Result<PoolState>;
+}
+
+/// Shared decoder interface for market-event transformations.
+pub trait EventPoolDecoder {
+    /// Converts a market event into normalized pool state.
+    fn decode_event(&self, event: &MarketEvent) -> Result<PoolState>;
 }
 
 /// Unified decoder that routes to a DEX-specific decoder by `DexType`.
@@ -83,6 +89,33 @@ impl UnifiedDecoder {
 
         result
     }
+
+    /// Converts a generic market event into normalized pool state for the requested DEX.
+    pub fn decode_event(&self, dex: DexType, event: &MarketEvent) -> Result<PoolState> {
+        let stage_started_at = Instant::now();
+        let event_timestamp_micros = unix_timestamp_micros();
+        trace!(
+            ?dex,
+            ?event,
+            event_timestamp_micros,
+            "decoder received market event"
+        );
+
+        let result = match dex {
+            DexType::Raydium => self.raydium.decode_event(event),
+            DexType::OrcaCLMM => self.orca.decode_event(event),
+        };
+
+        debug!(
+            ?dex,
+            event_timestamp_micros,
+            latency_micros = stage_started_at.elapsed().as_micros(),
+            success = result.is_ok(),
+            "decoder event transform complete"
+        );
+
+        result
+    }
 }
 
 /// Backwards-compatible alias for existing scaffold code.
@@ -100,6 +133,7 @@ fn unix_timestamp_micros() -> u64 {
 mod tests {
     use super::{raydium, DexType, UnifiedDecoder};
     use crate::orca;
+    use common::{MarketEvent, PoolUpdate, Pubkey};
 
     #[test]
     fn unified_decoder_routes_raydium() {
@@ -119,5 +153,59 @@ mod tests {
 
         assert_eq!(state.dex, DexType::OrcaCLMM);
         assert_eq!(state.reserves, None);
+    }
+
+    #[test]
+    fn unified_decoder_transforms_raydium_market_event() {
+        let event = pool_update_event(10_000);
+        let state = UnifiedDecoder::new()
+            .decode_event(DexType::Raydium, &event)
+            .expect("transform raydium event");
+
+        assert_eq!(state.dex, DexType::Raydium);
+        assert_eq!(state.token_a.mint(), Pubkey::new([1; 32]));
+        assert_eq!(state.token_b.mint(), Pubkey::new([2; 32]));
+        assert_eq!(state.liquidity, 10_000);
+        assert_eq!(state.reserves, Some((10_000, 10_000)));
+    }
+
+    #[test]
+    fn unified_decoder_transforms_orca_market_event() {
+        let event = pool_update_event(20_000);
+        let state = UnifiedDecoder::new()
+            .decode_event(DexType::OrcaCLMM, &event)
+            .expect("transform orca event");
+
+        assert_eq!(state.dex, DexType::OrcaCLMM);
+        assert_eq!(state.token_a.mint(), Pubkey::new([1; 32]));
+        assert_eq!(state.token_b.mint(), Pubkey::new([2; 32]));
+        assert_eq!(state.liquidity, 20_000);
+        assert_eq!(state.reserves, None);
+    }
+
+    #[test]
+    fn event_transform_is_deterministic() {
+        let event = pool_update_event(42_000);
+        let decoder = UnifiedDecoder::new();
+
+        let first = decoder
+            .decode_event(DexType::Raydium, &event)
+            .expect("first transform");
+        let second = decoder
+            .decode_event(DexType::Raydium, &event)
+            .expect("second transform");
+
+        assert_eq!(first, second);
+    }
+
+    fn pool_update_event(liquidity: u128) -> MarketEvent {
+        MarketEvent::PoolUpdate(PoolUpdate {
+            pool: Some(Pubkey::new([9; 32])),
+            token_a_mint: Some(Pubkey::new([1; 32])),
+            token_b_mint: Some(Pubkey::new([2; 32])),
+            liquidity: Some(liquidity),
+            sqrt_price: Some(1_000),
+            fee_rate: Some(25),
+        })
     }
 }

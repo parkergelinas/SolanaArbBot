@@ -1,8 +1,8 @@
 //! Raydium AMM-style placeholder decoder.
 
-use common::{Error, Pubkey, Result, Token};
+use common::{Error, MarketEvent, PoolUpdate, Pubkey, Result, Token};
 
-use crate::{DexType, PoolDecoder, PoolState};
+use crate::{DexType, EventPoolDecoder, PoolDecoder, PoolState};
 
 const DECODER: &str = "raydium";
 const TOKEN_A_MINT_OFFSET: usize = 0;
@@ -15,6 +15,7 @@ const RESERVE_B_OFFSET: usize = 90;
 
 /// Simplified Raydium placeholder layout length.
 pub const RAYDIUM_POOL_DATA_LEN: usize = 98;
+const DEFAULT_EVENT_DECIMALS: u8 = 0;
 
 /// Raydium AMM-style pool decoder.
 #[derive(Clone, Copy, Debug, Default)]
@@ -54,6 +55,39 @@ impl PoolDecoder for RaydiumDecoder {
             )),
         })
     }
+}
+
+impl EventPoolDecoder for RaydiumDecoder {
+    fn decode_event(&self, event: &MarketEvent) -> Result<PoolState> {
+        let MarketEvent::PoolUpdate(update) = event else {
+            return Err(Error::DecodeError(
+                "raydium decoder only transforms pool update events".to_owned(),
+            ));
+        };
+
+        pool_update_to_state(update)
+    }
+}
+
+fn pool_update_to_state(update: &PoolUpdate) -> Result<PoolState> {
+    let token_a_mint = required_pubkey(update.token_a_mint, "raydium token_a_mint")?;
+    let token_b_mint = required_pubkey(update.token_b_mint, "raydium token_b_mint")?;
+    let liquidity = update
+        .liquidity
+        .ok_or_else(|| Error::DecodeError("raydium pool update missing liquidity".to_owned()))?;
+    let reserve = u64::try_from(liquidity).unwrap_or(u64::MAX);
+
+    Ok(PoolState {
+        dex: DexType::Raydium,
+        token_a: Token::new(token_a_mint, DEFAULT_EVENT_DECIMALS, None),
+        token_b: Token::new(token_b_mint, DEFAULT_EVENT_DECIMALS, None),
+        liquidity,
+        reserves: Some((reserve, reserve)),
+    })
+}
+
+fn required_pubkey(value: Option<Pubkey>, field: &'static str) -> Result<Pubkey> {
+    value.ok_or_else(|| Error::DecodeError(format!("{field} is required")))
 }
 
 fn ensure_len(data: &[u8], expected: usize) -> Result<()> {
@@ -137,6 +171,47 @@ pub(crate) mod tests {
     #[test]
     fn rejects_short_raydium_pool_data() {
         let err = RaydiumDecoder::new().decode(&[0; 8]).expect_err("short");
+
+        assert!(matches!(err, Error::DecodeError(_)));
+    }
+
+    #[test]
+    fn transforms_raydium_pool_update_event() {
+        let event = MarketEvent::PoolUpdate(PoolUpdate {
+            pool: Some(Pubkey::new([9; 32])),
+            token_a_mint: Some(Pubkey::new([1; 32])),
+            token_b_mint: Some(Pubkey::new([2; 32])),
+            liquidity: Some(5_000),
+            sqrt_price: None,
+            fee_rate: Some(25),
+        });
+
+        let state = RaydiumDecoder::new()
+            .decode_event(&event)
+            .expect("transform raydium");
+
+        assert_eq!(state.dex, DexType::Raydium);
+        assert_eq!(state.token_a.mint(), Pubkey::new([1; 32]));
+        assert_eq!(state.token_a.decimals(), DEFAULT_EVENT_DECIMALS);
+        assert_eq!(state.token_b.mint(), Pubkey::new([2; 32]));
+        assert_eq!(state.liquidity, 5_000);
+        assert_eq!(state.reserves, Some((5_000, 5_000)));
+    }
+
+    #[test]
+    fn rejects_raydium_event_with_missing_token() {
+        let event = MarketEvent::PoolUpdate(PoolUpdate {
+            pool: None,
+            token_a_mint: None,
+            token_b_mint: Some(Pubkey::new([2; 32])),
+            liquidity: Some(5_000),
+            sqrt_price: None,
+            fee_rate: None,
+        });
+
+        let err = RaydiumDecoder::new()
+            .decode_event(&event)
+            .expect_err("missing token");
 
         assert!(matches!(err, Error::DecodeError(_)));
     }
