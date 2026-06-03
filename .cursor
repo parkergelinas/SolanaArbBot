@@ -1,0 +1,10 @@
+Always follow docs/system_contract.md as the single source of truth.
+
+Rules:
+- Do not change architecture described in system_contract.md
+- Do not add new crates unless explicitly instructed
+- Do not introduce new data flows
+- All implementations must conform to defined pipeline
+- Prefer minimal, deterministic Rust implementations
+- No Arc<RwLock<>> in hot path modules
+- Always include unit tests for new logic
