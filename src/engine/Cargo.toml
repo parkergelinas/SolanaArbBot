@@ -1,0 +1,19 @@
+[package]
+name = "engine"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+accounts = { path = "../accounts" }
+common = { path = "../common" }
+decoder = { path = "../decoder" }
+execution = { path = "../execution" }
+graph = { path = "../graph" }
+pricing = { path = "../pricing" }
+risk = { path = "../risk" }
+routing = { path = "../routing" }
+rpc_client = { path = "../rpc_client" }
+stream = { path = "../stream" }
+tokio = { version = "1.52.3", default-features = false, features = ["macros", "rt", "sync"] }
+tracing = "0.1.44"

@@ -1,0 +1,12 @@
+[package]
+name = "risk"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+common = { path = "../common" }
+execution = { version = "0.1.0", path = "../execution" }
+graph = { version = "0.1.0", path = "../graph" }
+routing = { version = "0.1.0", path = "../routing" }
+tracing = "0.1.44"

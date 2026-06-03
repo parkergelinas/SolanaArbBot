@@ -1,0 +1,23 @@
+[workspace]
+resolver = "2"
+members = [
+    "src/accounts",
+    "src/common",
+    "src/decoder",
+    "src/engine",
+    "src/execution",
+    "src/graph",
+    "src/pricing",
+    "src/risk",
+    "src/routing",
+    "src/rpc_client",
+    "src/stream",
+]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+license = "MIT"
+
+[workspace.dependencies]
+thiserror = "2"

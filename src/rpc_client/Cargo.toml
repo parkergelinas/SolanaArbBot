@@ -1,0 +1,9 @@
+[package]
+name = "rpc_client"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+common = { path = "../common" }
+tracing = "0.1.44"

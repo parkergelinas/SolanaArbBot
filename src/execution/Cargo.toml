@@ -1,0 +1,11 @@
+[package]
+name = "execution"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+common = { path = "../common" }
+graph = { version = "0.1.0", path = "../graph" }
+routing = { path = "../routing" }
+tracing = "0.1.44"
