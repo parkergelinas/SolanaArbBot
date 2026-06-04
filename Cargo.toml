@@ -1,17 +1,17 @@
 [workspace]
 resolver = "2"
 members = [
-    "src/accounts",
-    "src/common",
-    "src/decoder",
-    "src/engine",
-    "src/execution",
-    "src/graph",
-    "src/pricing",
-    "src/risk",
-    "src/routing",
-    "src/rpc_client",
-    "src/stream",
+    "crates/accounts",
+    "crates/common",
+    "crates/decoder",
+    "crates/engine",
+    "crates/execution",
+    "crates/graph",
+    "crates/pricing",
+    "crates/risk",
+    "crates/routing",
+    "crates/rpc_client",
+    "crates/stream",
 ]
 
 [workspace.package]

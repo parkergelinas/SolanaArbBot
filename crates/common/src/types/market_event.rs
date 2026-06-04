@@ -1,6 +1,6 @@
 //! Market event types passed between ingestion, decoding, and analysis stages.
 
-use crate::Pubkey;
+use super::pubkey::Pubkey;
 
 /// Expandable market event emitted by ingestion and decoding stages.
 #[derive(Clone, Debug, PartialEq, Eq)]

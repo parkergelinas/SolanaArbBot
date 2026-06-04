@@ -6,7 +6,8 @@
 
 #![forbid(unsafe_code)]
 
-pub mod orca;
+pub mod orca_clmm;
+pub use orca_clmm as orca;
 pub mod raydium;
 
 use std::time::{Instant, SystemTime, UNIX_EPOCH};

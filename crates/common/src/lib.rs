@@ -6,14 +6,12 @@
 #![forbid(unsafe_code)]
 
 pub mod error;
-pub mod event;
-pub mod pubkey;
-pub mod token;
+pub mod types;
 
 pub use error::{Error, Result};
-pub use event::{MarketEvent, PoolUpdate, SwapEvent, TickUpdate};
-pub use pubkey::{Pubkey, PUBKEY_BYTES};
-pub use token::Token;
+pub use types::market_event::{MarketEvent, PoolUpdate, SwapEvent, TickUpdate};
+pub use types::pubkey::{Pubkey, PUBKEY_BYTES};
+pub use types::token::Token;
 
 #[cfg(test)]
 mod tests {

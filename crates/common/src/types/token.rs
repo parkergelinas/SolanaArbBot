@@ -1,6 +1,6 @@
 //! Token identity primitives.
 
-use crate::Pubkey;
+use super::pubkey::Pubkey;
 
 /// Minimal token descriptor shared by pricing, routing, and graph layers.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -43,7 +43,7 @@ impl Token {
 #[cfg(test)]
 mod tests {
     use super::Token;
-    use crate::Pubkey;
+    use super::pubkey::Pubkey;
 
     #[test]
     fn token_keeps_identity_fields() {
