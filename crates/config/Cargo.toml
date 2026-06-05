@@ -1,0 +1,9 @@
+[package]
+name = "config"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+# Intentionally no workspace crate dependencies.
+# config is a base crate; all other crates can depend on it without cycles.

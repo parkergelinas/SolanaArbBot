@@ -1,0 +1,9 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: 'team'
+receivers:
+  - name: 'team'
+    webhook_configs:
+      - url: 'https://example.com/webhook' # replace with your alert receiver

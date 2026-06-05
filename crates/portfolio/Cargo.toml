@@ -1,0 +1,9 @@
+[package]
+name = "portfolio"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+# No workspace crate dependencies — portfolio logic is self-contained.
+# Add common = { path = "../common" } when error propagation is needed.

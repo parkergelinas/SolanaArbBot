@@ -1,6 +1,10 @@
 [package]
 name = "position"
-version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
 
 [dependencies]
+# Canonical implementation lives in portfolio.
+# position is a backward-compatibility re-export layer.
+portfolio = { path = "../portfolio" }

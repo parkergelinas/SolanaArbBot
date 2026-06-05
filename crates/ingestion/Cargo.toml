@@ -1,0 +1,11 @@
+[package]
+name = "ingestion"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+common = { path = "../common" }
+events = { path = "../events" }
+tokio = { version = "1.52.3", default-features = false, features = ["macros", "rt", "sync"] }
+tracing = "0.1.44"

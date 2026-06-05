@@ -1,19 +1,34 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/accounts",
+    # ── Core library crates ────────────────────────────────────────────────
     "crates/common",
+
+    # ── New architecture crates ────────────────────────────────────────────
+    "crates/config",
+    "crates/events",
+    "crates/ingestion",
+    "crates/storage",
+    "crates/portfolio",
+
+    # ── Domain crates (unchanged) ──────────────────────────────────────────
     "crates/decoder",
-    "crates/engine",
-    "crates/execution",
     "crates/graph",
     "crates/pricing",
+    "crates/routing",
+    "crates/execution",
     "crates/risk",
+    "crates/engine",
+
+    # ── Backward-compatible re-export wrappers ─────────────────────────────
+    "crates/stream",
+    "crates/rpc_client",
+    "crates/accounts",
     "crates/risk_engine",
     "crates/position",
-    "crates/routing",
-    "crates/rpc_client",
-    "crates/stream",
+
+    # ── Application binaries ───────────────────────────────────────────────
+    "apps/worker",
 ]
 
 [workspace.package]

@@ -1,20 +1,26 @@
-pub mod state;
-pub mod enforcer;
+//! Backward-compatible re-export of [`portfolio::portfolio_risk`].
+//!
+//! All existing consumers of `risk_engine` continue to work without
+//! modification.  New code should import from `portfolio` directly.
+//!
+//! The legacy source files `state.rs` and `enforcer.rs` are retained in the
+//! repository for reference but are no longer compiled as part of this crate.
 
-pub use state::{RiskConfig, RiskState};
-pub use enforcer::{RiskAction, evaluate_limits};
+#![forbid(unsafe_code)]
+
+pub use portfolio::{evaluate_limits, RiskAction, RiskConfig, RiskState};
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::time::Duration;
+
+    use super::{evaluate_limits, RiskAction, RiskConfig, RiskState};
 
     #[test]
     fn daily_limit_triggers_pause() {
         let cfg = RiskConfig::default_with_capital(250.0);
         let mut st = RiskState::new(cfg.capital_usd);
 
-        // lose 12.50 (5% of 250)
         st.record_pnl(-12.50);
         let action = evaluate_limits(&st, &cfg);
 
@@ -43,7 +49,6 @@ mod tests {
         let cfg = RiskConfig::default_with_capital(250.0);
         let mut st = RiskState::new(cfg.capital_usd);
 
-        // simulate peak 300 -> current equity 225 (25% drawdown)
         st.peak_equity = 300.0;
         st.current_equity = 225.0;
         let action = evaluate_limits(&st, &cfg);
@@ -59,7 +64,7 @@ mod tests {
         let cfg = RiskConfig::default_with_capital(250.0);
         let mut st = RiskState::new(cfg.capital_usd);
 
-        st.total_loss = -100.0; // 40% of 250
+        st.total_loss = -100.0;
         let action = evaluate_limits(&st, &cfg);
 
         match action {
