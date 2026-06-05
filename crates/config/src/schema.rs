@@ -128,7 +128,22 @@ impl SystemConfig {
         // config is permitted in dry_run mode and by alternative loaders.
         self.wallet.validate_warn();
         self.hotpath.validate()?;
+
+        if (self.risk.min_liquidity_usd - self.pipeline.routing_min_liquidity).abs()
+            > f64::EPSILON
+        {
+            return Err(format!(
+                "risk.min_liquidity_usd ({}) must equal pipeline.routing_min_liquidity ({})",
+                self.risk.min_liquidity_usd, self.pipeline.routing_min_liquidity
+            ));
+        }
+
         Ok(())
+    }
+
+    /// Total capital under management — single source: `[portfolio].capital_usd`.
+    pub fn capital_usd(&self) -> f64 {
+        self.portfolio.capital_usd
     }
 }
 
@@ -371,7 +386,7 @@ impl Default for ExecutionConfig {
         Self {
             max_slippage_bps: 50,
             priority_fee_lamports: 5_000,
-            min_profit_threshold_usd: 0.01,
+            min_profit_threshold_usd: 0.25,
             simulation_initial_amount_usd: 10.0,
             max_input_ratio: 0.25,
             clmm_slippage_multiplier: 0.35,
@@ -413,9 +428,6 @@ impl ExecutionConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RiskConfig {
     // ── Portfolio risk ────────────────────────────────────────────────────
-    /// Total capital under management in USD.
-    pub capital_usd: f64,
-
     /// Maximum single-position size in USD.
     pub max_position_size_usd: f64,
 
@@ -454,7 +466,6 @@ pub struct RiskConfig {
 impl Default for RiskConfig {
     fn default() -> Self {
         Self {
-            capital_usd: 1_000.0,
             max_position_size_usd: 50.0,
             max_drawdown_pct: 0.25,
             daily_loss_limit_pct: 0.05,
@@ -472,9 +483,6 @@ impl Default for RiskConfig {
 
 impl RiskConfig {
     fn validate(&self) -> Result<(), String> {
-        if self.capital_usd <= 0.0 {
-            return Err("risk.capital_usd must be positive".to_owned());
-        }
         if self.max_drawdown_pct <= 0.0 || self.max_drawdown_pct >= 1.0 {
             return Err("risk.max_drawdown_pct must be in (0.0, 1.0)".to_owned());
         }
@@ -660,7 +668,7 @@ impl Default for PipelineConfig {
             max_events: 0,
             event_timeout_ms: 100,
             routing_max_depth: 3,
-            routing_min_liquidity: 0.0,
+            routing_min_liquidity: 1_000.0,
             routing_depth_penalty_bps: 50,
         }
     }
@@ -1118,7 +1126,7 @@ impl Default for WalletConfig {
     fn default() -> Self {
         Self {
             keypair_path: None,
-            keypair_env_var: None,
+            keypair_env_var: Some("SOLANA_ARB_WALLET_KEY".to_owned()),
             rpc_endpoint: "https://api.devnet.solana.com".to_owned(),
             commitment: "confirmed".to_owned(),
             expected_network: "devnet".to_owned(),

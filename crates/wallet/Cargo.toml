@@ -23,7 +23,7 @@ ed25519-dalek = { version = "2", default-features = false, features = ["alloc", 
 rand          = "0.8"
 
 # Memory safety
-zeroize = "1"
+zeroize = { version = "1", features = ["derive"] }
 
 # Encoding
 bs58 = "0.5"

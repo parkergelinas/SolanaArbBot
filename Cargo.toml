@@ -45,6 +45,9 @@ members = [
     "apps/stream-api",
     "apps/hotpath",
 
+    # ── Integration tests ────────────────────────────────────────────────────
+    "tests",
+
     # ── Intelligence data layer ────────────────────────────────────────────
     "backend/data-layer",
     "backend/intelligence-api",
@@ -61,3 +64,8 @@ license = "MIT"
 [workspace.dependencies]
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+anyhow = "1"
+serde_json = "1"

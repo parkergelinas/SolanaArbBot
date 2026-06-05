@@ -1,64 +1,84 @@
+
 # SolanaArbBot
 
-A high-performance arbitrage detection and execution bot for the Solana blockchain. This project identifies profitable trading opportunities across Solana DEXs and executes atomic transactions to capture arbitrage spreads.
+SolanaArbBot is a mono-repository for high-performance arbitrage detection and execution across Solana markets. The repo contains Rust engines, services, and auxiliary frontend and tooling used for development, backtesting, and monitoring.
 
-## Project Structure
+Core goals:
+- Detect cross-market arbitrage opportunities quickly
+- Construct and submit atomic transactions to capture spreads
+- Provide tools for backtesting, monitoring, and analysis
 
-This is a **Rust workspace** with modular components:
+Repository layout (top-level)
+- `apps/` — runnable services and apps (backtester, control-api, dashboard, hotpath, stream-api, worker)
+- `backend/` — larger backend engines and services (alpha-engine, arb-engine, execution-engine, etc.)
+- `crates/` — reusable Rust crates used across the workspace (accounts, common, pricing, routing, rpc_client, etc.)
+- `frontend/` & `dashboard/` — Next.js frontend apps and UI components
+- `docs/` — design docs, architecture notes, and guides
+- `infrastructure/` — deployment and monitoring manifests
+- `scripts/` — helper scripts (changelog generation, security checks, dev helpers)
+- `alertmanager/`, `grafana/`, `prometheus/` — observability configs and dashboards
 
-- **`accounts`** – Account data structures and utilities for Solana account handling
-- **`common`** – Shared utilities, error types, and common functionality
-- **`decoder`** – On-chain instruction and data decoding
-- **`engine`** – Core arbitrage detection logic
-- **`execution`** – Transaction building and submission
-- **`graph`** – Price graph and relationship modeling between tokens/markets
-- **`pricing`** – Real-time pricing and feed aggregation
-- **`risk`** – Risk assessment and position management
-- **`routing`** – Trade routing and path optimization
-- **`rpc_client`** – Solana RPC client wrapper
-- **`stream`** – Real-time blockchain data streaming
+Key files
+- `config.example.toml` — example runtime configuration
+- `AGENTS.md` — guidance for AI agents and contributor tooling
+- `MONOREPO.md` — monorepo conventions and development workflow
 
-## Getting Started
+Prerequisites
+- Rust toolchain (tested with `rustc`/`cargo` 1.83+)
+- Node.js 22+ (used by Next.js frontends; `pnpm`/`npm`/`yarn` supported)
+- Python 3.12+ (utilities and scripts in `scripts/`)
 
-### Prerequisites
-
-- Rust 1.83+ (installed via `rustc` and `cargo`)
-- Node.js v22 (optional, for auxiliary tooling)
-
-### Building
-
-```bash
-cargo build --release
-```
-
-### Running Tests
+Build and test (overview)
+- Build the Rust workspace:
 
 ```bash
-cargo test
+cargo build --workspace --release
 ```
 
-## Configuration
+- Run Rust tests across the workspace:
 
-Configuration details and runtime instructions will be documented as the project develops.
+```bash
+cargo test --workspace
+```
 
-## License
+- Frontend (example for `frontend/` or `dashboard/`):
 
-MIT
+```bash
+cd frontend
+pnpm install
+pnpm build
+pnpm test
+```
 
-## Contributing
+Configuration and running
+- Copy `config.example.toml` to a working config and edit as needed.
+- Capital is defined once in `[portfolio].capital_usd`. `risk.min_liquidity_usd` must equal `pipeline.routing_min_liquidity`.
+- Each service in `apps/` or `backend/` contains its own README or run instructions — consult the crate or package folder for details.
 
-See `AGENTS.md` for guidance on working with AI agents in this repository.
+## Security
 
-Changelog automation
---------------------
+Never store private keys in config files. Inject via env var `SOLANA_ARB_WALLET_KEY` (base58 encoded). Key files are never read from disk.
 
-- Use `scripts/generate_changelog.py` to append a new changelog entry from git commits.
-	- Default: uses latest tag as starting point. Call with `--since-tag` to override.
-- A GitHub Actions workflow `.github/workflows/generate-changelog.yml` runs on `push` and
-	can be triggered manually via `workflow_dispatch`.
+## Emergency Stop
 
-Project summary
----------------
+To halt immediately: `touch /tmp/solana_arb_halt` or send `SIGUSR1` to the worker process.
 
-See the high-level project overview: [PROJECT_SUMMARY.md](docs/PROJECT_SUMMARY.md#L1).
+Never run with `enable_live_trading=true` without also setting `SOLANA_ARB_LIVE_CONFIRM=I_UNDERSTAND_REAL_FUNDS`.
+
+Development notes
+- This repo is organized as a Rust workspace with multiple service crates and frontend apps. Use `cargo` to build crates and the usual Node toolchain for frontends.
+- Backtesting data and examples are stored under `data/` (e.g., `data/backtest_results.json`).
+
+Contributing
+- See [AGENTS.md](AGENTS.md) for repository policies, agent guidance, and contributor workflow.
+
+Documentation
+- Design documents, architecture notes, and developer guides are in the `docs/` directory.
+
+License
+- MIT
+
+If you'd like, I can also:
+- run the workspace build and tests locally, or
+- open a short checklist to enumerate any missing per-service READMEs.
 

@@ -152,7 +152,7 @@ async fn run_loop(
     let arb_cooldown_us = cfg_snapshot.scalper.trade_cooldown_secs * 1_000_000;
     let trade_size = cfg_snapshot.execution.simulation_initial_amount_usd;
     let min_profit = cfg_snapshot.execution.min_profit_threshold_usd;
-    let capital_usd = cfg_snapshot.risk.capital_usd;
+    let capital_usd = cfg_snapshot.portfolio.capital_usd;
 
     let mut enforcer_state = EnforcerState::new(capital_usd);
     let enforcer_cfg = EnforcerConfig {

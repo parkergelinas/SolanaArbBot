@@ -11,7 +11,7 @@
 //!
 //! | Env var | Config path |
 //! |---|---|
-//! | `SOLANA_ARB_RISK__CAPITAL_USD` | `risk.capital_usd` |
+//! | `SOLANA_ARB_PORTFOLIO__CAPITAL_USD` | `portfolio.capital_usd` |
 //! | `SOLANA_ARB_EXECUTION__MAX_SLIPPAGE_BPS` | `execution.max_slippage_bps` |
 //! | `SOLANA_ARB_FEATURES__DRY_RUN` | `features.dry_run` |
 //! | `SOLANA_ARB_MONITORING__LOG_LEVEL` | `monitoring.log_level` |
@@ -45,7 +45,7 @@ use crate::{ConfigError, ConfigResult, SystemConfig};
 /// use config::ConfigHandle;
 ///
 /// let cfg = ConfigHandle::load().expect("load config");
-/// println!("capital: {}", cfg.risk.capital_usd);
+/// println!("capital: {}", cfg.capital_usd());
 ///
 /// // Share across threads:
 /// let cfg2 = cfg.clone();
@@ -89,6 +89,7 @@ impl ConfigHandle {
         let config: SystemConfig = toml::from_str(&merged)
             .map_err(|e| ConfigError::Parse(e.to_string()))?;
         config.validate().map_err(ConfigError::Invalid)?;
+        enforce_startup_guards(&config);
         Ok(Self(Arc::new(config)))
     }
 
@@ -131,7 +132,41 @@ impl ConfigHandle {
         apply_env_overrides(&mut config);
 
         config.validate().map_err(ConfigError::Invalid)?;
+        enforce_startup_guards(&config);
         Ok(Self(Arc::new(config)))
+    }
+}
+
+/// Live-trading kill-switch, liquidity-floor assertion, and profit-threshold warning.
+fn enforce_startup_guards(cfg: &SystemConfig) {
+    if cfg.features.enable_live_trading {
+        let confirm = std::env::var("SOLANA_ARB_LIVE_CONFIRM").unwrap_or_default();
+        if confirm != "I_UNDERSTAND_REAL_FUNDS" {
+            panic!(
+                "Set SOLANA_ARB_LIVE_CONFIRM=I_UNDERSTAND_REAL_FUNDS to enable live trading"
+            );
+        }
+    }
+
+    assert_eq!(
+        cfg.risk.min_liquidity_usd, cfg.pipeline.routing_min_liquidity,
+        "risk.min_liquidity_usd must equal pipeline.routing_min_liquidity"
+    );
+
+    let sol_price_usd: f64 = std::env::var("SOLANA_ARB_SOL_PRICE_USD")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(150.0);
+    let estimated_fee_usd = (cfg.execution.priority_fee_lamports as f64 / 1_000_000_000.0)
+        * sol_price_usd;
+    if cfg.execution.min_profit_threshold_usd < estimated_fee_usd {
+        tracing::warn!(
+            min_profit_threshold_usd = cfg.execution.min_profit_threshold_usd,
+            estimated_fee_usd,
+            priority_fee_lamports = cfg.execution.priority_fee_lamports,
+            sol_price_usd,
+            "min_profit_threshold_usd is below estimated priority-fee cost at boot"
+        );
     }
 }
 
@@ -339,7 +374,6 @@ pub(crate) fn apply_env_overrides(config: &mut SystemConfig) {
     );
 
     // ── [risk] ────────────────────────────────────────────────────────────
-    env_scalar!("SOLANA_ARB_RISK__CAPITAL_USD", config.risk.capital_usd, f64);
     env_scalar!(
         "SOLANA_ARB_RISK__MAX_POSITION_SIZE_USD",
         config.risk.max_position_size_usd,
@@ -550,12 +584,12 @@ mod tests {
     #[test]
     fn from_toml_str_overrides_scalar_field() {
         let toml = r#"
-            [risk]
+            [portfolio]
             capital_usd = 5000.0
         "#;
 
         let handle = ConfigHandle::from_toml_str(toml).expect("load");
-        assert_eq!(handle.risk.capital_usd, 5000.0);
+        assert_eq!(handle.portfolio.capital_usd, 5000.0);
     }
 
     #[test]
@@ -574,9 +608,9 @@ mod tests {
 
     #[test]
     fn from_toml_str_rejects_invalid_config() {
-        // capital_usd = -1 violates validation.
+        // portfolio.capital_usd = -1 violates validation.
         let toml = r#"
-            [risk]
+            [portfolio]
             capital_usd = -1.0
         "#;
 
@@ -640,7 +674,6 @@ mod tests {
             min_liquidity = 500.0
 
             [risk]
-            capital_usd = 10000.0
             max_position_size_usd = 200.0
             max_drawdown_pct = 0.20
             daily_loss_limit_pct = 0.03
@@ -672,7 +705,7 @@ mod tests {
             max_events = 0
             event_timeout_ms = 50
             routing_max_depth = 3
-            routing_min_liquidity = 100.0
+            routing_min_liquidity = 5000.0
             routing_depth_penalty_bps = 30
 
             [portfolio]
@@ -692,7 +725,7 @@ mod tests {
         handle.validate().expect("validates");
 
         assert_eq!(handle.rpc.timeout_ms, 5000);
-        assert_eq!(handle.risk.capital_usd, 10_000.0);
+        assert_eq!(handle.portfolio.capital_usd, 10_000.0);
         assert!(handle.features.enable_metrics);
         assert!(!handle.features.dry_run);
         assert_eq!(handle.monitoring.metrics_port, 9191);
@@ -708,11 +741,11 @@ mod tests {
 
         // Directly call the override logic with a synthetic env simulation by
         // mutating fields the macros would write to.
-        cfg.risk.capital_usd = 99_999.0;
+        cfg.portfolio.capital_usd = 99_999.0;
         cfg.features.dry_run = false;
         cfg.monitoring.log_level = "warn".to_owned();
 
-        assert_eq!(cfg.risk.capital_usd, 99_999.0);
+        assert_eq!(cfg.portfolio.capital_usd, 99_999.0);
         assert!(!cfg.features.dry_run);
         assert_eq!(cfg.monitoring.log_level, "warn");
 

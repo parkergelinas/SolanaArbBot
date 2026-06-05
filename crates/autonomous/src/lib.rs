@@ -22,7 +22,7 @@ pub use trade_emit::{TradeEmit, TradeStage};
 /// Strategy config tuned for scalping + DEX-to-DEX paper operation.
 pub fn tuned_config() -> config::SystemConfig {
     let mut cfg = config::SystemConfig::default();
-    cfg.risk.capital_usd = 10_000.0;
+    cfg.portfolio.capital_usd = 10_000.0;
     cfg.risk.daily_loss_limit_pct = 0.03;
     cfg.risk.max_drawdown_pct = 0.15;
     cfg.scalper.min_edge_bps = 25.0;

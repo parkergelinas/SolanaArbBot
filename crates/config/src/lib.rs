@@ -21,7 +21,7 @@
 //! let cfg = ConfigHandle::load().expect("config load failed");
 //!
 //! // Access fields directly through Deref:
-//! println!("capital: ${}", cfg.risk.capital_usd);
+//! println!("capital: ${}", cfg.capital_usd());
 //! println!("dry run:  {}", cfg.features.dry_run);
 //!
 //! // Share across threads cheaply (just increments the Arc refcount):

@@ -1,0 +1,17 @@
+[package]
+name = "integration-tests"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[dev-dependencies]
+config = { path = "../crates/config" }
+events = { path = "../crates/events" }
+signals = { path = "../crates/signals" }
+common = { path = "../crates/common" }
+tokio = { workspace = true }
+
+[[test]]
+name = "pipeline_smoke"
+path = "pipeline_smoke.rs"
