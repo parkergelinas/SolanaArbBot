@@ -38,3 +38,4 @@ license = "MIT"
 
 [workspace.dependencies]
 thiserror = "2"
+serde = { version = "1", features = ["derive"] }
