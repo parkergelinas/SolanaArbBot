@@ -1,0 +1,12 @@
+[package]
+name = "events"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+common = { path = "../common" }
+crossbeam-channel = "0.5.15"
+dashmap = "6.2.1"
+tokio = { version = "1.52.3", default-features = false, features = ["macros", "rt", "sync"] }
+tracing = "0.1.44"

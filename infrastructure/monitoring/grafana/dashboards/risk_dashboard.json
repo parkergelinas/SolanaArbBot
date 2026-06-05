@@ -1,0 +1,35 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": null,
+    "title": "Risk Status Dashboard",
+    "panels": [
+      {
+        "type": "stat",
+        "title": "Daily Loss %",
+        "id": 1,
+        "targets": [{ "expr": "risk_daily_loss_pct", "refId": "A" }]
+      },
+      {
+        "type": "stat",
+        "title": "Monthly Loss %",
+        "id": 2,
+        "targets": [{ "expr": "risk_monthly_loss_pct", "refId": "A" }]
+      },
+      {
+        "type": "stat",
+        "title": "Drawdown %",
+        "id": 3,
+        "targets": [{ "expr": "risk_drawdown_pct", "refId": "A" }]
+      },
+      {
+        "type": "stat",
+        "title": "Total Loss %",
+        "id": 4,
+        "targets": [{ "expr": "risk_total_loss_pct", "refId": "A" }]
+      }
+    ],
+    "schemaVersion": 36,
+    "version": 1
+  }
+}

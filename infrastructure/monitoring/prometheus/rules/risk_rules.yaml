@@ -1,0 +1,39 @@
+groups:
+- name: risk.rules
+  rules:
+  - alert: DailyLossLimitBreached
+    expr: risk_daily_loss_pct > 0.05
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Daily loss limit breached ({{ $labels.instance }})"
+      description: "Daily loss exceeded 5% of configured capital."
+
+  - alert: MonthlyLossLimitBreached
+    expr: risk_monthly_loss_pct > 0.15
+    for: 10m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Monthly loss limit breached ({{ $labels.instance }})"
+      description: "Monthly loss exceeded 15% of configured capital."
+
+  - alert: DrawdownLimitBreached
+    expr: risk_drawdown_pct > 0.25
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Drawdown limit breached ({{ $labels.instance }})"
+      description: "Drawdown from peak exceeded 25%.
+      Action: pause trading for 7 days."
+
+  - alert: TotalLossPermanentHalt
+    expr: risk_total_loss_pct > 0.40
+    for: 1m
+    labels:
+      severity: fatal
+    annotations:
+      summary: "Total loss exceeded 40% - Permanent halt"
+      description: "Total loss exceeded 40% of capital. Manual intervention required."
