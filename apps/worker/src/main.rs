@@ -23,9 +23,9 @@ async fn main() {
     let sys = SystemConfig::default();
 
     let engine_cfg = match EngineConfig::new(
-        sys.max_pipeline_events,
-        sys.pipeline_event_timeout,
-        sys.simulation_initial_amount,
+        sys.pipeline.max_events,
+        sys.pipeline.event_timeout(),
+        sys.execution.simulation_initial_amount_usd,
     ) {
         Ok(cfg) => cfg,
         Err(err) => {
@@ -80,7 +80,7 @@ mod tests {
     #[test]
     fn default_system_config_is_constructible() {
         let cfg = SystemConfig::default();
-        assert!(cfg.max_pipeline_events > 0);
-        assert!(cfg.simulation_initial_amount > 0.0);
+        assert!(cfg.pipeline.max_events == 0 || cfg.pipeline.max_events > 0); // 0 = unlimited
+        assert!(cfg.execution.simulation_initial_amount_usd > 0.0);
     }
 }

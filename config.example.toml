@@ -1,0 +1,247 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Solana Market-Analysis Pipeline — System Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Copy this file to `config.toml` and edit values for your environment.
+#
+# Loading order (last write wins):
+#   1. Built-in Rust defaults
+#   2. This file (path overridable via SOLANA_ARB_CONFIG env var)
+#   3. SOLANA_ARB_<SECTION>__<FIELD> environment variables
+#
+# Environment variable examples:
+#   SOLANA_ARB_RISK__CAPITAL_USD=50000
+#   SOLANA_ARB_FEATURES__DRY_RUN=false
+#   SOLANA_ARB_EXECUTION__MAX_SLIPPAGE_BPS=30
+#   SOLANA_ARB_MONITORING__LOG_LEVEL=debug
+#   SOLANA_ARB_RPC__ENDPOINTS='["https://my-rpc.example.com"]'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [rpc] — Solana JSON-RPC connection
+# ─────────────────────────────────────────────────────────────────────────────
+[rpc]
+# Ordered list of RPC endpoints.  First reachable endpoint is used;
+# the rest are fallbacks.
+endpoints = [
+    "https://api.mainnet-beta.solana.com",
+    "https://solana-api.projectserum.com",
+]
+
+# Per-request HTTP timeout in milliseconds.
+timeout_ms = 10_000
+
+# Maximum retries per request before propagating the error.
+max_retries = 3
+
+# Commitment level: "processed" | "confirmed" | "finalized"
+commitment = "confirmed"
+
+# Maximum concurrent in-flight requests per endpoint.
+max_concurrent_requests = 10
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [websocket] — Solana WebSocket / Yellowstone gRPC
+# ─────────────────────────────────────────────────────────────────────────────
+[websocket]
+# Ordered list of WebSocket endpoints.
+endpoints = [
+    "wss://api.mainnet-beta.solana.com",
+]
+
+# Delay before attempting to reconnect after a dropped connection (ms).
+reconnect_interval_ms = 1_000
+
+# Interval at which keep-alive pings are sent (ms). 0 = disabled.
+ping_interval_ms = 15_000
+
+# Maximum consecutive reconnect attempts before giving up. 0 = unlimited.
+max_reconnect_attempts = 10
+
+# Per-message receive timeout (ms).
+receive_timeout_ms = 30_000
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [retry] — Exponential back-off policy
+# ─────────────────────────────────────────────────────────────────────────────
+[retry]
+# Initial delay before the first retry attempt (ms).
+initial_interval_ms = 100
+
+# Maximum delay cap — retries never wait longer than this (ms).
+max_interval_ms = 10_000
+
+# Back-off multiplier applied to each successive attempt.
+# 2.0 = delay doubles each retry.
+multiplier = 2.0
+
+# Maximum number of retry attempts. 0 = no retries.
+max_retries = 5
+
+# Add random jitter to prevent thundering-herd on simultaneous failures.
+jitter = true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [execution] — Trade execution simulation
+# ─────────────────────────────────────────────────────────────────────────────
+[execution]
+# Maximum acceptable slippage in basis points (1 bps = 0.01 %).
+# 50 bps = 0.5 % slippage tolerance.
+max_slippage_bps = 50
+
+# Priority fee per compute unit in lamports (live trading context only).
+priority_fee_lamports = 5_000
+
+# Minimum net profit in USD for a route to be considered viable.
+min_profit_threshold_usd = 0.01
+
+# Notional USD amount used as the input for every route simulation.
+simulation_initial_amount_usd = 10.0
+
+# Maximum ratio of input amount to pool liquidity per hop (0.0–1.0).
+# Prevents simulating trades that would significantly move the market.
+max_input_ratio = 0.25
+
+# Slippage multiplier for the simplified CLMM tick model.
+clmm_slippage_multiplier = 0.35
+
+# Minimum per-edge pool liquidity required to proceed with simulation.
+min_liquidity = 1.0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [risk] — Risk limits (route-level + portfolio-level)
+# ─────────────────────────────────────────────────────────────────────────────
+[risk]
+# ── Portfolio risk ────────────────────────────────────────────────────────
+# Total capital under management in USD.
+capital_usd = 1_000.0
+
+# Maximum single-position size in USD.
+max_position_size_usd = 50.0
+
+# Maximum drawdown from peak equity (fraction). 0.25 = 25 % drawdown triggers pause.
+max_drawdown_pct = 0.25
+
+# Maximum daily loss as a fraction of capital. 0.05 = 5 %.
+daily_loss_limit_pct = 0.05
+
+# Maximum monthly loss as a fraction of capital. 0.15 = 15 %.
+monthly_loss_limit_pct = 0.15
+
+# Cumulative loss fraction that triggers a permanent trading halt. 0.40 = 40 %.
+total_loss_halt_pct = 0.40
+
+# How long to pause trading after the daily loss limit is breached (seconds).
+# 3600 = 1 hour.
+daily_pause_secs = 3_600
+
+# ── Route-level risk ──────────────────────────────────────────────────────
+# Minimum per-edge pool liquidity in USD for a route to be approved.
+min_liquidity_usd = 1_000.0
+
+# Maximum tolerated route slippage as a fraction. 0.05 = 5 %.
+max_route_slippage = 0.05
+
+# Maximum route depth in hops the risk engine accepts. Must be 2–5.
+max_route_depth = 3
+
+# Minimum cumulative price product across all hops (below = suspicious arbitrage).
+min_price_product = 0.2
+
+# Maximum cumulative price product across all hops (above = suspicious arbitrage).
+max_price_product = 5.0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [features] — Runtime feature flags
+# ─────────────────────────────────────────────────────────────────────────────
+[features]
+# !! MASTER KILL-SWITCH !!
+# Must be explicitly set to `true` to enable on-chain transaction submission.
+# Keep `false` for simulation-only / research mode.
+enable_live_trading = false
+
+# Enables the portfolio-level risk state machine.
+enable_risk_engine = true
+
+# Enables the Prometheus /metrics HTTP endpoint.
+enable_metrics = false
+
+# Dry-run mode — the pipeline runs but no signals are acted on.
+dry_run = true
+
+# Enables Jito bundle submission for MEV protection (future phase, not yet wired).
+enable_jito = false
+
+# Enables Orca CLMM pool decoding and routing.
+enable_clmm = true
+
+# Enables Raydium AMM pool decoding and routing.
+enable_raydium = true
+
+# Verbose per-event pipeline logging (high performance cost — dev only).
+verbose_pipeline_log = false
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [ingestion] — Event ingestion pipeline
+# ─────────────────────────────────────────────────────────────────────────────
+[ingestion]
+# Bounded channel capacity per event-bus subscriber.
+event_channel_capacity = 4_096
+
+# Maximum events to ingest before the source stops.
+# 0 = run indefinitely (production mode).
+event_limit = 0
+
+# How many events to emit before yielding to the async runtime.
+# 0 = let the runtime schedule naturally.
+yield_every = 256
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [pipeline] — Engine orchestration
+# ─────────────────────────────────────────────────────────────────────────────
+[pipeline]
+# Maximum events processed per run-loop call. 0 = run indefinitely.
+max_events = 0
+
+# Subscriber receive timeout in milliseconds.
+event_timeout_ms = 100
+
+# Maximum route depth for the DFS cycle detector. Must be 2–5.
+routing_max_depth = 3
+
+# Minimum edge liquidity for candidate routes.
+routing_min_liquidity = 0.0
+
+# Per-hop depth penalty in basis points applied to route scoring.
+routing_depth_penalty_bps = 50
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [portfolio] — Capital and position sizing
+# ─────────────────────────────────────────────────────────────────────────────
+[portfolio]
+# Total capital available for allocation in USD.
+capital_usd = 1_000.0
+
+# Base position size as a fraction of capital. 0.02 = 2 %.
+base_position_pct = 0.02
+
+# Hard cap on position size as a fraction of capital.
+max_position_pct = 0.05
+
+# Minimum position size in USD (prevents dust positions).
+min_position_usd = 1.50
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [monitoring] — Observability
+# ─────────────────────────────────────────────────────────────────────────────
+[monitoring]
+# TCP port for the Prometheus /metrics endpoint.
+metrics_port = 9090
+
+# Whether to start the Prometheus HTTP server.
+enable_prometheus = false
+
+# Minimum log level: "trace" | "debug" | "info" | "warn" | "error"
+log_level = "info"
+
+# Emit structured JSON logs instead of human-readable format.
+json_logs = false

@@ -10,6 +10,7 @@ members = [
     "crates/ingestion",
     "crates/storage",
     "crates/portfolio",
+    "crates/signals",
 
     # ── Domain crates (unchanged) ──────────────────────────────────────────
     "crates/decoder",
@@ -38,3 +39,4 @@ license = "MIT"
 
 [workspace.dependencies]
 thiserror = "2"
+serde = { version = "1", features = ["derive"] }
