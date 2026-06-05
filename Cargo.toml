@@ -9,6 +9,8 @@ members = [
     "crates/graph",
     "crates/pricing",
     "crates/risk",
+    "crates/risk_engine",
+    "crates/position",
     "crates/routing",
     "crates/rpc_client",
     "crates/stream",

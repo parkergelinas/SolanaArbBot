@@ -1,3 +1,4 @@
+// (original risk crate content retained below)
 //! Risk boundary.
 //!
 //! This crate will own pre-trade and simulation risk checks.
