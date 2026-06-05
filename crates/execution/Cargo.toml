@@ -6,6 +6,8 @@ license.workspace = true
 
 [dependencies]
 common = { path = "../common" }
+config = { path = "../config" }
 graph = { version = "0.1.0", path = "../graph" }
 routing = { path = "../routing" }
+crossbeam-channel = "0.5"
 tracing = "0.1.44"

@@ -1,0 +1,16 @@
+[package]
+name = "hotpath"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "hotpath"
+path = "src/main.rs"
+
+[dependencies]
+config  = { path = "../../crates/config" }
+engine  = { path = "../../crates/engine" }
+execution = { path = "../../crates/execution" }
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod hotpath_runtime;
 pub mod runtime {
     //! Engine component wiring and lifecycle responsibilities.
 
@@ -360,6 +361,7 @@ pub mod runtime {
     }
 }
 
+pub use hotpath_runtime::{spawn_monitor, spawn_synthetic_ingestion, HotPathRuntime};
 pub use runtime::{Engine, EngineConfig, MarketAnalysisComponents, PipelineReport};
 
 /// Backwards-compatible name for the system runtime.

@@ -1,9 +1,11 @@
 //! Execution simulation boundary.
 //!
 //! This crate will simulate trade execution from candidate routes.
+//! The [`hotpath`] module provides the ultra low-latency synchronous pipeline.
 
 #![forbid(unsafe_code)]
 
+pub mod hotpath;
 pub mod simulator {
     //! Execution simulation and outcome modeling responsibilities.
 
@@ -281,6 +283,11 @@ pub mod simulator {
     }
 }
 
+pub use hotpath::{
+    ColdPathExecutor, ExecutionIntent, ExecutionRouter, HotPathEngine, HotPathStats,
+    HotSignal, HotState, MarketTick, PrecomputeTable, RiskVerdict, RouteChoice, TickOutcome,
+    Venue,
+};
 pub use simulator::{ExecutionConfig, ExecutionResult, ExecutionSimulator, SimulationModel};
 
 #[cfg(test)]

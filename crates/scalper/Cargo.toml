@@ -1,0 +1,18 @@
+[package]
+name = "scalper"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+common  = { path = "../common" }
+config  = { path = "../config" }
+signals = { path = "../signals" }
+crossbeam-channel = "0.5"
+dashmap           = "6.2.1"
+tracing           = "0.1"
+
+[dev-dependencies]
+common  = { path = "../common" }
+config  = { path = "../config" }
+signals = { path = "../signals" }

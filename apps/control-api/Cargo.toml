@@ -1,0 +1,31 @@
+[package]
+name        = "control-api"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "control-api"
+path = "src/main.rs"
+
+[dependencies]
+common  = { path = "../../crates/common" }
+config  = { path = "../../crates/config" }
+signals = { path = "../../crates/signals" }
+
+# HTTP server + WebSocket
+axum        = { version = "0.7", features = ["ws", "macros"] }
+tower-http  = { version = "0.5", features = ["cors", "trace"] }
+tokio       = { version = "1",   features = ["full"] }
+
+# Serialisation
+serde      = { workspace = true }
+serde_json = "1"
+
+# Observability
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Utilities
+dashmap = "6.2.1"
+anyhow  = "1"
