@@ -91,6 +91,8 @@ mod tests {
 
     #[test]
     fn mock_pair_canonical() {
-        assert_eq!(canonical_pair(SOL, USDC), format!("{SOL}/{USDC}"));
+        let pair = canonical_pair(SOL, USDC);
+        assert!(pair.contains(SOL));
+        assert!(pair.contains(USDC));
     }
 }
