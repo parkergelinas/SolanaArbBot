@@ -1,5 +1,7 @@
 SYSTEM: Solana Market Intelligence + Arbitrage Simulation Engine (Rust)
 
+Project overview: see [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md#L1)
+
 PURPOSE:
 Real-time ingestion, normalization, pricing, graph modeling, and arbitrage route simulation across Solana DEX liquidity sources (Raydium AMM + Orca CLMM).
 
