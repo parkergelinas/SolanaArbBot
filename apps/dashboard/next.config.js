@@ -1,9 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Proxy REST to the Rust control-api (server-side env on Vercel).
-  // WebSocket still uses NEXT_PUBLIC_WS_URL — point at your deployed API host.
+  // Proxy REST to the Rust control-api when CONTROL_API_URL is set (Vercel env).
+  // Do NOT default to localhost on Vercel — that host does not exist in production.
   async rewrites() {
-    const api = process.env.CONTROL_API_URL || 'http://localhost:3001';
+    const api = process.env.CONTROL_API_URL?.replace(/\/$/, '');
+    if (!api) {
+      return [];
+    }
     return [
       {
         source: '/api/:path*',
