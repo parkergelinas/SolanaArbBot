@@ -35,7 +35,7 @@ export default function BacktestsPage() {
             Results will appear here automatically.
           </p>
           <code className="block mt-4 text-xs bg-slate-900 text-green-400 px-4 py-2 rounded font-mono">
-            cargo run -p backtester -- --config config.toml
+            cargo run -p backtester-app -- --hours 24 --interval 10
           </code>
         </div>
       ) : (

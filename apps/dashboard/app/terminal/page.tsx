@@ -10,15 +10,15 @@ import SignalPanel from '@/components/terminal/SignalPanel';
 
 export default function TerminalPage() {
   return (
-    <div className="terminal-shell flex flex-col h-full min-h-0">
+    <div className="terminal-shell flex flex-col flex-1 min-h-0 overflow-hidden">
       <TerminalHeader />
       <LatencyMonitor />
       <TokenTable />
-      <div className="flex flex-1 min-h-0">
-        <div className="flex flex-col flex-1 min-w-0 min-h-0">
-          <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
+          <div className="flex flex-1 min-h-0 overflow-hidden">
             <CandleChart />
-            <div className="w-48 flex-shrink-0 min-h-0">
+            <div className="w-48 flex-shrink-0 flex flex-col min-h-0 overflow-hidden">
               <ArbitragePanel />
             </div>
           </div>

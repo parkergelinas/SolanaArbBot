@@ -9,6 +9,19 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        platform: {
+          bg: '#0b0e14',
+          surface: '#131720',
+          elevated: '#1a1f2e',
+          border: '#252b3b',
+          'border-hover': '#323a4f',
+          muted: '#8b95a8',
+          accent: '#00dfa8',
+          'accent-dim': '#00dfa820',
+          blue: '#4da3ff',
+          purple: '#a78bfa',
+          amber: '#fbbf24',
+        },
         brand: {
           50:  '#f0fdf4',
           400: '#4ade80',

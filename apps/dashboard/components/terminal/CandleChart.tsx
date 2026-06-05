@@ -1,19 +1,122 @@
 'use client';
 
-import { useMemo } from 'react';
-import {
-  ComposedChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-  Cell,
-} from 'recharts';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { candleKey, useMarketStore } from '@/stores/marketStore';
 import { useUiStore } from '@/stores/uiStore';
+
+interface ChartCandle {
+  t: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+function CandlestickSvg({ data }: { data: ChartCandle[] }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ w: 400, h: 200 });
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (width > 0 && height > 0) setSize({ w: width, h: height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const { yMin, yMax, candles } = useMemo(() => {
+    if (data.length === 0) return { yMin: 0, yMax: 1, candles: [] as ChartCandle[] };
+    const lows = data.map((d) => d.low);
+    const highs = data.map((d) => d.high);
+    const min = Math.min(...lows);
+    const max = Math.max(...highs);
+    const pad = (max - min) * 0.1 || Math.max(min * 0.01, 0.01);
+    return { yMin: min - pad, yMax: max + pad, candles: data };
+  }, [data]);
+
+  const { w, h } = size;
+  const padL = 44;
+  const padR = 8;
+  const padT = 8;
+  const padB = 20;
+  const plotW = w - padL - padR;
+  const plotH = h - padT - padB;
+  const yScale = (v: number) => padT + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
+  const slotW = plotW / Math.max(candles.length, 1);
+  const barW = Math.max(2, slotW * 0.6);
+
+  const yTicks = 4;
+  const tickValues = Array.from({ length: yTicks + 1 }, (_, i) =>
+    yMin + ((yMax - yMin) * i) / yTicks,
+  );
+
+  return (
+    <div ref={containerRef} className="h-full w-full">
+      <svg width={w} height={h} className="block">
+        {tickValues.map((v) => (
+          <g key={v}>
+            <line
+              x1={padL}
+              x2={w - padR}
+              y1={yScale(v)}
+              y2={yScale(v)}
+              stroke="#1e3a4a"
+              strokeDasharray="2 4"
+            />
+            <text
+              x={padL - 4}
+              y={yScale(v) + 3}
+              textAnchor="end"
+              fill="#64748b"
+              fontSize={9}
+              fontFamily="monospace"
+            >
+              {v.toFixed(v >= 10 ? 2 : 4)}
+            </text>
+          </g>
+        ))}
+
+        {candles.map((c, i) => {
+          const x = padL + i * slotW + (slotW - barW) / 2;
+          const cx = x + barW / 2;
+          const bullish = c.close >= c.open;
+          const color = bullish ? '#22c55e' : '#ef4444';
+          const yH = yScale(c.high);
+          const yL = yScale(c.low);
+          const yO = yScale(c.open);
+          const yC = yScale(c.close);
+          const bodyTop = Math.min(yO, yC);
+          const bodyH = Math.max(Math.abs(yC - yO), 1);
+          const showLabel = i === 0 || i === candles.length - 1 || i % Math.ceil(candles.length / 6) === 0;
+
+          return (
+            <g key={`${c.t}-${i}`}>
+              <line x1={cx} x2={cx} y1={yH} y2={yL} stroke={color} strokeWidth={1} />
+              <rect x={x} y={bodyTop} width={barW} height={bodyH} fill={color} fillOpacity={0.9} />
+              {showLabel && (
+                <text
+                  x={cx}
+                  y={h - 4}
+                  textAnchor="middle"
+                  fill="#64748b"
+                  fontSize={8}
+                  fontFamily="monospace"
+                >
+                  {c.t}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
 
 export default function CandleChart() {
   const selectedMint = useUiStore((s) => s.selectedMint);
@@ -21,7 +124,7 @@ export default function CandleChart() {
   const setInterval = useUiStore((s) => s.setCandleInterval);
   const candleHistory = useMarketStore((s) => s.candleHistory);
 
-  const chartData = useMemo(() => {
+  const chartData = useMemo((): ChartCandle[] => {
     if (!selectedMint) return [];
     const key = candleKey(selectedMint, interval);
     return (candleHistory[key] ?? []).map((c) => ({
@@ -31,8 +134,6 @@ export default function CandleChart() {
       low: c.low,
       close: c.close,
       volume: c.volume,
-      bullish: c.close >= c.open,
-      range: [c.low, c.high] as [number, number],
     }));
   }, [selectedMint, interval, candleHistory]);
 
@@ -59,47 +160,13 @@ export default function CandleChart() {
           ))}
         </div>
       </div>
-      <div className="flex-1 min-h-[200px] p-1">
+      <div className="flex-1 min-h-[160px] p-1">
         {chartData.length === 0 ? (
           <div className="h-full flex items-center justify-center text-[11px] text-terminal-muted">
             Building candle history…
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-              <CartesianGrid stroke="#1e3a4a" strokeDasharray="2 4" />
-              <XAxis dataKey="t" tick={{ fill: '#64748b', fontSize: 9 }} interval="preserveStartEnd" />
-              <YAxis
-                yAxisId="price"
-                domain={['auto', 'auto']}
-                tick={{ fill: '#64748b', fontSize: 9 }}
-                width={48}
-              />
-              <YAxis yAxisId="vol" orientation="right" hide />
-              <Tooltip
-                contentStyle={{
-                  background: '#0a1628',
-                  border: '1px solid #1e3a4a',
-                  fontSize: 10,
-                  fontFamily: 'monospace',
-                }}
-                formatter={(value: number, name: string) => [
-                  value.toFixed(4),
-                  name.toUpperCase(),
-                ]}
-              />
-              <Bar yAxisId="price" dataKey="high" barSize={6} radius={[1, 1, 0, 0]}>
-                {chartData.map((entry, i) => (
-                  <Cell
-                    key={i}
-                    fill={entry.bullish ? '#22c55e' : '#ef4444'}
-                    fillOpacity={0.85}
-                  />
-                ))}
-              </Bar>
-              <Bar yAxisId="vol" dataKey="volume" fill="#22d3ee" fillOpacity={0.25} barSize={4} />
-            </ComposedChart>
-          </ResponsiveContainer>
+          <CandlestickSvg data={chartData} />
         )}
       </div>
     </section>

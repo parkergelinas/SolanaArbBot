@@ -39,11 +39,11 @@ export default function LatencyMonitor() {
   const batches = useStreamStore((s) => s.batchesFlushed);
 
   return (
-    <div className="px-3 py-1.5 border-b border-terminal-border bg-terminal-panel flex items-center gap-4 text-xs">
+    <div className="px-3 py-1.5 border-b border-terminal-border bg-terminal-panel flex flex-wrap items-center gap-x-4 gap-y-1 text-xs min-w-0">
       <span className="text-terminal-muted uppercase tracking-widest text-[10px] w-16 shrink-0">
         Latency
       </span>
-      <div className="flex-1 grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-1">
+      <div className="flex-1 min-w-[12rem] grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-1">
         <LatBar label="WS" ms={latency.wsMs} budget={15} />
         <LatBar label="Ingest" ms={latency.ingestMs} budget={10} />
         <LatBar label="Render" ms={latency.renderMs} budget={33} />

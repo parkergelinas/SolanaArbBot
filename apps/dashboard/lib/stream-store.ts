@@ -27,6 +27,9 @@ class StreamStore {
 
   private signals: SignalEvent[] = [];
   private latest = new Map<WsEvent['type'], unknown>();
+  /** Cached snapshots — useSyncExternalStore requires stable references between flushes. */
+  private snapshotCache = new Map<string, SignalEvent[]>();
+  private snapshotCacheVersion = -1;
 
   /** Parse a raw WebSocket text frame (batch or legacy single event). */
   ingestRaw(text: string) {
@@ -88,8 +91,17 @@ class StreamStore {
   }
 
   getSignalsSnapshot(maxItems: number): SignalEvent[] {
-    void this.version;
-    return this.signals.slice(-maxItems);
+    if (this.snapshotCacheVersion !== this.version) {
+      this.snapshotCache.clear();
+      this.snapshotCacheVersion = this.version;
+    }
+    const key = String(maxItems);
+    let snapshot = this.snapshotCache.get(key);
+    if (!snapshot) {
+      snapshot = this.signals.slice(-maxItems);
+      this.snapshotCache.set(key, snapshot);
+    }
+    return snapshot;
   }
 
   getLatest<T>(type: WsEvent['type']): T | null {

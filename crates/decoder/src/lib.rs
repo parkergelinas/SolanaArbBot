@@ -181,7 +181,7 @@ mod tests {
         assert_eq!(state.token_a.mint(), Pubkey::new([1; 32]));
         assert_eq!(state.token_b.mint(), Pubkey::new([2; 32]));
         assert_eq!(state.liquidity, 20_000);
-        assert_eq!(state.reserves, None);
+        assert_eq!(state.reserves, Some((20_000, 20_000)));
     }
 
     #[test]

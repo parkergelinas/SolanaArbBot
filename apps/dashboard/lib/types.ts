@@ -64,6 +64,25 @@ export interface CommandResult {
   message: string;
 }
 
+export interface BotStatus {
+  running: boolean;
+  mode: string;
+  scalp_trades: number;
+  arb_trades: number;
+  scalp_pnl_usd: number;
+  arb_pnl_usd: number;
+  net_pnl_usd: number;
+  total_trades: number;
+  win_rate: number;
+  risk_status: string;
+  risk_state: string;
+  trading_halted: boolean;
+  halt_reason?: string | null;
+  scalp_enabled: boolean;
+  arb_enabled: boolean;
+  daily_loss_usd: number;
+}
+
 // ─── WebSocket event envelope ────────────────────────────────────────────────
 
 export type WsEvent =

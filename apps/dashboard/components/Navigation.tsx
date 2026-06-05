@@ -6,6 +6,7 @@ import { useStreamStore } from '@/stores/streamStore';
 import { useWsContext } from './WebSocketProvider';
 
 const NAV = [
+  { href: '/bot',          label: 'Bot',       icon: '◉' },
   { href: '/terminal',     label: 'Terminal',  icon: '▣' },
   { href: '/',             label: 'Overview',  icon: '◈' },
   { href: '/signals',      label: 'Signals',   icon: '⚡' },
@@ -23,11 +24,11 @@ export default function Navigation() {
   const connected = onTerminal ? streamConnected : controlConnected;
 
   return (
-    <nav className="w-56 flex-shrink-0 bg-slate-800 border-r border-slate-700 flex flex-col">
+    <nav className="w-56 flex-shrink-0 bg-platform-surface border-r border-platform-border flex flex-col">
       {/* Logo */}
-      <div className="px-4 py-5 border-b border-slate-700">
-        <span className="text-green-400 font-bold text-sm tracking-wider">SOLANA ARB</span>
-        <span className="block text-slate-400 text-xs mt-0.5">Control Plane</span>
+      <div className="px-4 py-5 border-b border-platform-border">
+        <span className="text-platform-accent font-bold text-sm tracking-wider">SOLANA ARB</span>
+        <span className="block text-platform-muted text-xs mt-0.5">Control Plane</span>
       </div>
 
       {/* Links */}
@@ -40,8 +41,8 @@ export default function Navigation() {
                 href={href}
                 className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
                   active
-                    ? 'bg-green-500/10 text-green-400 font-medium'
-                    : 'text-slate-400 hover:text-slate-100 hover:bg-slate-700/50'
+                    ? 'bg-platform-accent/10 text-platform-accent font-medium'
+                    : 'text-platform-muted hover:text-slate-100 hover:bg-platform-elevated/80'
                 }`}
               >
                 <span className="w-4 text-center">{icon}</span>
@@ -53,12 +54,12 @@ export default function Navigation() {
       </ul>
 
       {/* WebSocket status */}
-      <div className="px-4 py-3 border-t border-slate-700">
+      <div className="px-4 py-3 border-t border-platform-border">
         <div className="flex items-center gap-2">
           <span
-            className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400 live-pulse' : 'bg-red-500'}`}
+            className={`w-2 h-2 rounded-full ${connected ? 'bg-platform-accent live-pulse' : 'bg-red-500'}`}
           />
-          <span className="text-xs text-slate-400">
+          <span className="text-xs text-platform-muted">
             {connected ? 'Stream live' : 'Disconnected'}
           </span>
         </div>

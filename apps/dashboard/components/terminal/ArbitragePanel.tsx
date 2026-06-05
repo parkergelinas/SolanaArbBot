@@ -6,7 +6,7 @@ export default function ArbitragePanel() {
   const opportunities = useMarketStore((s) => s.arbOpportunities);
 
   return (
-    <section className="flex flex-col min-h-0 border-l border-terminal-border bg-terminal-panel">
+    <section className="flex flex-col h-full min-h-0 border-l border-terminal-border bg-terminal-panel">
       <div className="px-2 py-1 border-b border-terminal-border">
         <span className="text-[10px] font-semibold uppercase tracking-widest text-terminal-muted">
           Cross-DEX Arb

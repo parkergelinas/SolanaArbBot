@@ -12,6 +12,8 @@ use std::{
 use config::SystemConfig;
 use tokio::sync::{broadcast, mpsc, Mutex, RwLock};
 
+use crate::runtime_ctl::RuntimeController;
+
 use crate::{
     dto::SignalEventDto,
     events::WsEvent,
@@ -53,6 +55,9 @@ pub struct AppState {
 
     /// Total events processed — updated from hot path; read in health endpoint.
     pub events_counter: Arc<AtomicU64>,
+
+    /// Autonomous scalping + arb runtime (started via `/api/system/start`).
+    pub runtime: Arc<Mutex<Option<RuntimeController>>>,
 }
 
 impl AppState {
@@ -69,6 +74,7 @@ impl AppState {
             sys: Arc::new(Mutex::new(SystemState::default())),
             start_time: Instant::now(),
             events_counter: Arc::new(AtomicU64::new(0)),
+            runtime: Arc::new(Mutex::new(None)),
         }
     }
 

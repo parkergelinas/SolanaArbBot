@@ -1,4 +1,5 @@
 import type {
+  BotStatus,
   CommandResult,
   HealthStatus,
   Portfolio,
@@ -65,6 +66,8 @@ export const api = {
     const q = qs.toString();
     return get<SignalEvent[]>(`/api/signals${q ? '?' + q : ''}`);
   },
+
+  botStatus:      ()             => get<BotStatus>('/api/bot/status'),
 
   startSystem:    ()             => post<CommandResult>('/api/system/start'),
   stopSystem:     ()             => post<CommandResult>('/api/system/stop'),

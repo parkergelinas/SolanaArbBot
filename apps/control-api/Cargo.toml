@@ -9,9 +9,10 @@ name = "control-api"
 path = "src/main.rs"
 
 [dependencies]
-common  = { path = "../../crates/common" }
-config  = { path = "../../crates/config" }
-signals = { path = "../../crates/signals" }
+common     = { path = "../../crates/common" }
+config     = { path = "../../crates/config" }
+signals    = { path = "../../crates/signals" }
+autonomous = { path = "../../crates/autonomous" }
 
 # HTTP server + WebSocket
 axum        = { version = "0.7", features = ["ws", "macros"] }
@@ -28,4 +29,5 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Utilities
 dashmap = "6.2.1"
-anyhow  = "1"
+anyhow     = "1"
+tokio-util = { version = "0.7" }

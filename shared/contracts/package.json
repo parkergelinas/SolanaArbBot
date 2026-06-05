@@ -8,6 +8,8 @@
   "exports": {
     ".": "./stream/index.ts",
     "./control": "./types.ts",
-    "./stream": "./stream/index.ts"
+    "./stream": "./stream/index.ts",
+    "./intelligence": "./intelligence/index.ts",
+    "./execution": "./execution/index.ts"
   }
 }

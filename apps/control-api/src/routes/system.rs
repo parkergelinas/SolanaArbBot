@@ -22,21 +22,24 @@ pub async fn start_system(
     State(state): State<AppState>,
 ) -> ApiResult<Json<CommandResult>> {
     {
-        let mut sys = state.sys.lock().await;
+        let sys = state.sys.lock().await;
         if sys.running {
             return Err(ApiError::Conflict(
                 "System is already running.".to_owned(),
             ));
         }
-        sys.running = true;
     }
+
+    crate::runtime_ctl::start_runtime(&state)
+        .await
+        .map_err(ApiError::Internal)?;
 
     let dto = build_status_dto(&state).await;
     state.emit(WsEvent::Status(dto));
-    tracing::info!("paper trading started via API");
+    tracing::info!("autonomous bot started — scalping + dex-to-dex (paper)");
 
     Ok(Json(CommandResult::ok(
-        "Paper trading engine started (paper mode).",
+        "Autonomous bot started: scalping + DEX-to-DEX (paper mode).",
     )))
 }
 
@@ -44,20 +47,23 @@ pub async fn stop_system(
     State(state): State<AppState>,
 ) -> ApiResult<Json<CommandResult>> {
     {
-        let mut sys = state.sys.lock().await;
+        let sys = state.sys.lock().await;
         if !sys.running {
             return Err(ApiError::Conflict(
                 "System is not running.".to_owned(),
             ));
         }
-        sys.running = false;
     }
+
+    crate::runtime_ctl::stop_runtime(&state)
+        .await
+        .map_err(ApiError::Internal)?;
 
     let dto = build_status_dto(&state).await;
     state.emit(WsEvent::Status(dto));
-    tracing::info!("paper trading stopped via API");
+    tracing::info!("autonomous bot stopped via API");
 
-    Ok(Json(CommandResult::ok("Paper trading engine stopped.")))
+    Ok(Json(CommandResult::ok("Autonomous bot stopped.")))
 }
 
 /// Reset portfolio state (paper mode only).
