@@ -1,7 +1,10 @@
 [package]
 name = "risk_engine"
-version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
+# Canonical implementation lives in portfolio.
+# risk_engine is a backward-compatibility re-export layer.
+portfolio = { path = "../portfolio" }

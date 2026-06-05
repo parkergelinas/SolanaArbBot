@@ -5,4 +5,6 @@ version.workspace = true
 license.workspace = true
 
 [dependencies]
-common = { path = "../common" }
+# Canonical implementation lives in storage.
+# accounts is a backward-compatibility re-export layer.
+storage = { path = "../storage" }

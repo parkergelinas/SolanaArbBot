@@ -5,5 +5,6 @@ version.workspace = true
 license.workspace = true
 
 [dependencies]
-common = { path = "../common" }
-tracing = "0.1.44"
+# Canonical implementation lives in ingestion::rpc.
+# rpc_client is a backward-compatibility re-export layer.
+ingestion = { path = "../ingestion" }

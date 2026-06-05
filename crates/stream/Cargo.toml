@@ -5,8 +5,12 @@ version.workspace = true
 license.workspace = true
 
 [dependencies]
+# Canonical implementations live in events and ingestion.
+# stream is a backward-compatibility re-export layer.
 common = { path = "../common" }
-crossbeam-channel = "0.5.15"
-dashmap = "6.2.1"
-tokio = { version = "1.52.3", default-features = false, features = ["macros", "rt", "sync"] }
+events = { path = "../events" }
+ingestion = { path = "../ingestion" }
+
+[dev-dependencies]
+tokio = { version = "1.52.3", features = ["full"] }
 tracing = "0.1.44"
