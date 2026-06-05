@@ -58,8 +58,10 @@ export default function SignalsPage() {
           </p>
         </div>
         {error && (
-          <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-1.5">
-            API: {error}
+          <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-1.5 max-w-xl">
+            Historical signals unavailable ({error}). Live WebSocket feed may still work — ensure
+            control-api is running locally or set <code className="text-amber-200">CONTROL_API_URL</code> on
+            Vercel.
           </p>
         )}
       </header>

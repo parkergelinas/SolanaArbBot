@@ -56,3 +56,9 @@ Changelog automation
 	- Default: uses latest tag as starting point. Call with `--since-tag` to override.
 - A GitHub Actions workflow `.github/workflows/generate-changelog.yml` runs on `push` and
 	can be triggered manually via `workflow_dispatch`.
+
+Project summary
+---------------
+
+See the high-level project overview: [PROJECT_SUMMARY.md](docs/PROJECT_SUMMARY.md#L1).
+

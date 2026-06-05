@@ -1,6 +1,6 @@
 DAILY WORKFLOW:
 
-1. Pick single module from system_contract.md
+1. Pick single module from docs/system_contract.md
 2. Select prompt template
 3. Execute in Cursor
 4. Run tests
