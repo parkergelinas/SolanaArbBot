@@ -11,6 +11,10 @@ members = [
     "crates/storage",
     "crates/portfolio",
     "crates/signals",
+    "crates/scalper",
+
+    # ── Wallet / key-management ────────────────────────────────────────────
+    "crates/wallet",
 
     # ── Domain crates (unchanged) ──────────────────────────────────────────
     "crates/decoder",
@@ -30,6 +34,7 @@ members = [
 
     # ── Application binaries ───────────────────────────────────────────────
     "apps/worker",
+    "apps/control-api",
 ]
 
 [workspace.package]

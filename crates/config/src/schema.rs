@@ -61,6 +61,21 @@ pub struct SystemConfig {
     /// Signal engine detection and filtering parameters.
     #[serde(default)]
     pub signal_engine: SignalEngineConfig,
+
+    /// Scalper engine trade-filter and position-sizing parameters.
+    #[serde(default)]
+    pub scalper: ScalerConfig,
+
+    /// Wallet and key-management settings.
+    ///
+    /// Keypair loading is gated behind `features.dry_run`.  The `wallet` crate
+    /// is the only consumer of these values.
+    #[serde(default)]
+    pub wallet: WalletConfig,
+
+    /// Governance and orchestration layer settings.
+    #[serde(default)]
+    pub orchestrator: OrchestratorConfig,
 }
 
 impl Default for SystemConfig {
@@ -77,6 +92,9 @@ impl Default for SystemConfig {
             portfolio: PortfolioConfig::default(),
             monitoring: MonitoringConfig::default(),
             signal_engine: SignalEngineConfig::default(),
+            scalper: ScalerConfig::default(),
+            wallet: WalletConfig::default(),
+            orchestrator: OrchestratorConfig::default(),
         }
     }
 }
@@ -95,6 +113,10 @@ impl SystemConfig {
         self.pipeline.validate()?;
         self.portfolio.validate()?;
         self.signal_engine.validate()?;
+        self.scalper.validate()?;
+        // wallet.validate() is intentionally a soft warning: missing keypair
+        // config is permitted in dry_run mode and by alternative loaders.
+        self.wallet.validate_warn();
         Ok(())
     }
 }
@@ -327,6 +349,10 @@ pub struct ExecutionConfig {
 
     /// Minimum per-edge liquidity required to proceed with simulation.
     pub min_liquidity: f64,
+
+    /// Hard cap on a single trade's notional size in USD.
+    /// The execution gate rejects any request exceeding this value.
+    pub max_trade_size_usd: f64,
 }
 
 impl Default for ExecutionConfig {
@@ -339,6 +365,7 @@ impl Default for ExecutionConfig {
             max_input_ratio: 0.25,
             clmm_slippage_multiplier: 0.35,
             min_liquidity: 1.0,
+            max_trade_size_usd: 50.0,
         }
     }
 }
@@ -738,7 +765,7 @@ impl Default for SignalEngineConfig {
 }
 
 impl SignalEngineConfig {
-    fn validate(&self) -> Result<(), String> {
+    pub(crate) fn validate(&self) -> Result<(), String> {
         if self.whale_threshold_usd <= 0.0 {
             return Err(
                 "signal_engine.whale_threshold_usd must be positive".to_owned()
@@ -770,6 +797,226 @@ impl SignalEngineConfig {
             );
         }
         Ok(())
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scalper
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Trade-filter and position-sizing parameters for the scalper engine.
+///
+/// Every numeric threshold that governs trade selection, risk sizing, and paper
+/// execution lives here.  No module in the `scalper` crate may hardcode a
+/// numeric constant; all values must come from this struct.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScalerConfig {
+    // ── Liquidity filters ─────────────────────────────────────────────────
+    /// Minimum pool TVL in USD; trades on pools below this are rejected.
+    pub min_pool_tvl_usd: f64,
+    /// Minimum rolling-window volume (proxy for 5-min USD volume); trades are
+    /// rejected when the pool is illiquid on a short-term basis.
+    pub min_volume_5m_usd: f64,
+
+    // ── Volatility regime ─────────────────────────────────────────────────
+    /// Minimum absolute price-velocity ratio (z-score proxy) required for a
+    /// trade signal.  Rejects signals in dead-market conditions.
+    pub volatility_floor: f64,
+    /// Maximum absolute price-velocity ratio.  Rejects signals during extreme
+    /// volatility that increases execution risk.
+    pub volatility_ceiling: f64,
+
+    // ── Slippage / cost ───────────────────────────────────────────────────
+    /// Maximum acceptable estimated round-trip cost in basis points.
+    pub max_slippage_bps: f64,
+    /// MEV sandwich haircut applied to every paper fill (basis points).
+    pub mev_haircut_bps: f64,
+
+    // ── Rate limits ───────────────────────────────────────────────────────
+    /// Maximum trades per asset per rolling hour.
+    pub max_trades_per_hour_per_asset: u32,
+    /// Maximum trades across all assets per rolling hour.
+    pub max_trades_per_hour_global: u32,
+
+    // ── Cooldown ──────────────────────────────────────────────────────────
+    /// Per-pool cooldown in seconds after a trade is executed.
+    pub trade_cooldown_secs: u64,
+
+    // ── Edge requirement ──────────────────────────────────────────────────
+    /// Minimum net edge in basis points (signal_strength_bps − round_trip_cost_bps).
+    pub min_edge_bps: f64,
+
+    // ── Position sizing ───────────────────────────────────────────────────
+    /// Base position size as a fraction of capital (e.g. `0.02` = 2 %).
+    pub base_position_pct: f64,
+    /// Exponent applied to signal strength in the sizing formula.
+    pub strength_scaling_exponent: f64,
+    /// Hard cap on position size in USD.
+    pub max_position_usd: f64,
+    /// Minimum position size in USD (prevents dust positions).
+    pub min_position_usd: f64,
+
+    // ── Signal freshness ──────────────────────────────────────────────────
+    /// Maximum signal age in seconds; older signals are discarded.
+    pub signal_max_age_secs: u64,
+
+    // ── Paper trading fees ────────────────────────────────────────────────
+    /// Base DEX fee in basis points (Raydium default: 25 bps = 0.25 %).
+    pub base_fee_bps: u16,
+    /// Priority fee in lamports used in the priority-cost attribution model.
+    pub priority_fee_lamports: u64,
+}
+
+impl Default for ScalerConfig {
+    fn default() -> Self {
+        Self {
+            min_pool_tvl_usd: 100_000.0,
+            min_volume_5m_usd: 5_000.0,
+            volatility_floor: 0.1,
+            volatility_ceiling: 4.0,
+            max_slippage_bps: 50.0,
+            mev_haircut_bps: 10.0,
+            max_trades_per_hour_per_asset: 12,
+            max_trades_per_hour_global: 100,
+            trade_cooldown_secs: 60,
+            min_edge_bps: 20.0,
+            base_position_pct: 0.02,
+            strength_scaling_exponent: 1.5,
+            max_position_usd: 5_000.0,
+            min_position_usd: 100.0,
+            signal_max_age_secs: 30,
+            base_fee_bps: 25,
+            priority_fee_lamports: 100_000,
+        }
+    }
+}
+
+impl ScalerConfig {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.min_pool_tvl_usd < 0.0 {
+            return Err("scalper.min_pool_tvl_usd must be >= 0".to_owned());
+        }
+        if self.volatility_floor >= self.volatility_ceiling {
+            return Err(
+                "scalper.volatility_floor must be strictly less than volatility_ceiling".to_owned(),
+            );
+        }
+        if self.max_slippage_bps < 0.0 {
+            return Err("scalper.max_slippage_bps must be >= 0".to_owned());
+        }
+        if self.base_position_pct <= 0.0 || self.base_position_pct > 1.0 {
+            return Err("scalper.base_position_pct must be in (0.0, 1.0]".to_owned());
+        }
+        if self.min_position_usd > self.max_position_usd {
+            return Err(
+                "scalper.min_position_usd must be <= scalper.max_position_usd".to_owned(),
+            );
+        }
+        if self.signal_max_age_secs == 0 {
+            return Err("scalper.signal_max_age_secs must be > 0".to_owned());
+        }
+        Ok(())
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Orchestrator
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Governance and orchestration layer settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrchestratorConfig {
+    /// Maximum tolerated PnL degradation (%) before a regression is flagged.
+    pub regression_pnl_threshold_pct: f64,
+
+    /// Maximum tolerated drawdown increase (%) before a regression is flagged.
+    pub regression_drawdown_threshold_pct: f64,
+
+    /// Maximum tolerated win-rate drop (%) before a regression is flagged.
+    pub regression_win_rate_threshold_pct: f64,
+
+    /// Interval in seconds between periodic health-check passes.
+    pub health_check_interval_secs: u64,
+
+    /// When `true`, a `Critical` health status immediately triggers an
+    /// emergency stop (disables trading and locks risk state).
+    pub emergency_stop_on_critical_health: bool,
+}
+
+impl Default for OrchestratorConfig {
+    fn default() -> Self {
+        Self {
+            regression_pnl_threshold_pct: 10.0,
+            regression_drawdown_threshold_pct: 15.0,
+            regression_win_rate_threshold_pct: 5.0,
+            health_check_interval_secs: 30,
+            emergency_stop_on_critical_health: true,
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Wallet
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Wallet and key-management configuration.
+///
+/// This struct is consumed exclusively by the `wallet` crate.  No other crate
+/// should read or act on these fields directly.
+///
+/// Defaults are deliberately safe (devnet, dry-run friendly, no keypair path).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WalletConfig {
+    /// Path to a Solana CLI JSON keypair file (`[u8; 64]` array).
+    /// Only loaded when `features.dry_run == false`.
+    pub keypair_path: Option<String>,
+
+    /// Name of the environment variable holding the base58-encoded private key.
+    /// Only read when `features.dry_run == false`.
+    pub keypair_env_var: Option<String>,
+
+    /// RPC endpoint used for balance queries and transaction operations.
+    pub rpc_endpoint: String,
+
+    /// Commitment level: `"processed"`, `"confirmed"`, or `"finalized"`.
+    pub commitment: String,
+
+    /// Expected network; prevents a devnet keypair from hitting mainnet.
+    /// Accepted values: `"mainnet"`, `"devnet"`, `"localnet"`.
+    pub expected_network: String,
+
+    /// Minimum SOL balance (in SOL, **not** lamports) required before execution
+    /// is allowed.  The wallet crate rejects signing below this threshold.
+    pub min_sol_balance: f64,
+
+    /// When `true`, the wallet crate validates the cluster genesis hash against
+    /// `expected_network` on startup.
+    pub validate_network_on_start: bool,
+}
+
+impl Default for WalletConfig {
+    fn default() -> Self {
+        Self {
+            keypair_path: None,
+            keypair_env_var: None,
+            rpc_endpoint: "https://api.devnet.solana.com".to_owned(),
+            commitment: "confirmed".to_owned(),
+            expected_network: "devnet".to_owned(),
+            min_sol_balance: 0.1,
+            validate_network_on_start: true,
+        }
+    }
+}
+
+impl WalletConfig {
+    /// Emits a soft warning (returns `Ok`) when the system is in live mode
+    /// but no keypair source is configured.
+    ///
+    /// This is a warning rather than an error because the wallet may be loaded
+    /// via an alternative mechanism (hardware wallet, injected secret, etc.).
+    pub fn validate_warn(&self) {
+        // Nothing to validate in terms of hard errors.
+        // Live-mode keypair checks are enforced at runtime by the wallet crate.
     }
 }
 

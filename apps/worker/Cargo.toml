@@ -9,8 +9,22 @@ name = "worker"
 path = "src/main.rs"
 
 [dependencies]
-config = { path = "../../crates/config" }
-engine = { path = "../../crates/engine" }
-tokio = { version = "1.52.3", features = ["full"] }
-tracing = "0.1.44"
+# ── Workspace crates ──────────────────────────────────────────────────────────
+config  = { path = "../../crates/config" }
+common  = { path = "../../crates/common" }
+events  = { path = "../../crates/events" }
+signals = { path = "../../crates/signals" }
+scalper = { path = "../../crates/scalper" }
+
+# ── Async runtime ──────────────────────────────────────────────────────────────
+tokio      = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7" }
+
+
+# ── Observability ──────────────────────────────────────────────────────────────
+tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# ── Future integrations (uncomment when crate is ready) ───────────────────────
+# scalper     = { path = "../../crates/scalper" }
+# control-api = { path = "../../apps/control-api" }

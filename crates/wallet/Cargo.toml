@@ -1,0 +1,28 @@
+[package]
+name = "wallet"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+config      = { path = "../config" }
+tracing     = "0.1"
+thiserror   = { workspace = true }
+serde       = { workspace = true }
+serde_json  = "1"
+zeroize     = "1"
+bs58        = "0.5"
+
+# solana-sdk: bare minimum — no borsh, no frozen-abi, no heavy feature flags.
+# default-features = false keeps the dependency tree minimal and avoids the
+# indexmap 2.14+ → edition2024 requirement that breaks Cargo 1.83.
+solana-sdk = { version = "1.18", default-features = false }
+
+# Use reqwest instead of solana-client to avoid solana-client's heavy dep tree.
+reqwest = { version = "0.12", features = ["json"] }
+
+tokio = { version = "1", features = ["full"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio    = { version = "1", features = ["full", "test-util"] }
