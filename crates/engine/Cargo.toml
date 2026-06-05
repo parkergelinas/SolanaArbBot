@@ -9,6 +9,8 @@ accounts = { path = "../accounts" }
 common = { path = "../common" }
 decoder = { path = "../decoder" }
 execution = { path = "../execution" }
+config = { path = "../config" }
+crossbeam-channel = "0.5"
 graph = { path = "../graph" }
 pricing = { path = "../pricing" }
 risk = { path = "../risk" }

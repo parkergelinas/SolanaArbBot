@@ -1,0 +1,26 @@
+name: Generate Changelog
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - main
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+      - name: Run changelog generator
+        run: |
+          python scripts/generate_changelog.py --output docs/CHANGELOG.md || true
+      - name: Commit changelog
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/CHANGELOG.md || true
+          git commit -m "chore: update CHANGELOG.md" || echo "no changes"
+          git push || echo "push failed"

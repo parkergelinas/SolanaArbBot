@@ -32,9 +32,13 @@ members = [
     "crates/risk_engine",
     "crates/position",
 
+    # ── Orchestration layer ────────────────────────────────────────────────
+    "crates/orchestrator",
+
     # ── Application binaries ───────────────────────────────────────────────
     "apps/worker",
     "apps/control-api",
+    "apps/hotpath",
 ]
 
 [workspace.package]

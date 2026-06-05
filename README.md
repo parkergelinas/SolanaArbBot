@@ -48,3 +48,11 @@ MIT
 ## Contributing
 
 See `AGENTS.md` for guidance on working with AI agents in this repository.
+
+Changelog automation
+--------------------
+
+- Use `scripts/generate_changelog.py` to append a new changelog entry from git commits.
+	- Default: uses latest tag as starting point. Call with `--since-tag` to override.
+- A GitHub Actions workflow `.github/workflows/generate-changelog.yml` runs on `push` and
+	can be triggered manually via `workflow_dispatch`.

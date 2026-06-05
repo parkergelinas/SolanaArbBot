@@ -17,12 +17,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use clap::Parser;
-use config::ConfigHandle;
+use config::{ConfigHandle, SystemConfig};
 use events::{EventBus, EventSubscriber, MarketEvent, PoolUpdate, SwapEvent};
 use common::Pubkey;
-use scalper::{EvaluationResult, ScalpEngine};
-use signals::{SignalEngine, SignalInput, SignalReceiver};
+use scalper::ScalpEngine;
+use signals::{ComputedFeatures, SignalEngine, SignalInput, SignalReceiver};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
@@ -31,7 +30,13 @@ use tracing::{info, warn};
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Pipeline run mode.
-#[derive(Debug, Clone, PartialEq, clap::ValueEnum)]
+///
+/// ```text
+/// cargo run --bin worker -- --mode paper
+/// cargo run --bin worker -- --mode backtest
+/// cargo run --bin worker -- --mode live --enable-live   # always rejected
+/// ```
+#[derive(Debug, Clone, PartialEq)]
 enum RunMode {
     /// Synthetic market events, no real RPC, no trades submitted.
     Paper,
@@ -41,25 +46,81 @@ enum RunMode {
     Live,
 }
 
-#[derive(Parser, Debug)]
-#[command(
-    name    = "worker",
-    about   = "Solana quant trading system — production runtime orchestrator",
-    version
-)]
+impl std::str::FromStr for RunMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "paper"    => Ok(RunMode::Paper),
+            "backtest" => Ok(RunMode::Backtest),
+            "live"     => Ok(RunMode::Live),
+            other      => Err(format!("unknown run mode '{other}'. valid: paper, backtest, live")),
+        }
+    }
+}
+
+/// Parsed CLI arguments.
+#[derive(Debug)]
 struct Cli {
-    /// Run mode: paper (default), backtest, or live.
-    #[arg(long, value_enum, default_value = "paper")]
-    mode: RunMode,
-
-    /// Optional path to a TOML config file.
-    /// Falls back to `SOLANA_ARB_CONFIG` env var, then `./config.toml`.
-    #[arg(long)]
-    config: Option<std::path::PathBuf>,
-
-    /// Must be set when `--mode live`. Absent in live mode → immediate exit(1).
-    #[arg(long, default_value_t = false)]
+    mode:        RunMode,
+    config:      Option<std::path::PathBuf>,
     enable_live: bool,
+}
+
+impl Cli {
+    /// Parses `std::env::args()` into a [`Cli`].
+    ///
+    /// Supported flags:
+    /// * `--mode <paper|backtest|live>` (default: paper)
+    /// * `--config <path>`
+    /// * `--enable-live`
+    /// * `--help` / `-h`
+    fn parse() -> Self {
+        let args: Vec<String> = std::env::args().skip(1).collect();
+
+        if args.iter().any(|a| a == "--help" || a == "-h") {
+            println!(
+                "usage: worker [--mode paper|backtest|live] [--config <path>] [--enable-live]"
+            );
+            std::process::exit(0);
+        }
+
+        let mut mode        = RunMode::Paper;
+        let mut config      = None;
+        let mut enable_live = false;
+        let mut i           = 0_usize;
+
+        while i < args.len() {
+            match args[i].as_str() {
+                "--mode" => {
+                    i += 1;
+                    let raw = args.get(i).map(String::as_str).unwrap_or("");
+                    mode = raw.parse().unwrap_or_else(|e| {
+                        eprintln!("ERROR: {e}");
+                        std::process::exit(1);
+                    });
+                }
+                "--config" => {
+                    i += 1;
+                    let raw = args.get(i).unwrap_or_else(|| {
+                        eprintln!("ERROR: --config requires a path argument");
+                        std::process::exit(1);
+                    });
+                    config = Some(std::path::PathBuf::from(raw));
+                }
+                "--enable-live" => {
+                    enable_live = true;
+                }
+                other => {
+                    eprintln!("ERROR: unknown argument '{other}'");
+                    std::process::exit(1);
+                }
+            }
+            i += 1;
+        }
+
+        Self { mode, config, enable_live }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -176,6 +237,8 @@ async fn main() {
     task_handles.push(("scalper", tokio::spawn(run_scalper(
         signal_rx,
         Arc::clone(&scalp_engine),
+        Arc::clone(&signal_engine),
+        Arc::clone(&config),
         shutdown.clone(),
         Arc::clone(&trades_evaluated),
         Arc::clone(&trades_rejected),
@@ -374,6 +437,8 @@ async fn run_signal_processing(
 async fn run_scalper(
     signal_rx:        SignalReceiver,
     scalp_engine:     Arc<ScalpEngine>,
+    signal_engine:    Arc<SignalEngine>,
+    config:           Arc<SystemConfig>,
     shutdown:         CancellationToken,
     trades_evaluated: Arc<AtomicU64>,
     trades_rejected:  Arc<AtomicU64>,
@@ -387,27 +452,31 @@ async fn run_scalper(
                 Ok(signal) => {
                     trades_evaluated.fetch_add(1, Ordering::Relaxed);
 
-                    match scalp_engine.evaluate(&signal) {
-                        EvaluationResult::Accept { expected_profit_bps } => {
+                    let now_micros  = unix_now_micros();
+
+                    // Compute feature snapshot for this pool from the shared feature store.
+                    let features: ComputedFeatures = signal_engine
+                        .feature_store()
+                        .compute(signal.pool_address, now_micros, &config.signal_engine);
+
+                    // Synthetic pool TVL: use configured minimum liquidity as a proxy.
+                    // Real TVL will come from the ingestion layer in a future phase.
+                    let pool_tvl_usd = config.risk.min_liquidity_usd.max(10_000.0);
+
+                    match scalp_engine.evaluate(signal, features, pool_tvl_usd, now_micros) {
+                        Some(result) => {
                             tracing::debug!(
-                                subsystem            = "scalper",
-                                signal_type          = %signal.signal_type,
-                                direction            = %signal.direction,
-                                strength             = signal.strength,
-                                expected_profit_bps,
-                                "trade ACCEPTED — paper mode: no on-chain submission"
+                                subsystem = "scalper",
+                                pnl_bps   = result.pnl_bps,
+                                "paper fill executed — no on-chain submission in paper mode"
                             );
-                            // Not rejected — trade would be accepted in live mode.
                         }
-                        EvaluationResult::Reject { reason } => {
-                            tracing::debug!(
-                                subsystem   = "scalper",
-                                signal_type = %signal.signal_type,
-                                direction   = %signal.direction,
-                                reason,
-                                "trade REJECTED"
-                            );
+                        None => {
                             trades_rejected.fetch_add(1, Ordering::Relaxed);
+                            tracing::debug!(
+                                subsystem = "scalper",
+                                "trade rejected by filter chain"
+                            );
                         }
                     }
                 }
@@ -423,6 +492,17 @@ async fn run_scalper(
             _ = tokio::time::sleep(Duration::from_millis(10)) => {}
         }
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Time helper
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn unix_now_micros() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| u64::try_from(d.as_micros()).unwrap_or(u64::MAX))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

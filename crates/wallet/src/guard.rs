@@ -1,7 +1,5 @@
-//! Safety guards enforced before any signing or live-execution operation.
-//!
-//! Every signing code path MUST call [`require_live_mode`] as its first
-//! statement.  The other guards are called where appropriate.
+//! Safety guards that MUST be called before any signing or live-execution
+//! operation.
 
 use config::SystemConfig;
 
@@ -11,7 +9,7 @@ use crate::rpc::Network;
 
 /// Rejects the operation when the system is in paper/dry-run mode.
 ///
-/// Must be the first call inside every signing operation.
+/// Must be the first call inside every signing code path.
 pub fn require_live_mode(cfg: &SystemConfig) -> WalletResult<()> {
     if cfg.features.dry_run {
         return Err(WalletError::PaperMode);
@@ -20,7 +18,7 @@ pub fn require_live_mode(cfg: &SystemConfig) -> WalletResult<()> {
 }
 
 /// Rejects the operation when the detected cluster does not match the expected
-/// cluster, preventing a devnet keypair from accidentally hitting mainnet.
+/// cluster, preventing a devnet keypair from hitting mainnet.
 ///
 /// `config_endpoint` is included in the error for operator visibility.
 pub fn require_network_match(
@@ -30,8 +28,8 @@ pub fn require_network_match(
 ) -> WalletResult<()> {
     if detected_network != expected {
         return Err(WalletError::NetworkMismatch {
-            expected: format!("{:?}", expected),
-            detected: format!("{:?}", detected_network),
+            expected: format!("{expected:?}"),
+            detected: format!("{detected_network:?}"),
             endpoint: config_endpoint.to_string(),
         });
     }

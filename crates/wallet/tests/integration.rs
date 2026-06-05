@@ -18,7 +18,7 @@ use wallet::{
 fn test_paper_mode_blocks_wallet_load() {
     // Default config has dry_run = true.
     let cfg = SystemConfig::default();
-    assert!(cfg.features.dry_run, "precondition: default config must be dry_run=true");
+    assert!(cfg.features.dry_run, "precondition: default must be dry_run=true");
 
     let result = WalletKeypair::load_from_file("/any/path/keypair.json", &cfg);
     assert!(
@@ -88,12 +88,9 @@ fn test_paper_sentinel_is_marked_as_paper() {
 #[test]
 #[should_panic(expected = "paper mode")]
 fn test_paper_sentinel_cannot_sign() {
-    use solana_sdk::hash::Hash;
-
     let sentinel = WalletKeypair::paper_sentinel();
-    // Any attempt to sign with the sentinel must panic.
-    let mut tx = solana_sdk::transaction::Transaction::default();
-    let _ = sentinel.sign_transaction(&mut tx, Hash::default());
+    // sign_message panics when is_paper == true.
+    let _ = sentinel.sign_message(b"test transaction data");
 }
 
 // ── BalanceReport structural test ─────────────────────────────────────────
@@ -132,7 +129,7 @@ fn test_network_mismatch_guard() {
 }
 
 #[test]
-fn test_network_match_guard_passes_on_match() {
+fn test_network_match_guard_passes() {
     let result = require_network_match(
         "https://api.devnet.solana.com",
         Network::Devnet,
@@ -150,8 +147,10 @@ fn test_insufficient_balance_guard() {
         is_sufficient: false,
         last_updated_micros: 0,
     };
-    let result = require_sufficient_balance(&report);
-    assert!(matches!(result, Err(WalletError::InsufficientBalance { .. })));
+    assert!(matches!(
+        require_sufficient_balance(&report),
+        Err(WalletError::InsufficientBalance { .. })
+    ));
 }
 
 #[test]
@@ -173,15 +172,15 @@ fn test_sufficient_balance_guard_passes() {
 async fn test_devnet_balance_fetch() {
     use std::sync::Arc;
     use wallet::RpcClientWrapper;
+    use common::Pubkey;
 
     let rpc = Arc::new(
         RpcClientWrapper::new("https://api.devnet.solana.com", "confirmed")
             .expect("build rpc"),
     );
 
-    // System program account always exists on devnet.
-    let pubkey = solana_sdk::pubkey::Pubkey::default();
+    // System program (all-zeroes pubkey) always exists on devnet.
+    let pubkey = Pubkey::new([0u8; 32]);
     let lamports = rpc.get_balance(&pubkey).await.expect("get_balance");
-    // System program holds 1 SOL on devnet, but we just check the call succeeds.
-    let _ = lamports;
+    let _ = lamports; // Just verify the RPC call succeeds without panicking.
 }

@@ -76,6 +76,10 @@ pub struct SystemConfig {
     /// Governance and orchestration layer settings.
     #[serde(default)]
     pub orchestrator: OrchestratorConfig,
+
+    /// Ultra low-latency hot-path engine parameters.
+    #[serde(default)]
+    pub hotpath: HotPathConfig,
 }
 
 impl Default for SystemConfig {
@@ -95,6 +99,7 @@ impl Default for SystemConfig {
             scalper: ScalerConfig::default(),
             wallet: WalletConfig::default(),
             orchestrator: OrchestratorConfig::default(),
+            hotpath: HotPathConfig::default(),
         }
     }
 }
@@ -117,6 +122,7 @@ impl SystemConfig {
         // wallet.validate() is intentionally a soft warning: missing keypair
         // config is permitted in dry_run mode and by alternative loaders.
         self.wallet.validate_warn();
+        self.hotpath.validate()?;
         Ok(())
     }
 }
@@ -952,6 +958,77 @@ impl Default for OrchestratorConfig {
             health_check_interval_secs: 30,
             emergency_stop_on_critical_health: true,
         }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hot-path engine
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Configuration for the ultra low-latency synchronous execution pipeline.
+///
+/// All thresholds are loaded once at startup and copied into precomputed
+/// fixed-point tables — no parsing or allocation occurs in the hot loop.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HotPathConfig {
+    /// Maximum number of pool slots in the in-memory state table.
+    pub max_pools: usize,
+    /// Target decision latency budget in microseconds (design target: 50_000).
+    pub decision_budget_us: u64,
+    /// Minimum net edge in basis points to emit an execution intent.
+    pub min_edge_bps: u32,
+    /// Maximum one-leg slippage in basis points before rejection.
+    pub max_slippage_bps: u32,
+    /// Minimum pool liquidity (USD, fixed-point ×100) for trade eligibility.
+    pub min_liquidity_usd_x100: u64,
+    /// Momentum signal: minimum volume acceleration ratio (×1000).
+    pub momentum_accel_threshold_x1000: u32,
+    /// Signal minimum strength (0–1000 maps to 0.0–1.0).
+    pub min_signal_strength_x1000: u32,
+    /// Prefer Jito bundle submission when `true`.
+    pub prefer_jito: bool,
+    /// Maximum Jito tip in lamports.
+    pub max_jito_tip_lamports: u64,
+    /// Allow direct RPC fallback when Jito is unavailable.
+    pub allow_direct_rpc_fallback: bool,
+    /// Size of the cold-path execution queue (preallocated SPSC).
+    pub execution_queue_capacity: usize,
+    /// Paper mode — no network submission (default `true`).
+    pub paper_mode: bool,
+}
+
+impl Default for HotPathConfig {
+    fn default() -> Self {
+        Self {
+            max_pools: 128,
+            decision_budget_us: 50_000,
+            min_edge_bps: 20,
+            max_slippage_bps: 50,
+            min_liquidity_usd_x100: 100_000_00, // $100k
+            momentum_accel_threshold_x1000: 1100, // 1.1×
+            min_signal_strength_x1000: 400,
+            prefer_jito: true,
+            max_jito_tip_lamports: 50_000,
+            allow_direct_rpc_fallback: true,
+            execution_queue_capacity: 256,
+            paper_mode: true,
+        }
+    }
+}
+
+impl HotPathConfig {
+    /// Validates hot-path configuration invariants.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.max_pools == 0 || self.max_pools > 512 {
+            return Err("hotpath.max_pools must be in 1..=512".into());
+        }
+        if self.decision_budget_us == 0 {
+            return Err("hotpath.decision_budget_us must be > 0".into());
+        }
+        if self.execution_queue_capacity == 0 {
+            return Err("hotpath.execution_queue_capacity must be > 0".into());
+        }
+        Ok(())
     }
 }
 

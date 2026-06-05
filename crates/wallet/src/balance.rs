@@ -4,11 +4,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use solana_sdk::pubkey::Pubkey;
+use common::Pubkey;
 use tokio::sync::RwLock;
 
 use crate::config::WalletConfig;
-use crate::error::{WalletError, WalletResult};
+use crate::error::WalletResult;
 use crate::rpc::RpcClientWrapper;
 
 const LAMPORTS_PER_SOL: f64 = 1_000_000_000.0;
@@ -68,7 +68,7 @@ impl BalanceMonitor {
         let sol = lamports_to_sol(lamports);
         *self.sol_balance.write().await = sol;
         tracing::debug!(
-            pubkey = %self.pubkey,
+            pubkey = %bs58::encode(self.pubkey.as_bytes()).into_string(),
             sol_balance = sol,
             "SOL balance refreshed"
         );
@@ -76,7 +76,7 @@ impl BalanceMonitor {
     }
 
     /// Returns the last-cached SOL balance without triggering an RPC call.
-    /// Returns `0.0` if the lock cannot be acquired non-blockingly.
+    /// Returns `0.0` if the lock is currently held by a writer.
     pub fn sol_balance_cached(&self) -> f64 {
         self.sol_balance
             .try_read()
@@ -84,8 +84,7 @@ impl BalanceMonitor {
             .unwrap_or(0.0)
     }
 
-    /// Returns `true` when the current cached SOL balance meets the configured
-    /// minimum.  Reads from the async lock; call from an async context.
+    /// Returns `true` when the cached SOL balance meets the configured minimum.
     pub async fn has_sufficient_sol(&self) -> bool {
         let balance = *self.sol_balance.read().await;
         balance >= self.min_sol_balance
@@ -100,7 +99,7 @@ impl BalanceMonitor {
             .as_micros() as u64;
 
         BalanceReport {
-            pubkey: self.pubkey.to_string(),
+            pubkey: bs58::encode(self.pubkey.as_bytes()).into_string(),
             sol_balance,
             sol_minimum: self.min_sol_balance,
             is_sufficient: sol_balance >= self.min_sol_balance,
@@ -117,7 +116,10 @@ impl BalanceMonitor {
 impl std::fmt::Debug for BalanceMonitor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BalanceMonitor")
-            .field("pubkey", &self.pubkey.to_string())
+            .field(
+                "pubkey",
+                &bs58::encode(self.pubkey.as_bytes()).into_string(),
+            )
             .field("min_sol_balance", &self.min_sol_balance)
             .finish_non_exhaustive()
     }

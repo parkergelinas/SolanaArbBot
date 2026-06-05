@@ -1,4 +1,6 @@
-use dashmap::DashMap;
+use std::collections::HashMap;
+use std::sync::RwLock;
+
 use serde::{Deserialize, Serialize};
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -133,22 +135,22 @@ pub enum SubsystemStatus {
 
 /// Concurrent registry tracking the live status of every subsystem.
 pub struct SubsystemRegistry {
-    states: DashMap<SubsystemId, SubsystemStatus>,
+    states: RwLock<HashMap<SubsystemId, SubsystemStatus>>,
 }
 
 impl SubsystemRegistry {
     pub fn new() -> Self {
         Self {
-            states: DashMap::new(),
+            states: RwLock::new(HashMap::new()),
         }
     }
 
     pub fn mark_starting(&self, id: SubsystemId) {
-        self.states.insert(id, SubsystemStatus::Starting);
+        self.states.write().unwrap().insert(id, SubsystemStatus::Starting);
     }
 
     pub fn mark_running(&self, id: SubsystemId) {
-        self.states.insert(
+        self.states.write().unwrap().insert(
             id,
             SubsystemStatus::Running {
                 since_micros: crate::now_micros(),
@@ -157,11 +159,11 @@ impl SubsystemRegistry {
     }
 
     pub fn mark_failed(&self, id: SubsystemId, reason: String) {
-        self.states.insert(id, SubsystemStatus::Failed { reason });
+        self.states.write().unwrap().insert(id, SubsystemStatus::Failed { reason });
     }
 
     pub fn mark_stopped(&self, id: SubsystemId) {
-        self.states.insert(id, SubsystemStatus::Stopped);
+        self.states.write().unwrap().insert(id, SubsystemStatus::Stopped);
     }
 
     /// Returns `true` only when all pipeline-critical subsystems are `Running`.
@@ -171,18 +173,21 @@ impl SubsystemRegistry {
             SubsystemId::SignalEngine,
             SubsystemId::ExecutionEngine,
         ];
+        let guard = self.states.read().unwrap();
         critical.iter().all(|id| {
-            self.states
+            guard
                 .get(id)
-                .map_or(false, |s| matches!(*s, SubsystemStatus::Running { .. }))
+                .map_or(false, |s| matches!(s, SubsystemStatus::Running { .. }))
         })
     }
 
     /// Snapshot of all registered subsystem statuses.
     pub fn status_report(&self) -> Vec<(SubsystemId, SubsystemStatus)> {
         self.states
+            .read()
+            .unwrap()
             .iter()
-            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .map(|(k, v)| (k.clone(), v.clone()))
             .collect()
     }
 }

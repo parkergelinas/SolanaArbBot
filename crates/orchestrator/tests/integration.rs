@@ -5,7 +5,7 @@ use orchestrator::{
     ArchitectureValidator, ExecutionApprovalRequest, ExecutionGate, GateRejectionReason,
     HealthStatus, MetricsSnapshot, Orchestrator, RegressionChecker, RegressionThresholds,
     RegressionVerdict, RiskState, RunMode, StateHandle, SubsystemId, SystemState,
-    canonical_dependency_graph, validate_startup_sequence,
+    validate_startup_sequence,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
