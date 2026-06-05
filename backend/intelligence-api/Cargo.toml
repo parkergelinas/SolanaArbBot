@@ -1,0 +1,23 @@
+[package]
+name        = "intelligence-api"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+description = "Real-time Solana whale detection + wallet tracking WS broker"
+
+[[bin]]
+name = "intelligence-api"
+path = "src/main.rs"
+
+[dependencies]
+data-layer  = { path = "../data-layer" }
+axum        = { version = "0.7", features = ["ws", "macros"] }
+tower-http  = { version = "0.5", features = ["cors", "trace"] }
+tokio       = { version = "1", features = ["full"] }
+serde       = { workspace = true }
+serde_json  = "1"
+dashmap     = "6.2.1"
+crossbeam-channel = "0.5"
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"

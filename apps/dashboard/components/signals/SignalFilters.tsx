@@ -1,7 +1,6 @@
 'use client';
 
 import type { SignalFilterDirection, SignalFilterType, SignalSortKey } from '@/lib/signals';
-import type { Direction, SignalType } from '@/lib/types';
 
 const TYPES: SignalFilterType[] = ['All', 'WhaleFlow', 'SmartMoney', 'Momentum'];
 const DIRECTIONS: SignalFilterDirection[] = ['All', 'Long', 'Short', 'Neutral'];

@@ -13,7 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <html lang="en">
-      <body className="flex h-screen overflow-hidden bg-slate-900 text-slate-100">
+      <body className="flex h-screen overflow-hidden bg-platform-bg text-slate-100">
         <WebSocketProvider url={wsUrl}>
           <Navigation />
           <main className="app-main flex-1 flex flex-col min-h-0 overflow-hidden p-6">{children}</main>

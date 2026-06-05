@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://solana-arb.local/contracts/intelligence/v1",
+  "title": "IntelligenceBatch",
+  "type": "object",
+  "required": ["v", "type", "seq", "ts_ms", "messages"],
+  "properties": {
+    "v": { "const": 1 },
+    "type": { "const": "batch" },
+    "seq": { "type": "integer", "minimum": 0 },
+    "ts_ms": { "type": "integer", "minimum": 0 },
+    "messages": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/IntelligenceMessage" }
+    }
+  },
+  "definitions": {
+    "IntelligenceMessage": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "payload"],
+          "properties": {
+            "type": { "const": "transaction" },
+            "payload": { "$ref": "#/definitions/TransactionEvent" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "payload"],
+          "properties": {
+            "type": { "const": "whale_alert" },
+            "payload": { "$ref": "#/definitions/WhaleAlert" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "payload"],
+          "properties": {
+            "type": { "const": "wallet_snapshot" },
+            "payload": { "$ref": "#/definitions/WalletSnapshot" }
+          }
+        }
+      ]
+    },
+    "TransactionEvent": {
+      "type": "object",
+      "required": [
+        "v", "signature", "dex", "wallet", "token_in", "token_out",
+        "amount_in", "amount_out", "notional_usd", "side", "slot", "timestamp_ms"
+      ],
+      "properties": {
+        "v": { "const": 1 },
+        "signature": { "type": "string" },
+        "dex": { "enum": ["raydium", "orca", "jupiter"] },
+        "wallet": { "type": "string" },
+        "token_in": { "type": "string" },
+        "token_out": { "type": "string" },
+        "amount_in": { "type": "string" },
+        "amount_out": { "type": "string" },
+        "notional_usd": { "type": "number", "minimum": 0 },
+        "side": { "enum": ["buy", "sell"] },
+        "slot": { "type": "integer" },
+        "timestamp_ms": { "type": "integer" }
+      }
+    },
+    "WhaleAlert": {
+      "type": "object",
+      "required": [
+        "v", "alert_id", "signature", "wallet", "mint", "dex",
+        "notional_usd", "side", "strength", "confidence", "tier", "timestamp_ms"
+      ],
+      "properties": {
+        "v": { "const": 1 },
+        "alert_id": { "type": "string" },
+        "signature": { "type": "string" },
+        "wallet": { "type": "string" },
+        "mint": { "type": "string" },
+        "dex": { "enum": ["raydium", "orca", "jupiter"] },
+        "notional_usd": { "type": "number" },
+        "side": { "enum": ["buy", "sell"] },
+        "strength": { "type": "number", "minimum": 0, "maximum": 1 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "tier": { "enum": ["whale", "smart", "active", "retail"] },
+        "timestamp_ms": { "type": "integer" },
+        "detail": { "type": "string" }
+      }
+    },
+    "WalletSnapshot": {
+      "type": "object",
+      "required": [
+        "v", "wallet", "tier", "swap_count", "volume_usd_24h",
+        "net_flow_usd", "win_proxy", "last_mint", "last_side",
+        "last_notional_usd", "timestamp_ms"
+      ],
+      "properties": {
+        "v": { "const": 1 },
+        "wallet": { "type": "string" },
+        "tier": { "enum": ["whale", "smart", "active", "retail"] },
+        "swap_count": { "type": "integer" },
+        "volume_usd_24h": { "type": "number" },
+        "net_flow_usd": { "type": "number" },
+        "win_proxy": { "type": "number" },
+        "last_mint": { "type": "string" },
+        "last_side": { "enum": ["buy", "sell"] },
+        "last_notional_usd": { "type": "number" },
+        "timestamp_ms": { "type": "integer" }
+      }
+    }
+  }
+}
