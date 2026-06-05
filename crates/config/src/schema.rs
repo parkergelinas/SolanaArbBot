@@ -57,6 +57,10 @@ pub struct SystemConfig {
     /// Observability / metrics settings.
     #[serde(default)]
     pub monitoring: MonitoringConfig,
+
+    /// Signal engine detection and filtering parameters.
+    #[serde(default)]
+    pub signal_engine: SignalEngineConfig,
 }
 
 impl Default for SystemConfig {
@@ -72,6 +76,7 @@ impl Default for SystemConfig {
             pipeline: PipelineConfig::default(),
             portfolio: PortfolioConfig::default(),
             monitoring: MonitoringConfig::default(),
+            signal_engine: SignalEngineConfig::default(),
         }
     }
 }
@@ -89,6 +94,7 @@ impl SystemConfig {
         self.ingestion.validate()?;
         self.pipeline.validate()?;
         self.portfolio.validate()?;
+        self.signal_engine.validate()?;
         Ok(())
     }
 }
@@ -682,6 +688,92 @@ impl Default for MonitoringConfig {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Signal Engine
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Configuration for the modular signal detection engine.
+///
+/// All thresholds that control signal generation and filtering live here.
+/// No processor may hardcode any numeric threshold.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignalEngineConfig {
+    /// Minimum USD swap amount that classifies an event as whale activity.
+    pub whale_threshold_usd: f64,
+
+    /// Rolling window length in seconds used for momentum calculations.
+    pub momentum_window_secs: u64,
+
+    /// Minimum wallet profitability score (0.0–1.0) to qualify as smart money.
+    pub smart_money_min_score: f64,
+
+    /// Minimum signal strength (0.0–1.0) for a signal to pass the aggregator.
+    pub signal_min_strength: f64,
+
+    /// Minimum signal confidence (0.0–1.0) for a signal to pass the aggregator.
+    pub signal_min_confidence: f64,
+
+    /// Per-pool cooldown in seconds; a pool cannot emit two signals within this window.
+    pub cooldown_secs: u64,
+
+    /// Maximum age in seconds of feature-store entries before they are pruned.
+    pub feature_store_max_age_secs: u64,
+
+    /// Crossbeam channel capacity for the outbound signal bus.
+    pub signal_channel_capacity: usize,
+}
+
+impl Default for SignalEngineConfig {
+    fn default() -> Self {
+        Self {
+            whale_threshold_usd: 10_000.0,
+            momentum_window_secs: 60,
+            smart_money_min_score: 0.70,
+            signal_min_strength: 0.30,
+            signal_min_confidence: 0.40,
+            cooldown_secs: 30,
+            feature_store_max_age_secs: 300,
+            signal_channel_capacity: 1_024,
+        }
+    }
+}
+
+impl SignalEngineConfig {
+    fn validate(&self) -> Result<(), String> {
+        if self.whale_threshold_usd <= 0.0 {
+            return Err(
+                "signal_engine.whale_threshold_usd must be positive".to_owned()
+            );
+        }
+        if self.momentum_window_secs == 0 {
+            return Err(
+                "signal_engine.momentum_window_secs must be greater than zero".to_owned()
+            );
+        }
+        if !(0.0..=1.0).contains(&self.smart_money_min_score) {
+            return Err(
+                "signal_engine.smart_money_min_score must be in [0.0, 1.0]".to_owned()
+            );
+        }
+        if !(0.0..=1.0).contains(&self.signal_min_strength) {
+            return Err(
+                "signal_engine.signal_min_strength must be in [0.0, 1.0]".to_owned()
+            );
+        }
+        if !(0.0..=1.0).contains(&self.signal_min_confidence) {
+            return Err(
+                "signal_engine.signal_min_confidence must be in [0.0, 1.0]".to_owned()
+            );
+        }
+        if self.signal_channel_capacity == 0 {
+            return Err(
+                "signal_engine.signal_channel_capacity must be greater than zero".to_owned()
+            );
+        }
+        Ok(())
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Tests
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -771,5 +863,26 @@ mod tests {
             cfg.event_timeout().as_millis(),
             u128::from(cfg.event_timeout_ms)
         );
+    }
+
+    #[test]
+    fn signal_engine_config_defaults_are_valid() {
+        SignalEngineConfig::default()
+            .validate()
+            .expect("default signal_engine config is valid");
+    }
+
+    #[test]
+    fn signal_engine_config_rejects_zero_threshold() {
+        let mut cfg = SignalEngineConfig::default();
+        cfg.whale_threshold_usd = 0.0;
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn signal_engine_config_rejects_out_of_range_strength() {
+        let mut cfg = SignalEngineConfig::default();
+        cfg.signal_min_strength = 1.5;
+        assert!(cfg.validate().is_err());
     }
 }

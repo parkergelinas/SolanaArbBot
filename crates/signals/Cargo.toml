@@ -1,0 +1,16 @@
+[package]
+name = "signals"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+common  = { path = "../common" }
+config  = { path = "../config" }
+
+crossbeam-channel = "0.5"
+dashmap           = "6.2.1"
+tracing           = "0.1"
+
+[dev-dependencies]
+# No external dev-deps: all tests use deterministic synthetic data.

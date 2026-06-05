@@ -49,7 +49,8 @@ pub mod schema;
 pub use loader::ConfigHandle;
 pub use schema::{
     ExecutionConfig, FeatureFlags, IngestionConfig, MonitoringConfig, PipelineConfig,
-    PortfolioConfig, RetryConfig, RiskConfig, RpcConfig, SystemConfig, WebSocketConfig,
+    PortfolioConfig, RetryConfig, RiskConfig, RpcConfig, SignalEngineConfig, SystemConfig,
+    WebSocketConfig,
 };
 
 use std::path::PathBuf;
