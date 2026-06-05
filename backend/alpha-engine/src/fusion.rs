@@ -13,7 +13,7 @@ use crate::types::{
 const EMA_ALPHA: f64 = 0.3;
 
 #[derive(Clone, Default)]
-struct TokenState {
+pub(crate) struct TokenState {
     wallet_score: f64,
     wallet_conf: f64,
     wallet_ts: u64,
@@ -46,52 +46,61 @@ impl FusionEngine {
     }
 
     pub fn on_wallet(&self, ws: &WalletScore) {
+        let ts = Self::event_ts(ws.timestamp);
         self.update_token(&ws.token, |s| {
             s.wallet_score = ws.score;
             s.wallet_conf = ws.confidence;
             s.wallet_ts = ws.timestamp;
             s.wallet_id = ws.wallet.clone();
-            s.updated = unix_ms();
+            s.updated = ts;
         });
         self.recompute(&ws.token);
     }
 
     pub fn on_market(&self, ms: &MarketSignal) {
+        let ts = Self::event_ts(ms.timestamp);
         self.update_token(&ms.token, |s| {
             s.momentum = EMA_ALPHA * ms.momentum + (1.0 - EMA_ALPHA) * s.momentum;
             s.volume_spike = ms.volume_spike;
             s.price_change = ms.price_change;
-            s.updated = unix_ms();
+            s.updated = ts;
         });
         self.recompute(&ms.token);
     }
 
     pub fn on_microstructure(&self, ev: &MicrostructureEvent) {
+        let ts = Self::event_ts(ev.timestamp);
         self.update_token(&ev.token, |s| {
             s.imbalance = ev.imbalance;
             s.micro_momentum = ev.momentum;
-            s.updated = unix_ms();
+            s.updated = ts;
         });
         self.recompute(&ev.token);
     }
 
     pub fn on_arb(&self, arb: &ArbSignal) {
         let token = crate::types::token_from_pair(&arb.token_pair);
+        let ts = unix_ms();
         self.update_token(&token, |s| {
             s.arb_spread = arb.spread_pct;
             s.arb_conf = arb.confidence;
-            s.updated = unix_ms();
+            s.updated = ts;
         });
         self.recompute(&token);
     }
 
     pub fn on_liquidity(&self, liq: &LiquiditySnapshot) {
+        let ts = Self::event_ts(liq.timestamp);
         self.update_token(&liq.token, |s| {
             s.liquidity_usd = liq.liquidity_usd;
             s.spread_bps = liq.spread_bps;
-            s.updated = unix_ms();
+            s.updated = ts;
         });
         self.recompute(&liq.token);
+    }
+
+    fn event_ts(ts: u64) -> u64 {
+        if ts == 0 { unix_ms() } else { ts }
     }
 
     fn update_token(&self, token: &str, f: impl FnOnce(&mut TokenState)) {
@@ -103,9 +112,8 @@ impl FusionEngine {
         let Some(s) = self.state.get(token) else {
             return;
         };
-        let now = unix_ms();
-        let fused = fuse_token(&self.config, token, &s, now);
-        self.fused.insert(token.to_string(), fused);
+    let fused = fuse_token(&self.config, token, &s, s.updated);
+    self.fused.insert(token.to_string(), fused);
     }
 
     pub fn get(&self, token: &str) -> Option<FusedFeatureVector> {
@@ -121,7 +129,7 @@ impl FusionEngine {
     }
 }
 
-pub fn fuse_token(
+pub(crate) fn fuse_token(
     config: &AlphaConfig,
     token: &str,
     s: &TokenState,
