@@ -26,6 +26,32 @@ SolanaArbBot/
 | **2 — Frontend** | `apps/dashboard` | `lib/stream-store.ts`, `useSyncExternalStore` hooks |
 | **3 — Contracts** | `shared/contracts` | `types.ts`, `ws-events.schema.json`, this doc |
 
+## Vercel deploy (dashboard)
+
+The live site 404s if Vercel builds from the **repo root** — there is no Next.js app there.
+
+**Required — Vercel Project Settings → General → Root Directory:**
+```
+apps/dashboard
+```
+
+Then **Redeploy** (Deployments → … → Redeploy).
+
+**Environment variables** (Vercel → Settings → Environment Variables):
+
+| Variable | Example | Purpose |
+|----------|---------|---------|
+| `CONTROL_API_URL` | `https://your-vps.example.com` | Server-side proxy for `/api/*` rewrites |
+| `NEXT_PUBLIC_WS_URL` | `wss://your-vps.example.com/ws` | Control-plane WebSocket |
+| `NEXT_PUBLIC_STREAM_URL` | `wss://your-stream.example.com/stream` | Terminal market stream |
+
+Without `CONTROL_API_URL`, the UI shell loads but API calls fail. The Rust backends must run on a VPS — Vercel hosts the Next.js UI only.
+
+```bash
+# Deploy from CLI (after vercel login)
+cd apps/dashboard && vercel --prod
+```
+
 ## Local dev
 
 ```bash
