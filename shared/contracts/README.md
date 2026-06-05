@@ -34,6 +34,12 @@ Every payload includes **`v: 1`**. Breaking changes require `stream/v2.ts` and a
 | **stream-api** | `ws://localhost:8080/stream` | `WSBatchFrame` v1 |
 | control-api | `ws://localhost:3001/ws` | legacy `WsEvent` batch |
 
+## System docs
+
+- [Stream protocol](../../docs/stream_protocol.md)
+- [Latency budget](../../docs/latency_budget.md)
+- [Integration rules](../../docs/integration_rules.md)
+
 ## Sync checklist
 
 1. Edit `shared/contracts/stream/v1.ts` + `schema.v1.json`
