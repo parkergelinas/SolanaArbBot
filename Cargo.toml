@@ -48,6 +48,8 @@ members = [
     "backend/data-layer",
     "backend/intelligence-api",
     "backend/execution-engine",
+    "backend/arb-engine",
+    "backend/alpha-engine",
 ]
 
 [workspace.package]

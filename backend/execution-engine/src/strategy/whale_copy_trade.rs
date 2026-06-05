@@ -19,7 +19,7 @@ impl ExecutionStrategy for WhaleCopyTradeStrategy {
         if signal.confidence < self.min_confidence() {
             return Err(RejectReason::LowConfidence);
         }
-        if !signal.wallet.starts_with("whale_") && signal.size_usd < 50.0 {
+        if signal.size_usd < 25.0 {
             return Err(RejectReason::LowEdge);
         }
         Ok(())
@@ -42,11 +42,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn requires_whale_or_large_size() {
+    fn requires_confidence_and_size() {
         let s = WhaleCopyTradeStrategy;
-        let small = TradeSignal::new("retail", "A", "B", 0.9, 20.0, 10.0, "whale_copy_trade");
+        let small = TradeSignal::new("SOL", "long", 0.9, 20.0, 10.0, "whale_copy_trade");
         assert_eq!(s.validate(&small), Err(RejectReason::LowEdge));
-        let whale = TradeSignal::new("whale_x", "A", "B", 0.9, 20.0, 10.0, "whale_copy_trade");
-        assert!(s.validate(&whale).is_ok());
+        let ok = TradeSignal::new("SOL", "long", 0.9, 20.0, 50.0, "whale_copy_trade");
+        assert!(s.validate(&ok).is_ok());
     }
 }

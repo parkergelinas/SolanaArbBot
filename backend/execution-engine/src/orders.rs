@@ -112,7 +112,7 @@ mod tests {
     #[test]
     fn order_lifecycle_pending_to_confirmed() {
         let store = OrderStore::new();
-        let sig = TradeSignal::new("w", "SOL", "USDC", 0.8, 25.0, 50.0, "scalp");
+        let sig = TradeSignal::new("SOL", "long", 0.8, 25.0, 50.0, "momentum_follow");
         let created = store.create(sig);
         assert_eq!(created.status, OrderStatus::Pending);
 

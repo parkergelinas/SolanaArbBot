@@ -6,12 +6,11 @@ export const EXECUTION_SCHEMA_VERSION = 1;
 
 export interface TradeSignal {
   v: typeof EXECUTION_SCHEMA_VERSION;
-  wallet: string;
-  token_in: string;
-  token_out: string;
+  token: string;
+  direction: 'long' | 'short' | string;
+  size_usd: number;
   confidence: number;
   expected_edge: number;
-  size_usd: number;
   strategy: string;
   timestamp_ms: number;
 }

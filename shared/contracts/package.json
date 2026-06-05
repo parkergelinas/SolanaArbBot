@@ -10,6 +10,8 @@
     "./control": "./types.ts",
     "./stream": "./stream/index.ts",
     "./intelligence": "./intelligence/index.ts",
-    "./execution": "./execution/index.ts"
+    "./execution": "./execution/index.ts",
+    "./arb": "./arb/index.ts",
+    "./alpha": "./alpha/index.ts"
   }
 }

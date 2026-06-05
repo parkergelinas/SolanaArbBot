@@ -1,27 +1,27 @@
-//! Input trade signal model — aligned with `shared/contracts/execution/v1.ts`.
+//! Canonical trade signal — aligned with `shared/contracts/execution/v1.ts`.
 
 use serde::{Deserialize, Serialize};
+
+use crate::config::EngineConfig;
 
 pub const SCHEMA_VERSION: u32 = 1;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct TradeSignal {
     pub v: u32,
-    pub wallet: String,
-    pub token_in: String,
-    pub token_out: String,
+    pub token: String,
+    pub direction: String,
+    pub size_usd: f64,
     pub confidence: f64,
     pub expected_edge: f64,
-    pub size_usd: f64,
     pub strategy: String,
     pub timestamp_ms: u64,
 }
 
 impl TradeSignal {
     pub fn new(
-        wallet: impl Into<String>,
-        token_in: impl Into<String>,
-        token_out: impl Into<String>,
+        token: impl Into<String>,
+        direction: impl Into<String>,
         confidence: f64,
         expected_edge: f64,
         size_usd: f64,
@@ -29,14 +29,26 @@ impl TradeSignal {
     ) -> Self {
         Self {
             v: SCHEMA_VERSION,
-            wallet: wallet.into(),
-            token_in: token_in.into(),
-            token_out: token_out.into(),
+            token: token.into(),
+            direction: direction.into(),
+            size_usd,
             confidence,
             expected_edge,
-            size_usd,
             strategy: strategy.into(),
             timestamp_ms: unix_ms(),
+        }
+    }
+
+    pub fn is_long(&self) -> bool {
+        self.direction.eq_ignore_ascii_case("long")
+    }
+
+    /// Resolve Jupiter swap mints from direction + target token.
+    pub fn resolve_mints(&self, config: &EngineConfig) -> (String, String) {
+        if self.is_long() {
+            (config.quote_mint.clone(), self.token.clone())
+        } else {
+            (self.token.clone(), config.quote_mint.clone())
         }
     }
 }

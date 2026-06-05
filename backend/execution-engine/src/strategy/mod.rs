@@ -58,9 +58,10 @@ pub fn usd_to_lamports(size_usd: f64) -> u64 {
 pub fn adjust_size(signal: &TradeSignal, config: &EngineConfig, slippage_bps: u32) -> SizedOrder {
     let scale = signal.confidence.clamp(0.0, 1.0) * (1.0 + signal.expected_edge / 100.0);
     let size_usd = (signal.size_usd * scale).min(config.max_position_usd);
+    let (input_mint, output_mint) = signal.resolve_mints(config);
     SizedOrder {
-        input_mint: signal.token_in.clone(),
-        output_mint: signal.token_out.clone(),
+        input_mint,
+        output_mint,
         amount_lamports: usd_to_lamports(size_usd),
         size_usd,
         slippage_bps,
