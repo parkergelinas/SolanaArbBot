@@ -12,6 +12,7 @@ mod events;
 mod router;
 mod routes;
 mod state;
+mod stream;
 
 use std::time::Duration;
 
@@ -20,7 +21,12 @@ use tokio::time;
 use tracing::info;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-use crate::{dto::HealthDto, events::WsEvent, state::AppState};
+use crate::{
+    dto::HealthDto,
+    events::WsEvent,
+    routes::portfolio::{build_portfolio_dto, build_risk_dto},
+    state::AppState,
+};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -52,7 +58,13 @@ async fn main() -> anyhow::Result<()> {
                     signals_stored,
                     version: env!("CARGO_PKG_VERSION").to_owned(),
                 };
-                let _ = state.event_tx.send(WsEvent::Health(health));
+                state.emit(WsEvent::Health(health));
+
+                let portfolio = build_portfolio_dto(&state).await;
+                state.emit(WsEvent::Portfolio(portfolio));
+
+                let risk = build_risk_dto(&state).await;
+                state.emit(WsEvent::Risk(risk));
             }
         });
     }

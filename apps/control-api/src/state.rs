@@ -10,9 +10,13 @@ use std::{
 };
 
 use config::SystemConfig;
-use tokio::sync::{broadcast, Mutex, RwLock};
+use tokio::sync::{broadcast, mpsc, Mutex, RwLock};
 
-use crate::{dto::SignalEventDto, events::WsEvent};
+use crate::{
+    dto::SignalEventDto,
+    events::WsEvent,
+    stream::{spawn_batcher, WsBatchFrame},
+};
 
 /// Maximum number of signals retained in the in-memory ring buffer.
 pub const SIGNAL_STORE_CAPACITY: usize = 1_000;
@@ -32,9 +36,11 @@ pub struct AppState {
     /// Live, mutable system configuration.
     pub config: Arc<RwLock<SystemConfig>>,
 
-    /// Broadcast sender for the WebSocket event stream.
-    /// Each WS client subscribes on connect.
-    pub event_tx: broadcast::Sender<WsEvent>,
+    /// Ingress for the stream batcher (all domain events enter here).
+    event_ingress: mpsc::UnboundedSender<WsEvent>,
+
+    /// Batched frames consumed by WebSocket clients.
+    pub batch_tx: broadcast::Sender<WsBatchFrame>,
 
     /// Ring buffer of the most recent signals (newest at the back).
     pub signal_store: Arc<Mutex<VecDeque<SignalEventDto>>>,
@@ -51,10 +57,12 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(config: SystemConfig) -> Self {
-        let (event_tx, _) = broadcast::channel(2_048);
+        let (batch_tx, _) = broadcast::channel(512);
+        let event_ingress = spawn_batcher(batch_tx.clone());
         Self {
             config: Arc::new(RwLock::new(config)),
-            event_tx,
+            event_ingress,
+            batch_tx,
             signal_store: Arc::new(Mutex::new(VecDeque::with_capacity(
                 SIGNAL_STORE_CAPACITY,
             ))),
@@ -78,7 +86,12 @@ impl AppState {
             sys.signals_processed += 1;
             sys.last_signal_ts = Some(dto.timestamp_micros);
         }
-        let _ = self.event_tx.send(WsEvent::Signal(dto));
+        self.emit(WsEvent::Signal(dto));
+    }
+
+    /// Enqueue a domain event for batched WebSocket delivery.
+    pub fn emit(&self, event: WsEvent) {
+        let _ = self.event_ingress.send(event);
     }
 
     /// Returns elapsed uptime in whole seconds.

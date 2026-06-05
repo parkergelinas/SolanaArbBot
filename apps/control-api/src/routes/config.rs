@@ -41,7 +41,7 @@ pub async fn patch_config(
 
     *state.config.write().await = new_cfg;
 
-    let _ = state.event_tx.send(WsEvent::ConfigChanged {
+    state.emit(WsEvent::ConfigChanged {
         section: "system".to_owned(),
         summary: "configuration updated via API".to_owned(),
     });

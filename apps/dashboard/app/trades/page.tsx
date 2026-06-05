@@ -4,7 +4,7 @@
 // This page shows a placeholder table that will populate once the
 // TradeEvent WebSocket event is flowing.
 
-import { useWsEvents } from '@/lib/hooks';
+import { useStreamLatest } from '@/lib/hooks';
 
 interface TradeEvent {
   trade_id:      string;
@@ -17,11 +17,9 @@ interface TradeEvent {
 }
 
 export default function TradesPage() {
-  // Subscribe to trade events from the WebSocket stream.
-  // Cast to any since TradeEvent isn't in the types union yet.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rawTrades = useWsEvents('status' as any, 1000) as unknown as TradeEvent[];
-  const trades: TradeEvent[] = Array.isArray(rawTrades) ? [] : [];
+  // Trade events will use a dedicated stream slice once the paper engine emits them.
+  void useStreamLatest('status');
+  const trades: TradeEvent[] = [];
 
   return (
     <div className="space-y-5 max-w-6xl">

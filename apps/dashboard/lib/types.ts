@@ -74,6 +74,32 @@ export type WsEvent =
   | { type: 'risk';         data: Risk            }
   | { type: 'config_changed'; data: { section: string; summary: string } };
 
+/** Batched WebSocket frame from control-api stream engine */
+export interface WsBatchFrame {
+  type: 'batch';
+  seq: number;
+  ts_micros: number;
+  events: WsEvent[];
+}
+
+export function isWsBatchFrame(msg: unknown): msg is WsBatchFrame {
+  return (
+    typeof msg === 'object' &&
+    msg !== null &&
+    (msg as WsBatchFrame).type === 'batch' &&
+    Array.isArray((msg as WsBatchFrame).events)
+  );
+}
+
+export function isWsEvent(msg: unknown): msg is WsEvent {
+  return (
+    typeof msg === 'object' &&
+    msg !== null &&
+    typeof (msg as WsEvent).type === 'string' &&
+    'data' in (msg as object)
+  );
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 export function formatPct(v: number, decimals = 1) {

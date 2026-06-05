@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import SignalCard from '@/components/SignalCard';
-import { useFetch, useWsEvents } from '@/lib/hooks';
+import { useFetch, useStreamSignals } from '@/lib/hooks';
 import { api } from '@/lib/api';
 import type { SignalEvent, SignalType } from '@/lib/types';
 
@@ -17,7 +17,7 @@ export default function SignalsPage() {
     [filter],
   );
   const { data: historical, loading } = useFetch(fetcher, 15_000);
-  const liveSignals = useWsEvents<SignalEvent>('signal', 500);
+  const liveSignals = useStreamSignals<SignalEvent>(500);
 
   // Merge live + historical, deduplicate by signal_id
   const allSignals = [...liveSignals, ...(historical ?? [])].reduce(

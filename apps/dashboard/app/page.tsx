@@ -1,20 +1,20 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import MetricCard from '@/components/MetricCard';
 import SystemStatusBadge from '@/components/SystemStatusBadge';
 import SignalCard from '@/components/SignalCard';
-import { useFetch, useWsEvents } from '@/lib/hooks';
+import { useStreamLatest, useStreamSignals } from '@/lib/hooks';
 import { api } from '@/lib/api';
-import { formatUsd, type SignalEvent } from '@/lib/types';
+import { formatUsd, type HealthStatus, type Portfolio, type Risk, type SignalEvent, type SystemStatus } from '@/lib/types';
 
 export default function OverviewPage() {
-  const { data: health }    = useFetch(useCallback(() => api.health(),     []), 5_000);
-  const { data: status }    = useFetch(useCallback(() => api.status(),     []), 5_000);
-  const { data: portfolio } = useFetch(useCallback(() => api.portfolio(),  []), 10_000);
-  const { data: risk }      = useFetch(useCallback(() => api.risk(),       []), 10_000);
+  const health    = useStreamLatest<HealthStatus>('health');
+  const status    = useStreamLatest<SystemStatus>('status');
+  const portfolio = useStreamLatest<Portfolio>('portfolio');
+  const risk      = useStreamLatest<Risk>('risk');
 
-  const liveSignals = useWsEvents<SignalEvent>('signal', 5);
+  const liveSignals = useStreamSignals<SignalEvent>(5);
 
   const [starting, setStarting] = useState(false);
 

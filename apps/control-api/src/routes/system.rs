@@ -32,7 +32,7 @@ pub async fn start_system(
     }
 
     let dto = build_status_dto(&state).await;
-    let _ = state.event_tx.send(WsEvent::Status(dto));
+    state.emit(WsEvent::Status(dto));
     tracing::info!("paper trading started via API");
 
     Ok(Json(CommandResult::ok(
@@ -54,7 +54,7 @@ pub async fn stop_system(
     }
 
     let dto = build_status_dto(&state).await;
-    let _ = state.event_tx.send(WsEvent::Status(dto));
+    state.emit(WsEvent::Status(dto));
     tracing::info!("paper trading stopped via API");
 
     Ok(Json(CommandResult::ok("Paper trading engine stopped.")))
