@@ -34,12 +34,13 @@ export default function SignalsPage() {
   const [dirFilter, setDirFilter] = useState<SignalFilterDirection>('All');
   const [sortKey, setSortKey] = useState<SignalSortKey>('time');
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [showIntel, setShowIntel] = useState(true);
+  const [showIntel, setShowIntel] = useState(false);
 
-  const fetcher = useCallback(
-    () => api.signals({ limit: 200, signal_type: typeFilter === 'All' ? undefined : typeFilter }),
-    [typeFilter],
-  );
+  const fetcher = useCallback(async () => {
+    const live = await api.liveSignals({ limit: 200 });
+    if (typeFilter === 'All') return live;
+    return live.filter((s) => s.signal_type === typeFilter);
+  }, [typeFilter]);
   const { data: historical, loading, error } = useFetch(fetcher, 15_000);
   const liveSignals = useStreamSignals<SignalEvent>(500);
 

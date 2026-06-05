@@ -80,6 +80,10 @@ pub struct SystemConfig {
     /// Ultra low-latency hot-path engine parameters.
     #[serde(default)]
     pub hotpath: HotPathConfig,
+
+    /// Active trading strategy toggles (UI / control-api).
+    #[serde(default)]
+    pub strategy: StrategyConfig,
 }
 
 impl Default for SystemConfig {
@@ -100,6 +104,7 @@ impl Default for SystemConfig {
             wallet: WalletConfig::default(),
             orchestrator: OrchestratorConfig::default(),
             hotpath: HotPathConfig::default(),
+            strategy: StrategyConfig::default(),
         }
     }
 }
@@ -544,6 +549,44 @@ impl Default for FeatureFlags {
             enable_raydium: true,
             verbose_pipeline_log: false,
         }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Strategy runtime toggles
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Per-strategy enable flags synced from the dashboard / control-api.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StrategyConfig {
+    pub scalp: bool,
+    pub arb: bool,
+    pub whale_copy: bool,
+    pub momentum: bool,
+    pub sniper: bool,
+}
+
+impl Default for StrategyConfig {
+    fn default() -> Self {
+        Self {
+            scalp: true,
+            arb: true,
+            whale_copy: false,
+            momentum: false,
+            sniper: false,
+        }
+    }
+}
+
+impl StrategyConfig {
+    /// Returns true when every strategy toggle is off (paused matrix).
+    pub fn all_disabled(&self) -> bool {
+        !self.scalp && !self.arb && !self.whale_copy && !self.momentum && !self.sniper
+    }
+
+    /// True when whale-copy or momentum strategies are enabled (non-paper signal path).
+    pub fn requires_live_ingestion(&self) -> bool {
+        self.whale_copy || self.momentum || self.sniper
     }
 }
 

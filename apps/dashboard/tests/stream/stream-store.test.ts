@@ -1,7 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { streamStore } from '@/lib/stream-store';
-import type { SignalEvent } from '@/lib/types';
+import type { SignalEvent, TradeEvent } from '@/lib/types';
+
+function makeTrade(id: string, stage: TradeEvent['stage'], ts: number): TradeEvent {
+  return {
+    v: 1,
+    trade_id: id,
+    wallet_id: 'paper',
+    source_strategy: 'scalp',
+    pair: 'SOL/USDC',
+    side: 'long',
+    size_usd: 200,
+    expected_pnl_usd: 1.5,
+    tx_signature: null,
+    timestamp_us: ts,
+    stage,
+    mode: 'paper',
+    signal_id: 42,
+  };
+}
 
 function makeSignal(id: number): SignalEvent {
   return {
@@ -60,5 +78,56 @@ describe('streamStore snapshot stability', () => {
 
     expect(after).not.toBe(before);
     expect(after.at(-1)?.signal_id).toBe(99_002);
+  });
+});
+
+describe('streamStore trade ingestion', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('tracks latest stage per trade_id', () => {
+    streamStore.ingestRaw(
+      JSON.stringify({
+        type: 'batch',
+        seq: 1,
+        ts_micros: 1,
+        events: [
+          { type: 'trade', data: makeTrade('t1', 'started', 100) },
+          { type: 'trade', data: makeTrade('t1', 'filled', 200) },
+        ],
+      }),
+    );
+    flushStore();
+
+    const trades = streamStore.getTradesSnapshot(10);
+    expect(trades).toHaveLength(1);
+    expect(trades[0].stage).toBe('filled');
+    expect(streamStore.getLatestTrade()?.trade_id).toBe('t1');
+  });
+
+  it('replays journal events on reconnect batch', () => {
+    streamStore.ingestRaw(
+      JSON.stringify({
+        type: 'batch',
+        seq: 0,
+        ts_micros: 0,
+        events: [
+          { type: 'health', data: { status: 'connected', uptime_secs: 1, signals_stored: 0, version: '0.1' } },
+          { type: 'trade', data: makeTrade('replay-1', 'quoted', 50) },
+          { type: 'trade', data: makeTrade('replay-2', 'filled', 60) },
+        ],
+      }),
+    );
+    flushStore();
+
+    const trades = streamStore.getTradesSnapshot(10);
+    const ids = trades.map((t) => t.trade_id);
+    expect(ids).toContain('replay-1');
+    expect(ids).toContain('replay-2');
   });
 });

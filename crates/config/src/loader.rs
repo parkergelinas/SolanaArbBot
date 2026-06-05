@@ -499,6 +499,42 @@ pub(crate) fn apply_env_overrides(config: &mut SystemConfig) {
     );
     env_string!("SOLANA_ARB_MONITORING__LOG_LEVEL", config.monitoring.log_level);
     env_bool!("SOLANA_ARB_MONITORING__JSON_LOGS", config.monitoring.json_logs);
+
+    // ── [wallet] ──────────────────────────────────────────────────────────
+    if let Ok(raw) = std::env::var("SOLANA_ARB_WALLET__KEYPAIR_PATH") {
+        let trimmed = raw.trim().to_owned();
+        if !trimmed.is_empty() {
+            config.wallet.keypair_path = Some(trimmed);
+        }
+    }
+    if let Ok(raw) = std::env::var("SOLANA_ARB_WALLET__KEYPAIR_ENV_VAR") {
+        let trimmed = raw.trim().to_owned();
+        if !trimmed.is_empty() {
+            config.wallet.keypair_env_var = Some(trimmed);
+        }
+    }
+    env_string!("SOLANA_ARB_WALLET__RPC_ENDPOINT", config.wallet.rpc_endpoint);
+    env_string!("SOLANA_ARB_WALLET__COMMITMENT", config.wallet.commitment);
+    env_string!(
+        "SOLANA_ARB_WALLET__EXPECTED_NETWORK",
+        config.wallet.expected_network
+    );
+    env_scalar!(
+        "SOLANA_ARB_WALLET__MIN_SOL_BALANCE",
+        config.wallet.min_sol_balance,
+        f64
+    );
+    env_bool!(
+        "SOLANA_ARB_WALLET__VALIDATE_NETWORK_ON_START",
+        config.wallet.validate_network_on_start
+    );
+
+    // ── [strategy] ────────────────────────────────────────────────────────
+    env_bool!("SOLANA_ARB_STRATEGY__SCALP", config.strategy.scalp);
+    env_bool!("SOLANA_ARB_STRATEGY__ARB", config.strategy.arb);
+    env_bool!("SOLANA_ARB_STRATEGY__WHALE_COPY", config.strategy.whale_copy);
+    env_bool!("SOLANA_ARB_STRATEGY__MOMENTUM", config.strategy.momentum);
+    env_bool!("SOLANA_ARB_STRATEGY__SNIPER", config.strategy.sniper);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

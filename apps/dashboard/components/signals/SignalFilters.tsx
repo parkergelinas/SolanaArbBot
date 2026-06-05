@@ -2,7 +2,7 @@
 
 import type { SignalFilterDirection, SignalFilterType, SignalSortKey } from '@/lib/signals';
 
-const TYPES: SignalFilterType[] = ['All', 'WhaleFlow', 'SmartMoney', 'Momentum'];
+const TYPES: SignalFilterType[] = ['All', 'WhaleFlow', 'SmartMoney', 'Momentum', 'Swap'];
 const DIRECTIONS: SignalFilterDirection[] = ['All', 'Long', 'Short', 'Neutral'];
 const SORTS: { key: SignalSortKey; label: string }[] = [
   { key: 'time', label: 'Latest' },
@@ -15,6 +15,7 @@ const TYPE_LABELS: Record<SignalFilterType, string> = {
   WhaleFlow: 'Whale',
   SmartMoney: 'Smart $',
   Momentum: 'Momentum',
+  Swap: 'Swap',
 };
 
 interface SignalFiltersProps {

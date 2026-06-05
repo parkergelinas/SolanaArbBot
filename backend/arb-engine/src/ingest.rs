@@ -85,6 +85,65 @@ pub fn spawn_intelligence_stub(_tx: Sender<PoolPrice>) {
     info!("intelligence price stream stub — wire to data-layer swap feed");
 }
 
+/// Poll signal-hub swap events and derive pool prices (replaces mock when enabled).
+pub fn spawn_signal_hub_price_feed(config: Arc<ArbConfig>, price_tx: Sender<PoolPrice>) {
+    let hub = std::env::var("SIGNAL_HUB_URL")
+        .or_else(|_| std::env::var("CONTROL_API_URL"))
+        .unwrap_or_else(|_| "http://127.0.0.1:3001".into());
+    let hub = hub.trim_end_matches('/').to_string();
+    let poll_ms = config.mock_interval_ms.max(500);
+
+    std::thread::spawn(move || {
+        let rt = match tokio::runtime::Runtime::new() {
+            Ok(r) => r,
+            Err(_) => return,
+        };
+        rt.block_on(async move {
+            let client = reqwest::Client::new();
+            let url = format!("{hub}/api/live-signals?limit=100");
+            info!(url = %url, "arb-engine signal-hub price feed started");
+            loop {
+                if let Ok(resp) = client.get(&url).send().await {
+                    if resp.status().is_success() {
+                        if let Ok(signals) = resp.json::<Vec<serde_json::Value>>().await {
+                            for s in signals {
+                                if s.get("kind").and_then(|k| k.as_str()) != Some("swap") {
+                                    continue;
+                                }
+                                let dex = s
+                                    .pointer("/source/dex")
+                                    .and_then(|d| d.as_str())
+                                    .unwrap_or("unknown");
+                                let price = s.get("price").and_then(|p| p.as_f64()).unwrap_or(0.0);
+                                let liquidity = s
+                                    .get("size_usd")
+                                    .and_then(|p| p.as_f64())
+                                    .unwrap_or(10_000.0)
+                                    * 4.0;
+                                if price <= 0.0 {
+                                    continue;
+                                }
+                                let pp = PoolPrice {
+                                    dex: dex.into(),
+                                    token_a: SOL.into(),
+                                    token_b: USDC.into(),
+                                    price,
+                                    liquidity,
+                                    timestamp: unix_ms(),
+                                };
+                                if price_tx.send(pp).is_err() {
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(poll_ms)).await;
+            }
+        });
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

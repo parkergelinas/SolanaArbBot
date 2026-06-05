@@ -4,6 +4,7 @@
 //! plain JSON-friendly structs before leaving the API boundary.
 
 use serde::{Deserialize, Serialize};
+use signal_bus::{AlertType, LiveSignal, SignalKind, StrategyTag};
 use signals::{Direction, FeatureVector, SignalEvent, SignalType};
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -52,6 +53,19 @@ pub struct SignalEventDto {
     pub timeframe_secs: u64,
     pub feature_vector: FeatureVectorDto,
     pub explanation: String,
+    /// Ingestion source — `engine`, `intelligence`, or `stream`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// Bot routing hint — `whale_copy_candidate`, `watch_only`, `informational`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strategy_tag: Option<String>,
+    /// Wallet address when sourced from intelligence alerts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wallet: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_usd: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_sol: Option<f64>,
 }
 
 impl From<&SignalEvent> for SignalEventDto {
@@ -88,7 +102,76 @@ impl From<&SignalEvent> for SignalEventDto {
             timeframe_secs: s.timeframe_secs,
             feature_vector: FeatureVectorDto::from(&s.feature_vector),
             explanation: s.explanation.clone(),
+            source: Some("engine".to_owned()),
+            strategy_tag: None,
+            wallet: None,
+            size_usd: None,
+            size_sol: None,
         }
+    }
+}
+
+impl From<&LiveSignal> for SignalEventDto {
+    fn from(s: &LiveSignal) -> Self {
+        let strength = s.strength.unwrap_or(s.confidence);
+        let signal_type = s
+            .alert_type
+            .map(AlertType::as_api_str)
+            .unwrap_or_else(|| match s.kind {
+                SignalKind::Swap => "Swap",
+                SignalKind::WhaleAlert => "WhaleFlow",
+                SignalKind::SmartMoneyAlert => "SmartMoney",
+                SignalKind::Engine => "Momentum",
+            })
+            .to_owned();
+
+        let mut fv = FeatureVectorDto {
+            volume_short: s.size,
+            volume_long: 0.0,
+            price_velocity: 0.0,
+            liquidity_delta_pct: 0.0,
+            whale_activity_score: 0.0,
+            smart_money_score: 0.0,
+            data_points: 1,
+        };
+        match s.alert_type {
+            Some(AlertType::WhaleFlow) => fv.whale_activity_score = strength,
+            Some(AlertType::SmartMoney) => fv.smart_money_score = s.confidence,
+            _ => {}
+        }
+
+        Self {
+            signal_id: s.numeric_id(),
+            timestamp_micros: s.timestamp_micros(),
+            pool_address: s.token_out.clone(),
+            signal_type,
+            strength,
+            confidence: s.confidence,
+            direction: s.direction.clone().unwrap_or_else(|| "Long".into()),
+            timeframe_secs: 300,
+            feature_vector: fv,
+            explanation: s
+                .explanation
+                .clone()
+                .unwrap_or_else(|| format!("{} {}", s.pair, s.tx_id)),
+            source: Some(s.source.layer.clone()),
+            strategy_tag: s.strategy_tag.map(strategy_tag_str).map(str::to_owned),
+            wallet: if s.wallet.is_empty() {
+                None
+            } else {
+                Some(s.wallet.clone())
+            },
+            size_usd: s.size_usd,
+            size_sol: Some(s.size),
+        }
+    }
+}
+
+fn strategy_tag_str(t: StrategyTag) -> &'static str {
+    match t {
+        StrategyTag::WhaleCopyCandidate => "whale_copy_candidate",
+        StrategyTag::WatchOnly => "watch_only",
+        StrategyTag::Informational => "informational",
     }
 }
 
@@ -102,6 +185,20 @@ pub struct HealthDto {
     pub uptime_secs: u64,
     pub signals_stored: usize,
     pub version: String,
+    /// Whether the autonomous bot loop is active (`/api/system/start`).
+    #[serde(default)]
+    pub bot_running: bool,
+    /// `development` | `staging` | `production` from `DEPLOY_ENV`.
+    #[serde(default)]
+    pub deploy_env: String,
+    /// `paper` or `live` derived from feature flags.
+    #[serde(default)]
+    pub mode: String,
+    #[serde(default)]
+    pub events_processed: u64,
+    /// Named readiness checks (`ok` / `degraded` / `missing`).
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub checks: std::collections::HashMap<String, String>,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -111,8 +208,11 @@ pub struct HealthDto {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SystemStateDto {
     pub running: bool,
-    /// Always "paper" — live mode is disabled in this build.
+    /// `disabled` | `paper` | `active` | `paused`
     pub mode: String,
+    pub runtime_mode: String,
+    pub ingestion_mode: String,
+    pub active_strategies: Vec<String>,
     pub signals_processed: u64,
     pub events_processed: u64,
     pub last_signal_ts: Option<u64>,
@@ -176,6 +276,110 @@ pub struct FeatureFlagsPatch {
 pub struct ConfigPatch {
     pub signal_engine: Option<SignalConfigPatch>,
     pub features: Option<FeatureFlagsPatch>,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Trade lifecycle
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Lifecycle stage for a trade execution.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TradeStageDto {
+    Started,
+    Quoted,
+    Validated,
+    Submitted,
+    Filled,
+    Failed,
+    Rejected,
+    Canceled,
+}
+
+/// Paper vs live execution mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TradeModeDto {
+    Paper,
+    Live,
+}
+
+/// Trade side.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TradeSideDto {
+    Long,
+    Short,
+    Buy,
+    Sell,
+}
+
+/// Canonical trade lifecycle event — mirrors `shared/contracts/trade/v1.ts`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TradeEventDto {
+    pub v: u32,
+    pub trade_id: String,
+    pub wallet_id: String,
+    pub source_strategy: String,
+    pub pair: String,
+    pub side: TradeSideDto,
+    pub size_usd: f64,
+    pub expected_pnl_usd: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tx_signature: Option<String>,
+    pub timestamp_us: u64,
+    pub stage: TradeStageDto,
+    pub mode: TradeModeDto,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reject_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signal_id: Option<u64>,
+}
+
+impl TradeEventDto {
+    pub const SCHEMA_VERSION: u32 = 1;
+}
+
+impl From<&autonomous::TradeEmit> for TradeEventDto {
+    fn from(t: &autonomous::TradeEmit) -> Self {
+        let side = match t.side.as_str() {
+            "short" => TradeSideDto::Short,
+            "buy" => TradeSideDto::Buy,
+            "sell" => TradeSideDto::Sell,
+            _ => TradeSideDto::Long,
+        };
+        let stage = match t.stage {
+            autonomous::TradeStage::Started => TradeStageDto::Started,
+            autonomous::TradeStage::Quoted => TradeStageDto::Quoted,
+            autonomous::TradeStage::Validated => TradeStageDto::Validated,
+            autonomous::TradeStage::Submitted => TradeStageDto::Submitted,
+            autonomous::TradeStage::Filled => TradeStageDto::Filled,
+            autonomous::TradeStage::Failed => TradeStageDto::Failed,
+            autonomous::TradeStage::Rejected => TradeStageDto::Rejected,
+            autonomous::TradeStage::Canceled => TradeStageDto::Canceled,
+        };
+        let mode = if t.mode == "live" {
+            TradeModeDto::Live
+        } else {
+            TradeModeDto::Paper
+        };
+        Self {
+            v: Self::SCHEMA_VERSION,
+            trade_id: t.trade_id.clone(),
+            wallet_id: t.wallet_id.clone(),
+            source_strategy: t.source_strategy.clone(),
+            pair: t.pair.clone(),
+            side,
+            size_usd: t.size_usd,
+            expected_pnl_usd: t.expected_pnl_usd,
+            tx_signature: t.tx_signature.clone(),
+            timestamp_us: t.timestamp_us,
+            stage,
+            mode,
+            reject_reason: t.reject_reason.clone(),
+            signal_id: t.signal_id,
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

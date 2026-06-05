@@ -11,6 +11,8 @@ yellowstone = ["tonic", "prost"]
 
 [dependencies]
 tokio       = { version = "1", features = ["full"] }
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
 serde       = { workspace = true }
 serde_json  = "1"
 dashmap     = "6.2.1"

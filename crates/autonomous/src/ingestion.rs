@@ -1,7 +1,10 @@
-//! Streaming synthetic market events for paper autonomous operation.
+//! Market event sources for autonomous operation (synthetic + external buffers).
+
+use std::collections::VecDeque;
 
 use common::{MarketEvent, PoolUpdate, Pubkey, SwapEvent};
 use decoder::DexType;
+use signals::WhaleEvent;
 
 pub struct PairPool {
     pub pool: Pubkey,
@@ -95,4 +98,29 @@ pub fn tick_events(step: u64, ts_micros: u64) -> Vec<(u64, MarketEvent)> {
     }
 
     out
+}
+
+/// Bounded buffer for signal-bus / intelligence-api events (no synthetic fallback).
+#[derive(Clone, Debug, Default)]
+pub struct ExternalIngestionBuffer {
+    market: VecDeque<(u64, MarketEvent)>,
+    whales: VecDeque<(u64, WhaleEvent)>,
+}
+
+impl ExternalIngestionBuffer {
+    pub fn push_market(&mut self, ts_micros: u64, event: MarketEvent) {
+        self.market.push_back((ts_micros, event));
+    }
+
+    pub fn push_whale(&mut self, ts_micros: u64, event: WhaleEvent) {
+        self.whales.push_back((ts_micros, event));
+    }
+
+    pub fn drain_market(&mut self) -> Vec<(u64, MarketEvent)> {
+        self.market.drain(..).collect()
+    }
+
+    pub fn drain_whales(&mut self) -> Vec<(u64, WhaleEvent)> {
+        self.whales.drain(..).collect()
+    }
 }

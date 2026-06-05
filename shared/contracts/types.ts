@@ -5,6 +5,14 @@
  *   - apps/dashboard/lib/types.ts (re-exports from here in future)
  */
 
+export type {
+  TradeEvent,
+  TradeMode,
+  TradeSide,
+  TradeStage,
+} from './trade/v1';
+export { isTerminalTradeStage, TERMINAL_TRADE_STAGES, TRADE_SCHEMA_VERSION } from './trade/v1';
+
 export type SignalType = 'WhaleFlow' | 'SmartMoney' | 'Momentum';
 export type Direction = 'Long' | 'Short' | 'Neutral';
 
@@ -22,13 +30,20 @@ export interface SignalEvent {
   signal_id: number;
   timestamp_micros: number;
   pool_address: string;
-  signal_type: SignalType;
+  signal_type: SignalType | 'Swap';
   strength: number;
   confidence: number;
   direction: Direction;
   timeframe_secs: number;
   feature_vector: FeatureVector;
   explanation: string;
+  /** `engine` | `intelligence` | `data-layer` */
+  source?: string;
+  /** `whale_copy_candidate` | `watch_only` | `informational` */
+  strategy_tag?: string;
+  wallet?: string;
+  size_usd?: number;
+  size_sol?: number;
 }
 
 export interface HealthStatus {
@@ -67,6 +82,7 @@ export interface Risk {
 /** Single domain event (internal tagged union). */
 export type WsEvent =
   | { type: 'signal'; data: SignalEvent }
+  | { type: 'trade'; data: TradeEvent }
   | { type: 'health'; data: HealthStatus }
   | { type: 'status'; data: SystemStatus }
   | { type: 'portfolio'; data: Portfolio }

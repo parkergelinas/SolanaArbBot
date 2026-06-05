@@ -8,14 +8,7 @@ use crate::{
 };
 
 pub async fn get_status(State(state): State<AppState>) -> ApiResult<Json<SystemStateDto>> {
-    let sys = state.sys.lock().await;
-    Ok(Json(SystemStateDto {
-        running: sys.running,
-        mode: "paper".to_owned(),
-        signals_processed: sys.signals_processed,
-        events_processed: sys.events_processed,
-        last_signal_ts: sys.last_signal_ts,
-    }))
+    Ok(Json(build_status_dto(&state).await))
 }
 
 pub async fn start_system(
@@ -36,11 +29,16 @@ pub async fn start_system(
 
     let dto = build_status_dto(&state).await;
     state.emit(WsEvent::Status(dto));
-    tracing::info!("autonomous bot started — scalping + dex-to-dex (paper)");
+    let (runtime_mode, _, strategies) = crate::runtime_ctl::strategy_status(&state).await;
+    tracing::info!(
+        runtime_mode = %runtime_mode,
+        strategies = ?strategies,
+        "autonomous bot started"
+    );
 
-    Ok(Json(CommandResult::ok(
-        "Autonomous bot started: scalping + DEX-to-DEX (paper mode).",
-    )))
+    Ok(Json(CommandResult::ok(format!(
+        "Autonomous bot started (runtime_mode={runtime_mode})."
+    ))))
 }
 
 pub async fn stop_system(
@@ -84,9 +82,14 @@ pub async fn reset_portfolio(
 
 async fn build_status_dto(state: &AppState) -> SystemStateDto {
     let sys = state.sys.lock().await;
+    let (runtime_mode, ingestion_mode, active_strategies) =
+        crate::runtime_ctl::strategy_status(state).await;
     SystemStateDto {
         running: sys.running,
-        mode: "paper".to_owned(),
+        mode: runtime_mode.clone(),
+        runtime_mode,
+        ingestion_mode,
+        active_strategies,
         signals_processed: sys.signals_processed,
         events_processed: sys.events_processed,
         last_signal_ts: sys.last_signal_ts,

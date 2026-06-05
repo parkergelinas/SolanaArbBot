@@ -47,6 +47,10 @@ Then **Redeploy** (Deployments → … → Redeploy).
 
 Without `CONTROL_API_URL`, the UI shell loads but API calls fail. The Rust backends must run on a VPS — Vercel hosts the Next.js UI only.
 
+**Full production guide:** [docs/deploy-control-api.md](docs/deploy-control-api.md) (control-api on Railway/Fly/Render, Vercel env + redeploy steps).
+
+> **Redeploy required** after changing Vercel environment variables — rewrites are applied at build time.
+
 ```bash
 # Deploy from CLI (after vercel login)
 cd apps/dashboard && vercel --prod
