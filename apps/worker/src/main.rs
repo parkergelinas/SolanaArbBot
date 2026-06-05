@@ -533,7 +533,7 @@ fn init_tracing(config_log_level: &str) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn run_backtest_mode(config: Arc<SystemConfig>) {
-    use backtester::{generate_dataset, run_pipeline, strategy_config};
+    use backtester::{generate_dataset, run_pipeline};
 
     let mut tuned = (*config).clone();
     let strategy = backtester::strategy_config();
@@ -581,7 +581,7 @@ mod tests {
 
     #[test]
     fn run_mode_variants_are_distinct() {
-        use super::RunMode;
+        use crate::RunMode;
         assert_ne!(RunMode::Paper,    RunMode::Live);
         assert_ne!(RunMode::Backtest, RunMode::Live);
         assert_ne!(RunMode::Paper,    RunMode::Backtest);
@@ -589,6 +589,7 @@ mod tests {
 
     #[test]
     fn live_mode_is_always_rejected_by_design() {
+        use crate::RunMode;
         // RunMode::Live is defined but guarded by two sequential exit(1) checks.
         let live = RunMode::Live;
         assert_eq!(live, RunMode::Live);

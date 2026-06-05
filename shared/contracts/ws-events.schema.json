@@ -27,7 +27,7 @@
       "required": ["type", "data"],
       "properties": {
         "type": {
-          "enum": ["signal", "health", "status", "portfolio", "risk", "config_changed"]
+          "enum": ["signal", "trade", "health", "status", "portfolio", "risk", "config_changed"]
         },
         "data": { "type": "object" }
       },

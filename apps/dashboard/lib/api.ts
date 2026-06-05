@@ -1,3 +1,5 @@
+import type { LiveSignal } from '../../../shared/contracts/signal/v1';
+import { liveSignalsToEvents } from './live-signal';
 import type {
   BotStatus,
   CommandResult,
@@ -65,6 +67,15 @@ export const api = {
     if (opts?.signal_type) qs.set('signal_type', opts.signal_type);
     const q = qs.toString();
     return get<SignalEvent[]>(`/api/signals${q ? '?' + q : ''}`);
+  },
+
+  /** Normalized live signal buffer (swap + whale + engine) — primary REST source. */
+  liveSignals: async (opts?: { limit?: number }): Promise<SignalEvent[]> => {
+    const qs = new URLSearchParams();
+    if (opts?.limit) qs.set('limit', String(opts.limit));
+    const q = qs.toString();
+    const raw = await get<LiveSignal[]>(`/api/live-signals${q ? '?' + q : ''}`);
+    return liveSignalsToEvents(raw);
   },
 
   botStatus:      ()             => get<BotStatus>('/api/bot/status'),

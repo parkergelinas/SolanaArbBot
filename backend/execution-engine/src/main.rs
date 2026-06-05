@@ -56,7 +56,18 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|v| v.parse().ok())
         .unwrap_or(5_000);
 
-    subscriber::spawn_intelligence_stub(signal_tx.clone());
+    let use_hub = std::env::var("SIGNAL_HUB_URL")
+        .or_else(|_| std::env::var("CONTROL_API_URL"))
+        .is_ok()
+        || std::env::var("EXECUTION_SIGNAL_HUB")
+            .map(|v| v == "1" || v == "true")
+            .unwrap_or(false);
+
+    if use_hub {
+        subscriber::spawn_signal_hub_subscriber(signal_tx.clone());
+    } else {
+        subscriber::spawn_intelligence_stub(signal_tx.clone());
+    }
 
     if std::env::var("ALPHA_ENGINE_ENABLED")
         .map(|v| v == "true" || v == "1")

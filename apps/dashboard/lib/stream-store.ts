@@ -9,6 +9,7 @@ import type {
   Risk,
   SignalEvent,
   SystemStatus,
+  TradeEvent,
   WsBatchFrame,
   WsEvent,
 } from './types';
@@ -16,6 +17,7 @@ import { isWsBatchFrame, isWsEvent } from './types';
 
 const FLUSH_MS = 33;
 const MAX_SIGNALS = 1_000;
+const MAX_TRADE_EVENTS = 2_000;
 
 type Listener = () => void;
 
@@ -26,9 +28,14 @@ class StreamStore {
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
 
   private signals: SignalEvent[] = [];
+  private tradeEvents: TradeEvent[] = [];
+  /** Latest lifecycle stage per trade_id. */
+  private tradeById = new Map<string, TradeEvent>();
+  private latestTrade: TradeEvent | null = null;
   private latest = new Map<WsEvent['type'], unknown>();
   /** Cached snapshots — useSyncExternalStore requires stable references between flushes. */
   private snapshotCache = new Map<string, SignalEvent[]>();
+  private tradesSnapshotCache = new Map<string, TradeEvent[]>();
   private snapshotCacheVersion = -1;
 
   /** Parse a raw WebSocket text frame (batch or legacy single event). */
@@ -67,6 +74,8 @@ class StreamStore {
     for (const ev of this.inbox) {
       if (ev.type === 'signal') {
         this.signals.push(ev.data);
+      } else if (ev.type === 'trade') {
+        this.applyTrade(ev.data);
       } else {
         this.latest.set(ev.type, ev.data);
       }
@@ -75,10 +84,20 @@ class StreamStore {
     if (this.signals.length > MAX_SIGNALS) {
       this.signals = this.signals.slice(-MAX_SIGNALS);
     }
+    if (this.tradeEvents.length > MAX_TRADE_EVENTS) {
+      this.tradeEvents = this.tradeEvents.slice(-MAX_TRADE_EVENTS);
+    }
 
     this.inbox = [];
     this.version += 1;
     this.listeners.forEach((l) => l());
+  }
+
+  private applyTrade(trade: TradeEvent) {
+    this.tradeEvents.push(trade);
+    this.tradeById.set(trade.trade_id, trade);
+    this.latestTrade = trade;
+    this.latest.set('trade', trade);
   }
 
   subscribe(listener: Listener): () => void {
@@ -90,11 +109,34 @@ class StreamStore {
     return this.version;
   }
 
-  getSignalsSnapshot(maxItems: number): SignalEvent[] {
+  private invalidateSnapshots() {
     if (this.snapshotCacheVersion !== this.version) {
       this.snapshotCache.clear();
+      this.tradesSnapshotCache.clear();
       this.snapshotCacheVersion = this.version;
     }
+  }
+
+  getTradesSnapshot(maxItems: number): TradeEvent[] {
+    this.invalidateSnapshots();
+    const key = String(maxItems);
+    let snapshot = this.tradesSnapshotCache.get(key);
+    if (!snapshot) {
+      snapshot = Array.from(this.tradeById.values())
+        .sort((a, b) => b.timestamp_us - a.timestamp_us)
+        .slice(0, maxItems);
+      this.tradesSnapshotCache.set(key, snapshot);
+    }
+    return snapshot;
+  }
+
+  getLatestTrade(): TradeEvent | null {
+    void this.version;
+    return this.latestTrade;
+  }
+
+  getSignalsSnapshot(maxItems: number): SignalEvent[] {
+    this.invalidateSnapshots();
     const key = String(maxItems);
     let snapshot = this.snapshotCache.get(key);
     if (!snapshot) {

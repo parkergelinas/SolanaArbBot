@@ -16,6 +16,7 @@ pub fn build(state: AppState) -> Router {
         )
         // ── Signals ───────────────────────────────────────────────────────────
         .route("/api/signals", get(routes::signals::get_signals))
+        .route("/api/live-signals", get(routes::live_signals::get_live_signals))
         // ── Portfolio + Risk ──────────────────────────────────────────────────
         .route("/api/portfolio", get(routes::portfolio::get_portfolio))
         .route("/api/risk", get(routes::portfolio::get_risk))

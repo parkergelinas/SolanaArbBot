@@ -7,9 +7,17 @@
 pub mod ingestion;
 pub mod runtime;
 pub mod snapshot;
+pub mod strategy;
+pub mod trade_emit;
 
+pub use ingestion::ExternalIngestionBuffer;
 pub use runtime::{spawn_autonomous_runtime, AutonomousCallbacks};
 pub use snapshot::RuntimeSnapshot;
+pub use strategy::{
+    CyclePlan, IngestionMode, IngestionPlan, RuntimeMode, StrategyController, StrategyTransition,
+    TradePolicy,
+};
+pub use trade_emit::{TradeEmit, TradeStage};
 
 /// Strategy config tuned for scalping + DEX-to-DEX paper operation.
 pub fn tuned_config() -> config::SystemConfig {

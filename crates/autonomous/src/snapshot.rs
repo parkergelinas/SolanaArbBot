@@ -25,6 +25,13 @@ pub struct RuntimeSnapshot {
     pub halt_reason: Option<String>,
     pub scalp_enabled: bool,
     pub arb_enabled: bool,
+    pub runtime_mode: String,
+    pub ingestion_mode: String,
+    pub active_strategies: Vec<String>,
+    pub signals_consumed: u64,
+    pub signals_traded: u64,
+    pub whale_signals_consumed: u64,
+    pub momentum_signals_consumed: u64,
 }
 
 impl RuntimeSnapshot {

@@ -51,6 +51,7 @@ dependencies = [
  "crossbeam-channel",
  "dashmap",
  "futures-util",
+ "reqwest 0.12.4",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -342,12 +343,19 @@ dependencies = [
  "axum",
  "common",
  "config",
+ "crossbeam-channel",
  "dashmap",
+ "data-layer",
+ "futures-util",
+ "intelligence-api",
  "serde",
  "serde_json",
+ "signal-bus",
  "signals",
  "tokio",
+ "tokio-tungstenite",
  "tokio-util",
+ "tower 0.5.3",
  "tower-http",
  "tracing",
  "tracing-subscriber",
@@ -467,11 +475,13 @@ dependencies = [
  "anyhow",
  "crossbeam-channel",
  "dashmap",
+ "futures-util",
  "prost",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-tungstenite",
  "tonic",
  "tracing",
 ]
@@ -1806,6 +1816,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
+name = "signal-bus"
+version = "0.1.0"
+dependencies = [
+ "data-layer",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "signal-hook-registry"
 version = "1.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1903,9 +1925,13 @@ dependencies = [
  "axum",
  "crossbeam-channel",
  "dashmap",
+ "data-layer",
+ "reqwest 0.12.4",
  "serde",
  "serde_json",
+ "signal-bus",
  "tokio",
+ "tower 0.5.3",
  "tower-http",
  "tracing",
  "tracing-subscriber",
@@ -2095,7 +2121,9 @@ checksum = "edc5f74e248dc973e0dbb7b74c7e0d6fcc301c694ff50049504004ef4d0cdcd9"
 dependencies = [
  "futures-util",
  "log",
+ "native-tls",
  "tokio",
+ "tokio-native-tls",
  "tungstenite",
 ]
 
@@ -2338,6 +2366,7 @@ dependencies = [
  "http 1.4.1",
  "httparse",
  "log",
+ "native-tls",
  "rand",
  "sha1",
  "thiserror 1.0.69",

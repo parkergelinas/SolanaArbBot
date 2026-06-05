@@ -1,23 +1,17 @@
 //! Intelligence API — whale detection + wallet tracking + WS broker.
 //! Consumes `data-layer` pipeline on :8090/intelligence.
 
-mod broker;
-mod contracts;
-mod pipeline;
-mod router;
-mod routes;
-mod whale;
-mod wallet;
-
 use crossbeam_channel::unbounded;
 use data_layer::spawn_pipeline;
+use intelligence_api::broker::spawn_batcher;
+use intelligence_api::contracts::IntelligenceBatch;
+use intelligence_api::pipeline::spawn_intelligence_pipeline;
 use tokio::sync::broadcast;
 use tracing::info;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-use crate::broker::spawn_batcher;
-use crate::contracts::IntelligenceBatch;
-use crate::pipeline::spawn_intelligence_pipeline;
+mod router;
+mod routes;
 
 #[derive(Clone)]
 pub struct AppState {

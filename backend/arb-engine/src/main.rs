@@ -48,8 +48,20 @@ async fn main() -> anyhow::Result<()> {
 
     ingest::spawn_price_consumer(pool_engine.clone(), price_rx);
     ingest::spawn_batch_detector(config.clone(), pool_engine.clone(), detect_tx);
-    ingest::spawn_intelligence_stub(price_tx.clone());
-    ingest::spawn_mock_price_feed(config.clone(), price_tx);
+    let use_hub = std::env::var("SIGNAL_HUB_URL")
+        .or_else(|_| std::env::var("CONTROL_API_URL"))
+        .is_ok()
+        || std::env::var("ARB_USE_SIGNAL_HUB")
+            .map(|v| v == "1" || v == "true")
+            .unwrap_or(false);
+
+    if use_hub {
+        ingest::spawn_signal_hub_price_feed(config.clone(), price_tx.clone());
+        info!("arb-engine using signal-hub prices (mock feed disabled)");
+    } else {
+        ingest::spawn_intelligence_stub(price_tx.clone());
+        ingest::spawn_mock_price_feed(config.clone(), price_tx);
+    }
 
     let router = Arc::new(ArbRouter::new(
         config.clone(),

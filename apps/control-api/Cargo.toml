@@ -12,7 +12,10 @@ path = "src/main.rs"
 common     = { path = "../../crates/common" }
 config     = { path = "../../crates/config" }
 signals    = { path = "../../crates/signals" }
-autonomous = { path = "../../crates/autonomous" }
+signal-bus = { path = "../../crates/signal-bus" }
+data-layer        = { path = "../../backend/data-layer" }
+intelligence-api  = { path = "../../backend/intelligence-api" }
+autonomous        = { path = "../../crates/autonomous" }
 
 # HTTP server + WebSocket
 axum        = { version = "0.7", features = ["ws", "macros"] }
@@ -30,4 +33,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Utilities
 dashmap = "6.2.1"
 anyhow     = "1"
-tokio-util = { version = "0.7" }
+tokio-util        = { version = "0.7" }
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+futures-util      = "0.3"
+crossbeam-channel = "0.5"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }

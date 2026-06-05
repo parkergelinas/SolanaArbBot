@@ -39,7 +39,17 @@ pub async fn patch_config(
         .validate()
         .map_err(|e| ApiError::BadRequest(format!("validation failed: {e}")))?;
 
-    *state.config.write().await = new_cfg;
+    *state.config.write().await = new_cfg.clone();
+
+    if let Some(t) = state.strategy.write().await.sync_from_config(&new_cfg) {
+        tracing::info!(
+            from = t.from_mode.as_str(),
+            to = t.to_mode.as_str(),
+            ingestion = t.ingestion_mode.as_str(),
+            strategies = ?t.active_strategies,
+            "strategy runtime transition via config patch"
+        );
+    }
 
     state.emit(WsEvent::ConfigChanged {
         section: "system".to_owned(),

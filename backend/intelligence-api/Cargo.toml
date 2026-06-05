@@ -5,6 +5,10 @@ version.workspace = true
 license.workspace = true
 description = "Real-time Solana whale detection + wallet tracking WS broker"
 
+[lib]
+name = "intelligence_api"
+path = "src/lib.rs"
+
 [[bin]]
 name = "intelligence-api"
 path = "src/main.rs"

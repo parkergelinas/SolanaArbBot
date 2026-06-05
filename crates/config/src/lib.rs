@@ -50,7 +50,8 @@ pub use loader::ConfigHandle;
 pub use schema::{
     ExecutionConfig, FeatureFlags, IngestionConfig, MonitoringConfig, OrchestratorConfig,
     PipelineConfig, PortfolioConfig, RetryConfig, RiskConfig, RpcConfig, ScalerConfig,
-    HotPathConfig, SignalEngineConfig, SystemConfig, WalletConfig, WebSocketConfig,
+    HotPathConfig, SignalEngineConfig, StrategyConfig, SystemConfig, WalletConfig,
+    WebSocketConfig,
 };
 
 use std::path::PathBuf;

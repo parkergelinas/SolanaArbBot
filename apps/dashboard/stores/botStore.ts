@@ -69,6 +69,13 @@ export const useBotStore = create<BotStore>((set, get) => ({
   toConfigPatch: () => {
     const { strategies } = get();
     return {
+      strategy: {
+        scalp: strategies.scalp,
+        arb: strategies.arb,
+        whale_copy: strategies.whale_copy,
+        momentum: strategies.momentum,
+        sniper: strategies.sniper,
+      },
       signal_engine: {
         whale_threshold_usd: Math.max(1000, strategies.min_whale_sol * 150),
         signal_min_confidence: strategies.min_confidence,

@@ -7,7 +7,8 @@ use axum::{
 };
 use tokio::sync::broadcast;
 
-use crate::contracts::IntelligenceBatch;
+use intelligence_api::contracts::IntelligenceBatch;
+
 use crate::AppState;
 
 pub async fn stream_handler(

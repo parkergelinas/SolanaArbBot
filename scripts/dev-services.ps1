@@ -50,7 +50,7 @@ function Stop-Services {
     Show-Status
 }
 
-function Start-ServiceWindow([string]$Name, [string]$Package) {
+function Start-ServiceWindow([string]$Name, [string]$Package, [string]$EnvPrefix = '') {
     $port = $Ports[$Name]
     $owner = Get-PortOwner $port
     if ($owner) {
@@ -58,7 +58,11 @@ function Start-ServiceWindow([string]$Name, [string]$Package) {
         return
     }
 
-    $cmd = "Set-Location '$Root'; cargo run -p $Package"
+    $cmd = if ($EnvPrefix) {
+        "Set-Location '$Root'; $EnvPrefix cargo run -p $Package"
+    } else {
+        "Set-Location '$Root'; cargo run -p $Package"
+    }
     Write-Host "Starting $Name in new window..."
     Start-Process powershell -ArgumentList @('-NoExit', '-Command', $cmd)
 }
@@ -69,11 +73,18 @@ if ($Stop)   { Stop-Services; exit 0 }
 Write-Host "SolanaArbBot dev services" -ForegroundColor Cyan
 Write-Host "Repo: $Root`n"
 
+$ControlEnv = @(
+    '$env:DATA_LAYER_INGEST = if ($env:DATA_LAYER_INGEST) { $env:DATA_LAYER_INGEST } else { "auto" }'
+    'if (-not $env:SOLANA_ARB_RPC__ENDPOINTS) { Write-Host "Tip: set SOLANA_ARB_RPC__ENDPOINTS for live chain swaps" -ForegroundColor DarkYellow }'
+) -join '; '
+
+$StreamEnv = '$env:SIGNAL_HUB_URL = "http://127.0.0.1:3001"'
+
 if (-not $StreamOnly) {
-    Start-ServiceWindow 'control-api' 'control-api'
+    Start-ServiceWindow 'control-api' 'control-api' $ControlEnv
 }
 if (-not $ControlOnly) {
-    Start-ServiceWindow 'stream-api' 'stream-api'
+    Start-ServiceWindow 'stream-api' 'stream-api' $StreamEnv
 }
 if (-not $ControlOnly -and -not $StreamOnly) {
     Start-ServiceWindow 'intelligence-api' 'intelligence-api'

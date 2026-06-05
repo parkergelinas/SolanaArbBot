@@ -28,6 +28,24 @@ export function useStreamSignals<T = import('./types').SignalEvent>(
   );
 }
 
+export function useStreamTrades<T = import('./types').TradeEvent>(
+  maxItems = 200,
+): T[] {
+  return useSyncExternalStore(
+    (onStoreChange) => streamStore.subscribe(onStoreChange),
+    () => streamStore.getTradesSnapshot(maxItems) as T[],
+    () => [] as T[],
+  );
+}
+
+export function useLatestTrade<T = import('./types').TradeEvent>(): T | null {
+  return useSyncExternalStore(
+    (onStoreChange) => streamStore.subscribe(onStoreChange),
+    () => streamStore.getLatestTrade() as T | null,
+    () => null,
+  );
+}
+
 export function useStreamLatest<T>(type: WsEvent['type']): T | null {
   return useSyncExternalStore(
     (onStoreChange) => streamStore.subscribe(onStoreChange),

@@ -6,7 +6,7 @@ import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 
 import WhaleFeed from '@/components/intelligence/WhaleFeed';
 import { api } from '@/lib/api';
-import { useFetch } from '@/lib/hooks';
+import { useFetch, useLatestTrade } from '@/lib/hooks';
 import { intelligenceToSignals } from '@/lib/intelligence/bridge';
 import { useIntelConnected, useSmartMoney, useWhales } from '@/lib/intelligence/hooks';
 import { signalBotScore } from '@/lib/signals';
@@ -48,6 +48,7 @@ export default function BotPage() {
     useCallback(() => api.botStatus(), []),
     2_000,
   );
+  const latestTrade = useLatestTrade();
 
   useEffect(() => {
     if (!publicKey) {
@@ -158,14 +159,49 @@ export default function BotPage() {
                 <p className="text-xs text-red-400 mt-0.5">{bot.halt_reason}</p>
               )}
             </div>
-            <span className="text-[10px] uppercase tracking-wider text-platform-muted px-2 py-1 rounded-md border border-platform-border">
-              {bot?.mode ?? 'paper'}
-            </span>
+            <div className="flex flex-col items-end gap-1">
+              <span className="text-[10px] uppercase tracking-wider text-platform-muted px-2 py-1 rounded-md border border-platform-border">
+                {bot?.runtime_mode ?? bot?.mode ?? 'disabled'}
+              </span>
+              {bot?.active_strategies && bot.active_strategies.length > 0 && (
+                <span className="text-[9px] text-platform-muted mono">
+                  {bot.active_strategies.join(' · ')} · {bot.ingestion_mode ?? '—'}
+                </span>
+              )}
+            </div>
           </div>
           <p className="text-3xl font-bold mono text-slate-100 mt-3">
             {bot ? formatUsd(bot.net_pnl_usd) : '–'}
           </p>
           <p className="text-xs text-platform-muted">Net PnL (paper)</p>
+
+          {latestTrade && (
+            <div className="mt-4 rounded-lg border border-platform-border/60 bg-platform-bg/40 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wider text-platform-muted">
+                Latest trade
+              </p>
+              <div className="flex items-center justify-between gap-2 mt-1">
+                <span className="text-xs text-slate-300 capitalize">
+                  {latestTrade.source_strategy} · {latestTrade.stage}
+                </span>
+                <span className={`text-xs mono font-medium capitalize ${
+                  latestTrade.stage === 'filled'
+                    ? 'text-green-400'
+                    : latestTrade.stage === 'rejected' || latestTrade.stage === 'failed'
+                      ? 'text-red-400'
+                      : 'text-platform-accent'
+                }`}>
+                  {latestTrade.expected_pnl_usd >= 0 ? '+' : ''}
+                  {formatUsd(latestTrade.expected_pnl_usd)}
+                </span>
+              </div>
+              {latestTrade.reject_reason && (
+                <p className="text-[10px] text-red-400/80 mt-1 truncate">
+                  {latestTrade.reject_reason}
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="flex gap-3 mt-5">
             <button

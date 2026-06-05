@@ -18,6 +18,95 @@ pub fn spawn_intelligence_stub(_tx: mpsc::UnboundedSender<TradeSignal>) {
     info!("intelligence signal bridge stub — wire to data-layer whale alerts");
 }
 
+#[derive(serde::Deserialize)]
+struct HubLiveSignal {
+    signal_id: String,
+    kind: String,
+    #[serde(default)]
+    strategy_tag: Option<String>,
+    #[serde(default)]
+    token_in: String,
+    #[serde(default)]
+    confidence: f64,
+    #[serde(default)]
+    size: f64,
+    #[serde(default)]
+    size_usd: Option<f64>,
+    #[serde(default)]
+    strength: Option<f64>,
+}
+
+/// Poll `SIGNAL_HUB_URL` / `CONTROL_API_URL` `/api/live-signals` for whale-copy candidates.
+pub fn spawn_signal_hub_subscriber(tx: mpsc::UnboundedSender<TradeSignal>) {
+    let hub = std::env::var("SIGNAL_HUB_URL")
+        .or_else(|_| std::env::var("CONTROL_API_URL"))
+        .unwrap_or_else(|_| "http://127.0.0.1:3001".into());
+    let hub = hub.trim_end_matches('/').to_string();
+    let poll_ms: u64 = std::env::var("SIGNAL_HUB_POLL_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1_000);
+
+    tokio::spawn(async move {
+        let client = reqwest::Client::new();
+        let url = format!("{hub}/api/live-signals?limit=50");
+        let mut seen = std::collections::HashSet::<String>::new();
+        info!(url = %url, "signal-hub → execution-engine subscriber started");
+
+        loop {
+            match client.get(&url).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    if let Ok(signals) = resp.json::<Vec<HubLiveSignal>>().await {
+                        for s in signals {
+                            if !seen.insert(s.signal_id.clone()) {
+                                continue;
+                            }
+                            if let Some(sig) = hub_to_trade(&s) {
+                                if tx.send(sig).is_err() {
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+                Ok(resp) => warn!(status = %resp.status(), "signal-hub poll failed"),
+                Err(e) => warn!(error = %e, "signal-hub poll error"),
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(poll_ms)).await;
+        }
+    });
+}
+
+fn hub_to_trade(s: &HubLiveSignal) -> Option<TradeSignal> {
+    let tag = s.strategy_tag.as_deref().unwrap_or("");
+    let is_whale = s.kind.contains("whale") || tag == "whale_copy_candidate";
+    if !is_whale && s.kind != "smart_money_alert" {
+        return None;
+    }
+
+    let strategy = if is_whale {
+        "whale_copy_trade"
+    } else {
+        "momentum_follow"
+    };
+
+    let edge = s.strength.unwrap_or(s.confidence) * 100.0;
+    let size = s.size_usd.unwrap_or(s.size * 150.0);
+
+    Some(TradeSignal::new(
+        if s.token_in.is_empty() {
+            "So11111111111111111111111111111111111111112".into()
+        } else {
+            s.token_in.clone()
+        },
+        "long",
+        s.confidence,
+        edge,
+        size.max(10.0),
+        strategy,
+    ))
+}
+
 pub fn spawn_demo_signal_feed(tx: mpsc::UnboundedSender<TradeSignal>, interval_ms: u64) {
     tokio::spawn(async move {
         let mut n: u64 = 0;

@@ -11,6 +11,7 @@ pub fn build(state: AppState) -> Router {
 
     Router::new()
         .route("/health", get(routes::health::health))
+        .route("/api/live-signals", get(routes::live_signals::get_live_signals))
         .route("/stream", get(routes::stream::stream_handler))
         .layer(cors)
         .with_state(state)
