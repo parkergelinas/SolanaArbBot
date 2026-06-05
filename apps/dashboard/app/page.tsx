@@ -6,7 +6,7 @@ import SystemStatusBadge from '@/components/SystemStatusBadge';
 import SignalCard from '@/components/SignalCard';
 import { useFetch, useWsEvents } from '@/lib/hooks';
 import { api } from '@/lib/api';
-import { formatUsd } from '@/lib/types';
+import { formatUsd, type SignalEvent } from '@/lib/types';
 
 export default function OverviewPage() {
   const { data: health }    = useFetch(useCallback(() => api.health(),     []), 5_000);
@@ -14,7 +14,7 @@ export default function OverviewPage() {
   const { data: portfolio } = useFetch(useCallback(() => api.portfolio(),  []), 10_000);
   const { data: risk }      = useFetch(useCallback(() => api.risk(),       []), 10_000);
 
-  const liveSignals = useWsEvents('signal', 5);
+  const liveSignals = useWsEvents<SignalEvent>('signal', 5);
 
   const [starting, setStarting] = useState(false);
 

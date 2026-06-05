@@ -2,10 +2,11 @@
 
 import { useWsContext } from './WebSocketProvider';
 import { useLatestWsEvent } from '@/lib/hooks';
+import type { SystemStatus } from '@/lib/types';
 
 export default function SystemStatusBadge() {
   const { connected } = useWsContext();
-  const status = useLatestWsEvent('status');
+  const status = useLatestWsEvent<SystemStatus>('status');
 
   const running = status?.running ?? false;
   const mode    = status?.mode    ?? 'paper';
