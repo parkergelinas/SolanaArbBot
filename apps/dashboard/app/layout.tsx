@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
-import './globals.css';
+
 import Navigation from '@/components/Navigation';
-import { WebSocketProvider } from '@/components/WebSocketProvider';
+import Providers from '@/components/Providers';
+
+import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Solana Arb — Control Plane',
@@ -10,14 +12,18 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const wsUrl = process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:3001/ws';
+  const intelUrl =
+    process.env.NEXT_PUBLIC_INTELLIGENCE_URL ?? 'ws://localhost:8090/intelligence';
 
   return (
     <html lang="en">
       <body className="flex h-screen overflow-hidden bg-platform-bg text-slate-100">
-        <WebSocketProvider url={wsUrl}>
+        <Providers wsUrl={wsUrl} intelUrl={intelUrl}>
           <Navigation />
-          <main className="app-main flex-1 flex flex-col min-h-0 overflow-hidden p-6">{children}</main>
-        </WebSocketProvider>
+          <main className="app-main flex-1 flex flex-col min-h-0 overflow-hidden p-6">
+            {children}
+          </main>
+        </Providers>
       </body>
     </html>
   );

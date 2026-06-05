@@ -28,12 +28,18 @@ const DISPLAY_CAP = 200;
 export function mergeSignals(
   live: SignalEvent[],
   historical: SignalEvent[] | null | undefined,
+  intelligence?: SignalEvent[],
 ): OrganizedSignals {
   const liveIds = new Set(live.map((s) => s.signal_id));
+  const intelIds = new Set((intelligence ?? []).map((s) => s.signal_id));
   const byId = new Map<number, SignalEvent>();
 
   for (const s of historical ?? []) {
     byId.set(s.signal_id, s);
+  }
+  for (const s of intelligence ?? []) {
+    byId.set(s.signal_id, s);
+    liveIds.add(s.signal_id);
   }
   for (const s of live) {
     byId.set(s.signal_id, s);
@@ -43,7 +49,7 @@ export function mergeSignals(
     .sort((a, b) => b.timestamp_micros - a.timestamp_micros)
     .slice(0, DISPLAY_CAP);
 
-  const stats = computeStats(signals, liveIds);
+  const stats = computeStats(signals, liveIds, intelIds.size);
   return { signals, liveIds, stats };
 }
 
@@ -77,7 +83,11 @@ export function sortSignals(
   return sorted;
 }
 
-function computeStats(signals: SignalEvent[], liveIds: Set<number>): SignalStats {
+function computeStats(
+  signals: SignalEvent[],
+  liveIds: Set<number>,
+  intelCount = 0,
+): SignalStats {
   if (signals.length === 0) {
     return {
       total: 0,
@@ -121,8 +131,17 @@ function computeStats(signals: SignalEvent[], liveIds: Set<number>): SignalStats
     short,
     avgStrength: strengthSum / signals.length,
     avgConfidence: confidenceSum / signals.length,
-    liveCount,
+    liveCount: liveCount + intelCount,
   };
+}
+
+/** Score signal for bot copy-trade eligibility. */
+export function signalBotScore(s: SignalEvent, minConfidence = 0.65): number {
+  const base = s.strength * 0.4 + s.confidence * 0.6;
+  if (s.confidence < minConfidence) return base * 0.5;
+  if (s.signal_type === 'WhaleFlow') return base * 1.15;
+  if (s.signal_type === 'SmartMoney') return base * 1.1;
+  return base;
 }
 
 export function formatRelativeTime(timestampMicros: number, nowMs = Date.now()): string {
