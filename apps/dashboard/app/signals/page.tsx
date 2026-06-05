@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import SignalCard from '@/components/SignalCard';
 import { useFetch, useWsEvents } from '@/lib/hooks';
 import { api } from '@/lib/api';
-import type { SignalType } from '@/lib/types';
+import type { SignalEvent, SignalType } from '@/lib/types';
 
 const SIGNAL_TYPES: (SignalType | 'All')[] = ['All', 'WhaleFlow', 'SmartMoney', 'Momentum'];
 
@@ -17,7 +17,7 @@ export default function SignalsPage() {
     [filter],
   );
   const { data: historical, loading } = useFetch(fetcher, 15_000);
-  const liveSignals = useWsEvents('signal', 500);
+  const liveSignals = useWsEvents<SignalEvent>('signal', 500);
 
   // Merge live + historical, deduplicate by signal_id
   const allSignals = [...liveSignals, ...(historical ?? [])].reduce(

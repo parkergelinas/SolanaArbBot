@@ -18,20 +18,17 @@ export function useInterval(callback: () => void, delay: number | null) {
 // ─── useWsEvents ──────────────────────────────────────────────────────────────
 // Filtered view into the WebSocket stream; returns the last N matching events.
 
-export function useWsEvents<K extends WsEvent['type']>(
-  type: K,
+export function useWsEvents<T = unknown>(
+  type: WsEvent['type'],
   maxItems = 200,
-): Extract<WsEvent, { type: K }>['data'][] {
-  type Data = Extract<WsEvent, { type: K }>['data'];
-  const [items, setItems] = useState<Data[]>([]);
+): T[] {
+  const [items, setItems] = useState<T[]>([]);
 
-  // This hook reads from the global WS context which is set up in WebSocketProvider.
-  // We expose a custom browser event for each WsEvent so any component can subscribe.
   const handleEvent = useCallback(
     (e: Event) => {
       const ev = (e as CustomEvent<WsEvent>).detail;
       if (ev.type !== type) return;
-      const data = ev.data as Data;
+      const data = ev.data as T;
       setItems(prev => {
         const next = [...prev, data];
         return next.length > maxItems ? next.slice(-maxItems) : next;
@@ -50,10 +47,10 @@ export function useWsEvents<K extends WsEvent['type']>(
 
 // ─── useLatestWsEvent ────────────────────────────────────────────────────────
 
-export function useLatestWsEvent<K extends WsEvent['type']>(
-  type: K,
-): Extract<WsEvent, { type: K }>['data'] | null {
-  const events = useWsEvents(type, 1);
+export function useLatestWsEvent<T = unknown>(
+  type: WsEvent['type'],
+): T | null {
+  const events = useWsEvents<T>(type, 1);
   return events[events.length - 1] ?? null;
 }
 
