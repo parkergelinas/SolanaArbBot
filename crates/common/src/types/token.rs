@@ -43,7 +43,7 @@ impl Token {
 #[cfg(test)]
 mod tests {
     use super::Token;
-    use super::pubkey::Pubkey;
+    use crate::Pubkey;
 
     #[test]
     fn token_keeps_identity_fields() {

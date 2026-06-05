@@ -6,7 +6,9 @@ license.workspace = true
 
 [dependencies]
 common = { path = "../common" }
-execution = { version = "0.1.0", path = "../execution" }
-graph = { version = "0.1.0", path = "../graph" }
-routing = { version = "0.1.0", path = "../routing" }
+execution = { path = "../execution" }
+routing = { path = "../routing" }
 tracing = "0.1.44"
+
+[dev-dependencies]
+graph = { path = "../graph" }
