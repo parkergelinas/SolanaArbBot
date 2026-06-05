@@ -1,0 +1,13 @@
+{
+  "name": "solana-arb-bot",
+  "private": true,
+  "description": "Monorepo root — Next.js app lives in apps/dashboard",
+  "scripts": {
+    "build": "npm run build --prefix apps/dashboard",
+    "dev": "npm run dev --prefix apps/dashboard",
+    "start": "npm run start --prefix apps/dashboard"
+  },
+  "dependencies": {
+    "next": "14.2.29"
+  }
+}
