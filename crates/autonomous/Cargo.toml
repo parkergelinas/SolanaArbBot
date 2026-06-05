@@ -1,0 +1,24 @@
+[package]
+name = "autonomous"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+common       = { path = "../common" }
+config       = { path = "../config" }
+decoder      = { path = "../decoder" }
+execution    = { path = "../execution" }
+graph        = { path = "../graph" }
+orchestrator = { path = "../orchestrator" }
+pricing      = { path = "../pricing" }
+risk         = { path = "../risk" }
+risk_engine  = { path = "../risk_engine" }
+routing      = { path = "../routing" }
+scalper      = { path = "../scalper" }
+signals      = { path = "../signals" }
+
+serde = { workspace = true }
+tokio = { version = "1", features = ["sync"] }
+tokio-util = { version = "0.7" }
+tracing = "0.1"

@@ -19,6 +19,7 @@ pub fn build(state: AppState) -> Router {
         // ── Portfolio + Risk ──────────────────────────────────────────────────
         .route("/api/portfolio", get(routes::portfolio::get_portfolio))
         .route("/api/risk", get(routes::portfolio::get_risk))
+        .route("/api/bot/status", get(routes::bot::get_bot_status))
         // ── System control ────────────────────────────────────────────────────
         .route("/api/system/status", get(routes::system::get_status))
         .route("/api/system/start", post(routes::system::start_system))

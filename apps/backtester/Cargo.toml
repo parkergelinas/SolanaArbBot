@@ -1,0 +1,18 @@
+[package]
+name = "backtester-app"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "backtester"
+path = "src/main.rs"
+
+[dependencies]
+backtester = { path = "../../crates/backtester" }
+config     = { path = "../../crates/config" }
+
+serde_json = "1"
+toml       = "0.8"
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

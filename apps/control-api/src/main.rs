@@ -11,6 +11,7 @@ mod error;
 mod events;
 mod router;
 mod routes;
+mod runtime_ctl;
 mod state;
 mod stream;
 

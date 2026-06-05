@@ -6,6 +6,7 @@ import { useStreamStore } from '@/stores/streamStore';
 import { useWsContext } from './WebSocketProvider';
 
 const NAV = [
+  { href: '/bot',          label: 'Bot',       icon: '◉' },
   { href: '/terminal',     label: 'Terminal',  icon: '▣' },
   { href: '/',             label: 'Overview',  icon: '◈' },
   { href: '/signals',      label: 'Signals',   icon: '⚡' },

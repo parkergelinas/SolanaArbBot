@@ -175,6 +175,12 @@ async fn main() {
         "system starting"
     );
 
+    // ── 4b. Backtest mode — run historical replay pipeline and exit ───────────
+    if args.mode == RunMode::Backtest {
+        run_backtest_mode(Arc::clone(&config));
+        return;
+    }
+
     // ── 5. Create shutdown signal ─────────────────────────────────────────────
     let shutdown   = CancellationToken::new();
     let start_time = Instant::now();
@@ -520,6 +526,42 @@ fn init_tracing(config_log_level: &str) {
         .with(fmt::layer())
         .with(filter)
         .init();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Backtest mode
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn run_backtest_mode(config: Arc<SystemConfig>) {
+    use backtester::{generate_dataset, run_pipeline, strategy_config};
+
+    let mut tuned = (*config).clone();
+    let strategy = backtester::strategy_config();
+    tuned.scalper = strategy.scalper;
+    tuned.signal_engine = strategy.signal_engine;
+    tuned.execution = strategy.execution;
+    let cfg = Arc::new(tuned);
+
+    info!("backtest mode: generating 6h synthetic dataset");
+    let dataset = generate_dataset(6 * 3600, 10);
+    info!(events = dataset.events.len(), "running backtest pipeline");
+
+    let report = run_pipeline(cfg, &dataset, 0.80);
+
+    info!(
+        baseline_net = report.baseline.metrics.combined_net_pnl_usd,
+        retest_net   = report.retest.metrics.combined_net_pnl_usd,
+        simulation_net = report.simulation.net_pnl_usd,
+        trades_per_day = report.simulation.trades_per_hour * 24.0,
+        "backtest complete"
+    );
+
+    if let Ok(json) = serde_json::to_string_pretty(&report) {
+        let _ = std::fs::create_dir_all("data");
+        if std::fs::write("data/backtest_results.json", json).is_ok() {
+            info!("results written to data/backtest_results.json");
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

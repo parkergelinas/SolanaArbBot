@@ -83,19 +83,42 @@ const empty = (): Omit<MarketState, 'applyMessages' | 'clear'> => ({
   lastTsMs: 0,
 });
 
-function parseAmount(s: string): number {
-  const n = Number(s);
-  return Number.isFinite(n) ? n : 0;
+function tokenDecimals(mint: string): number {
+  if (mint.startsWith('So1111')) return 9;
+  return 6;
 }
 
-function impliedPrice(amountIn: number, amountOut: number, refIn: number): number {
-  if (amountOut <= 0) return refIn;
-  return (amountIn / amountOut) * refIn;
+export function amountToHuman(mint: string, raw: string): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 0;
+  return n / 10 ** tokenDecimals(mint);
 }
 
 function refPrice(mint: string): number {
   if (mint.startsWith('So1111')) return 145;
   return 1;
+}
+
+/** USD price per unit of `tokenOut` from a swap leg. */
+function swapPriceUsd(
+  tokenIn: string,
+  tokenOut: string,
+  rawIn: string,
+  rawOut: string,
+): number {
+  const inHuman = amountToHuman(tokenIn, rawIn);
+  const outHuman = amountToHuman(tokenOut, rawOut);
+  if (outHuman <= 0) return refPrice(tokenOut);
+  const usdIn = inHuman * refPrice(tokenIn);
+  const implied = usdIn / outHuman;
+  return sanitizePrice(tokenOut, implied);
+}
+
+function sanitizePrice(mint: string, price: number): number {
+  const ref = refPrice(mint);
+  if (!Number.isFinite(price) || price <= 0) return ref;
+  if (price > ref * 50 || price < ref / 50) return ref;
+  return price;
 }
 
 function pushCandleHistory(
@@ -175,16 +198,23 @@ export const useMarketStore = create<MarketState>((set) => ({
                 ? [...swaps.slice(1), s]
                 : [...swaps, s];
 
-            const amountIn = parseAmount(s.amount_in);
-            const amountOut = parseAmount(s.amount_out);
-            const vol = amountIn / 1_000_000;
-            const priceOut = impliedPrice(amountIn, amountOut, refPrice(s.token_in));
+            const amountIn = amountToHuman(s.token_in, s.amount_in);
+            const amountOut = amountToHuman(s.token_out, s.amount_out);
+            const vol = amountIn;
+            const priceOut = swapPriceUsd(
+              s.token_in,
+              s.token_out,
+              s.amount_in,
+              s.amount_out,
+            );
 
+            const prev = tokens[s.token_out];
+            const openPrice = prev?.price_usd ?? refPrice(s.token_out);
             const tokenAcc: TokenAccumulator = {
-              buyFlow: (tokens[s.token_out]?.buyFlow ?? 0) + vol,
-              sellFlow: tokens[s.token_out]?.sellFlow ?? 0,
-              volume: (tokens[s.token_out]?.volume ?? 0) + vol,
-              openPrice: tokens[s.token_out]?.price_usd ?? priceOut,
+              buyFlow: (prev?.buyFlow ?? 0) + vol,
+              sellFlow: prev?.sellFlow ?? 0,
+              volume: (prev?.volume ?? 0) + vol,
+              openPrice,
               lastPrice: priceOut,
             };
             const imb =
@@ -193,9 +223,7 @@ export const useMarketStore = create<MarketState>((set) => ({
                   (tokenAcc.buyFlow + tokenAcc.sellFlow)
                 : 0;
             const changePct =
-              tokenAcc.openPrice && tokenAcc.openPrice > 0
-                ? ((priceOut - tokenAcc.openPrice) / tokenAcc.openPrice) * 100
-                : 0;
+              openPrice > 0 ? ((priceOut - openPrice) / openPrice) * 100 : 0;
 
             tokens[s.token_out] = {
               mint: s.token_out,
@@ -219,14 +247,15 @@ export const useMarketStore = create<MarketState>((set) => ({
           }
           case 'token_price': {
             const p = msg.payload;
-            prices[p.mint] = p;
+            const priceUsd = sanitizePrice(p.mint, p.price_usd);
+            prices[p.mint] = { ...p, price_usd: priceUsd };
             const existing = tokens[p.mint];
-            const open = existing?.price_usd ?? p.price_usd;
+            const open = existing?.price_usd ?? refPrice(p.mint);
             const changePct =
-              open > 0 ? ((p.price_usd - open) / open) * 100 : 0;
+              open > 0 ? ((priceUsd - open) / open) * 100 : 0;
             tokens[p.mint] = {
               mint: p.mint,
-              price_usd: p.price_usd,
+              price_usd: priceUsd,
               volume: existing?.volume ?? 0,
               buyFlow: existing?.buyFlow ?? 0,
               sellFlow: existing?.sellFlow ?? 0,
@@ -238,7 +267,14 @@ export const useMarketStore = create<MarketState>((set) => ({
             break;
           }
           case 'candle': {
-            const c = msg.payload;
+            const raw = msg.payload;
+            const c = {
+              ...raw,
+              open: sanitizePrice(raw.mint, raw.open),
+              high: sanitizePrice(raw.mint, raw.high),
+              low: sanitizePrice(raw.mint, raw.low),
+              close: sanitizePrice(raw.mint, raw.close),
+            };
             const key = candleKey(c.mint, c.interval);
             candles[key] = c;
             candleHistory = pushCandleHistory(candleHistory, key, c);

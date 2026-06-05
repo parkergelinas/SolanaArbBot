@@ -14,7 +14,8 @@ config  = { path = "../../crates/config" }
 common  = { path = "../../crates/common" }
 events  = { path = "../../crates/events" }
 signals = { path = "../../crates/signals" }
-scalper = { path = "../../crates/scalper" }
+scalper     = { path = "../../crates/scalper" }
+backtester  = { path = "../../crates/backtester" }
 
 # ── Async runtime ─────────────────────────────────────────────────────────────
 tokio      = { version = "1", features = ["full"] }
@@ -23,6 +24,7 @@ tokio-util = { version = "0.7" }
 # ── Observability ─────────────────────────────────────────────────────────────
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+serde_json         = "1"
 
 # ── Future integrations (uncomment when ready) ────────────────────────────────
 # control-api = { path = "../../apps/control-api" }

@@ -66,7 +66,7 @@ export default function TokenTable() {
                       }`}
                     >
                       {chgPos ? '+' : ''}
-                      {row.changePct.toFixed(2)}%
+                      {Math.min(Math.abs(row.changePct), 999).toFixed(2)}%
                     </td>
                     <td className="px-2 py-0.5 text-right text-slate-400">
                       {row.volume.toFixed(2)}

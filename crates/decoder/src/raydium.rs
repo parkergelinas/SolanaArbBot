@@ -75,14 +75,19 @@ fn pool_update_to_state(update: &PoolUpdate) -> Result<PoolState> {
     let liquidity = update
         .liquidity
         .ok_or_else(|| Error::DecodeError("raydium pool update missing liquidity".to_owned()))?;
-    let reserve = u64::try_from(liquidity).unwrap_or(u64::MAX);
+    let reserve_a = u64::try_from(liquidity).unwrap_or(u64::MAX);
+    let reserve_b = update
+        .sqrt_price
+        .and_then(|sp| u64::try_from(sp.saturating_sub(1_000_000) / 10).ok())
+        .filter(|r| *r > 0)
+        .unwrap_or(reserve_a);
 
     Ok(PoolState {
         dex: DexType::Raydium,
         token_a: Token::new(token_a_mint, DEFAULT_EVENT_DECIMALS, None),
         token_b: Token::new(token_b_mint, DEFAULT_EVENT_DECIMALS, None),
         liquidity,
-        reserves: Some((reserve, reserve)),
+        reserves: Some((reserve_a, reserve_b)),
     })
 }
 

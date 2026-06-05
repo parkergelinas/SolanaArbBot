@@ -75,12 +75,19 @@ fn pool_update_to_state(update: &PoolUpdate) -> Result<PoolState> {
         .liquidity
         .ok_or_else(|| Error::DecodeError("orca pool update missing liquidity".to_owned()))?;
 
+    let reserve_a = u64::try_from(liquidity).unwrap_or(u64::MAX);
+    let reserve_b = update
+        .sqrt_price
+        .and_then(|sp| u64::try_from(sp.saturating_sub(1_000_000) / 10).ok())
+        .filter(|r| *r > 0)
+        .unwrap_or(reserve_a);
+
     Ok(PoolState {
         dex: DexType::OrcaCLMM,
         token_a: Token::new(token_a_mint, DEFAULT_EVENT_DECIMALS, None),
         token_b: Token::new(token_b_mint, DEFAULT_EVENT_DECIMALS, None),
         liquidity,
-        reserves: None,
+        reserves: Some((reserve_a, reserve_b)),
     })
 }
 
@@ -199,7 +206,7 @@ pub(crate) mod tests {
         assert_eq!(state.token_a.decimals(), DEFAULT_EVENT_DECIMALS);
         assert_eq!(state.token_b.mint(), Pubkey::new([4; 32]));
         assert_eq!(state.liquidity, 7_000);
-        assert_eq!(state.reserves, None);
+        assert_eq!(state.reserves, Some((7_000, 7_000)));
     }
 
     #[test]
