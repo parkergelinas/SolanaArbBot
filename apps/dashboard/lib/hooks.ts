@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { streamStore } from './stream-store';
 import type { WsEvent } from './types';
 
 // ─── useInterval ─────────────────────────────────────────────────────────────
@@ -15,50 +16,48 @@ export function useInterval(callback: () => void, delay: number | null) {
   }, [delay]);
 }
 
-// ─── useWsEvents ──────────────────────────────────────────────────────────────
-// Filtered view into the WebSocket stream; returns the last N matching events.
+// ─── Stream hooks (batched external store) ───────────────────────────────────
 
+export function useStreamSignals<T = import('./types').SignalEvent>(
+  maxItems = 200,
+): T[] {
+  return useSyncExternalStore(
+    (onStoreChange) => streamStore.subscribe(onStoreChange),
+    () => streamStore.getSignalsSnapshot(maxItems) as T[],
+    () => [] as T[],
+  );
+}
+
+export function useStreamLatest<T>(type: WsEvent['type']): T | null {
+  return useSyncExternalStore(
+    (onStoreChange) => streamStore.subscribe(onStoreChange),
+    () => streamStore.getLatest<T>(type),
+    () => null,
+  );
+}
+
+/** @deprecated Use useStreamSignals — kept for gradual migration */
 export function useWsEvents<T = unknown>(
   type: WsEvent['type'],
   maxItems = 200,
 ): T[] {
-  const [items, setItems] = useState<T[]>([]);
-
-  const handleEvent = useCallback(
-    (e: Event) => {
-      const ev = (e as CustomEvent<WsEvent>).detail;
-      if (ev.type !== type) return;
-      const data = ev.data as T;
-      setItems(prev => {
-        const next = [...prev, data];
-        return next.length > maxItems ? next.slice(-maxItems) : next;
-      });
-    },
-    [type, maxItems],
-  );
-
-  useEffect(() => {
-    window.addEventListener('ws-event', handleEvent as EventListener);
-    return () => window.removeEventListener('ws-event', handleEvent as EventListener);
-  }, [handleEvent]);
-
-  return items;
+  if (type === 'signal') {
+    return useStreamSignals<T>(maxItems);
+  }
+  const latest = useStreamLatest<T>(type);
+  return latest ? [latest] : [];
 }
 
-// ─── useLatestWsEvent ────────────────────────────────────────────────────────
-
-export function useLatestWsEvent<T = unknown>(
-  type: WsEvent['type'],
-): T | null {
-  const events = useWsEvents<T>(type, 1);
-  return events[events.length - 1] ?? null;
+/** @deprecated Use useStreamLatest */
+export function useLatestWsEvent<T = unknown>(type: WsEvent['type']): T | null {
+  return useStreamLatest<T>(type);
 }
 
-// ─── useFetch ────────────────────────────────────────────────────────────────
+// ─── useFetch (REST bootstrap only — pass null interval to disable polling) ─
 
 export function useFetch<T>(
   fetcher: () => Promise<T>,
-  intervalMs = 10_000,
+  intervalMs: number | null = null,
 ): { data: T | null; error: string | null; loading: boolean; refetch: () => void } {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);

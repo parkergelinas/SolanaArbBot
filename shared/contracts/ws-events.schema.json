@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://solana-arb.local/schemas/ws-stream.json",
+  "title": "ControlPlaneWebSocketStream",
+  "description": "Batched WebSocket frames for the low-latency trading terminal",
+  "oneOf": [
+    { "$ref": "#/$defs/WsBatchFrame" },
+    { "$ref": "#/$defs/WsEvent" }
+  ],
+  "$defs": {
+    "WsBatchFrame": {
+      "type": "object",
+      "required": ["type", "seq", "ts_micros", "events"],
+      "properties": {
+        "type": { "const": "batch" },
+        "seq": { "type": "integer", "minimum": 0 },
+        "ts_micros": { "type": "integer", "minimum": 0 },
+        "events": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/WsEvent" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "WsEvent": {
+      "type": "object",
+      "required": ["type", "data"],
+      "properties": {
+        "type": {
+          "enum": ["signal", "health", "status", "portfolio", "risk", "config_changed"]
+        },
+        "data": { "type": "object" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

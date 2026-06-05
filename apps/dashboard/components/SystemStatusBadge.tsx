@@ -1,12 +1,12 @@
 'use client';
 
 import { useWsContext } from './WebSocketProvider';
-import { useLatestWsEvent } from '@/lib/hooks';
+import { useStreamLatest } from '@/lib/hooks';
 import type { SystemStatus } from '@/lib/types';
 
 export default function SystemStatusBadge() {
   const { connected } = useWsContext();
-  const status = useLatestWsEvent<SystemStatus>('status');
+  const status = useStreamLatest<SystemStatus>('status');
 
   const running = status?.running ?? false;
   const mode    = status?.mode    ?? 'paper';

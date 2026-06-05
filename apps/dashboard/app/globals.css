@@ -13,6 +13,16 @@
   --red:          #ef4444;
   --yellow:       #eab308;
   --blue:         #3b82f6;
+
+  /* Terminal theme — Bloomberg-style institutional */
+  --terminal-bg:     #060d18;
+  --terminal-panel:  #0a1628;
+  --terminal-border: #1e3a4a;
+  --terminal-hover:  #0f2035;
+  --terminal-live:   #22d3ee;
+  --terminal-muted:  #64748b;
+  --flow-buy:        #22c55e;
+  --flow-sell:       #ef4444;
 }
 
 * {
@@ -40,3 +50,25 @@ body {
   50%       { opacity: 0.4; }
 }
 .live-pulse { animation: live-pulse 2s ease-in-out infinite; }
+
+/* ── Trading terminal utilities ─────────────────────────────────────────── */
+.terminal-shell {
+  background: var(--terminal-bg);
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+}
+
+.bg-terminal-bg     { background-color: var(--terminal-bg); }
+.bg-terminal-panel    { background-color: var(--terminal-panel); }
+.border-terminal-border { border-color: var(--terminal-border); }
+.bg-terminal-hover:hover { background-color: var(--terminal-hover); }
+.text-terminal-live   { color: var(--terminal-live); }
+.text-terminal-muted  { color: var(--terminal-muted); }
+.text-flow-buy        { color: var(--flow-buy); }
+.text-flow-sell       { color: var(--flow-sell); }
+.bg-terminal-live\/5  { background-color: color-mix(in srgb, var(--terminal-live) 5%, transparent); }
+.bg-terminal-live\/10 { background-color: color-mix(in srgb, var(--terminal-live) 10%, transparent); }
+.bg-terminal-live\/20 { background-color: color-mix(in srgb, var(--terminal-live) 20%, transparent); }
+.border-terminal-live\/40 { border-color: color-mix(in srgb, var(--terminal-live) 40%, transparent); }
+.border-flow-sell\/40 { border-color: color-mix(in srgb, var(--flow-sell) 40%, transparent); }
+.text-terminal-live\/70 { color: color-mix(in srgb, var(--terminal-live) 70%, transparent); }

@@ -2,9 +2,11 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useStreamStore } from '@/stores/streamStore';
 import { useWsContext } from './WebSocketProvider';
 
 const NAV = [
+  { href: '/terminal',     label: 'Terminal',  icon: '▣' },
   { href: '/',             label: 'Overview',  icon: '◈' },
   { href: '/signals',      label: 'Signals',   icon: '⚡' },
   { href: '/trades',       label: 'Trades',    icon: '↔' },
@@ -15,7 +17,10 @@ const NAV = [
 
 export default function Navigation() {
   const pathname = usePathname();
-  const { connected } = useWsContext();
+  const { connected: controlConnected } = useWsContext();
+  const streamConnected = useStreamStore((s) => s.connected);
+  const onTerminal = pathname.startsWith('/terminal');
+  const connected = onTerminal ? streamConnected : controlConnected;
 
   return (
     <nav className="w-56 flex-shrink-0 bg-slate-800 border-r border-slate-700 flex flex-col">
@@ -28,7 +33,7 @@ export default function Navigation() {
       {/* Links */}
       <ul className="flex-1 py-3 space-y-0.5 px-2">
         {NAV.map(({ href, label, icon }) => {
-          const active = pathname === href;
+          const active = pathname === href || (href === '/terminal' && pathname.startsWith('/terminal'));
           return (
             <li key={href}>
               <Link

@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://solana-arb.local/stream/v1",
+  "title": "SolanaStreamContractV1",
+  "description": "Versioned streaming schema for low-latency terminal",
+  "$defs": {
+    "Dex": { "type": "string", "enum": ["raydium", "orca", "jupiter"] },
+    "CandleInterval": { "type": "string", "enum": ["1s", "5s", "1m"] },
+    "SignalKind": {
+      "type": "string",
+      "enum": ["momentum", "whale_flow", "smart_money", "imbalance"]
+    },
+    "VersionField": { "type": "integer", "const": 1 },
+    "SwapEvent": {
+      "type": "object",
+      "required": [
+        "v",
+        "signature",
+        "dex",
+        "token_in",
+        "token_out",
+        "amount_in",
+        "amount_out",
+        "wallet",
+        "slot",
+        "timestamp_ms"
+      ],
+      "properties": {
+        "v": { "$ref": "#/$defs/VersionField" },
+        "signature": { "type": "string" },
+        "dex": { "$ref": "#/$defs/Dex" },
+        "token_in": { "type": "string" },
+        "token_out": { "type": "string" },
+        "amount_in": { "type": "string" },
+        "amount_out": { "type": "string" },
+        "wallet": { "type": "string" },
+        "slot": { "type": "integer", "minimum": 0 },
+        "timestamp_ms": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "TokenPrice": {
+      "type": "object",
+      "required": ["v", "mint", "price_usd", "slot", "timestamp_ms"],
+      "properties": {
+        "v": { "$ref": "#/$defs/VersionField" },
+        "mint": { "type": "string" },
+        "price_usd": { "type": "number" },
+        "slot": { "type": "integer", "minimum": 0 },
+        "timestamp_ms": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "Candle": {
+      "type": "object",
+      "required": [
+        "v",
+        "mint",
+        "interval",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "ts_open_ms"
+      ],
+      "properties": {
+        "v": { "$ref": "#/$defs/VersionField" },
+        "mint": { "type": "string" },
+        "interval": { "$ref": "#/$defs/CandleInterval" },
+        "open": { "type": "number" },
+        "high": { "type": "number" },
+        "low": { "type": "number" },
+        "close": { "type": "number" },
+        "volume": { "type": "number" },
+        "ts_open_ms": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "Signal": {
+      "type": "object",
+      "required": [
+        "v",
+        "signal_id",
+        "mint",
+        "kind",
+        "strength",
+        "confidence",
+        "timestamp_ms"
+      ],
+      "properties": {
+        "v": { "$ref": "#/$defs/VersionField" },
+        "signal_id": { "type": "string" },
+        "mint": { "type": "string" },
+        "kind": { "$ref": "#/$defs/SignalKind" },
+        "strength": { "type": "number" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "timestamp_ms": { "type": "integer", "minimum": 0 },
+        "detail": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "WSMessage": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "payload"],
+          "properties": {
+            "type": { "const": "swap" },
+            "payload": { "$ref": "#/$defs/SwapEvent" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "payload"],
+          "properties": {
+            "type": { "const": "token_price" },
+            "payload": { "$ref": "#/$defs/TokenPrice" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "payload"],
+          "properties": {
+            "type": { "const": "candle" },
+            "payload": { "$ref": "#/$defs/Candle" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "payload"],
+          "properties": {
+            "type": { "const": "signal" },
+            "payload": { "$ref": "#/$defs/Signal" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "WSBatchFrame": {
+      "type": "object",
+      "required": ["v", "type", "seq", "ts_ms", "messages"],
+      "properties": {
+        "v": { "$ref": "#/$defs/VersionField" },
+        "type": { "const": "batch" },
+        "seq": { "type": "integer", "minimum": 0 },
+        "ts_ms": { "type": "integer", "minimum": 0 },
+        "messages": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/WSMessage" }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [{ "$ref": "#/$defs/WSBatchFrame" }, { "$ref": "#/$defs/WSMessage" }]
+}

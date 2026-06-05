@@ -15,6 +15,18 @@ const config: Config = {
           500: '#22c55e',
           600: '#16a34a',
         },
+        terminal: {
+          bg: '#060d18',
+          panel: '#0a1628',
+          border: '#1e3a4a',
+          hover: '#0f2035',
+          live: '#22d3ee',
+          muted: '#64748b',
+        },
+        flow: {
+          buy: '#22c55e',
+          sell: '#ef4444',
+        },
       },
       fontFamily: {
         mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'],
