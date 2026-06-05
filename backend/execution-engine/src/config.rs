@@ -14,6 +14,8 @@ pub struct EngineConfig {
     pub audit_path: Option<String>,
     pub wallet_pubkey: String,
     pub quote_cache_ttl_ms: u64,
+    pub quote_mint: String,
+    pub base_mint: String,
 }
 
 impl EngineConfig {
@@ -41,6 +43,10 @@ impl EngineConfig {
             wallet_pubkey: std::env::var("EXECUTION_WALLET_PUBKEY")
                 .unwrap_or_else(|_| "11111111111111111111111111111111".into()),
             quote_cache_ttl_ms: env_u64("QUOTE_CACHE_TTL_MS", 200),
+            quote_mint: std::env::var("QUOTE_MINT")
+                .unwrap_or_else(|_| "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".into()),
+            base_mint: std::env::var("BASE_MINT")
+                .unwrap_or_else(|_| "So11111111111111111111111111111111111111112".into()),
         }
     }
 }

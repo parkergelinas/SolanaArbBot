@@ -32,10 +32,7 @@ impl StrategyRegistry {
     }
 
     pub fn names(&self) -> Vec<&'static str> {
-        self.strategies
-            .values()
-            .map(|s| s.name())
-            .collect()
+        self.strategies.values().map(|s| s.name()).collect()
     }
 }
 
@@ -55,7 +52,7 @@ mod tests {
         let reg = StrategyRegistry::new();
         let s = reg.get("momentum_follow").expect("registered");
         assert_eq!(s.name(), "momentum_follow");
-        let sig = TradeSignal::new("w", "A", "B", 0.8, 15.0, 50.0, "momentum_follow");
+        let sig = TradeSignal::new("SOL", "long", 0.8, 15.0, 50.0, "momentum_follow");
         assert!(s.validate(&sig).is_ok());
     }
 

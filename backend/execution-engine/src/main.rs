@@ -1,14 +1,14 @@
-//! Execution engine service — consumes trade signals, routes to Jupiter (paper by default).
+//! Execution engine — async tokio service, paper mode by default.
 
 use std::sync::Arc;
 
-use crossbeam_channel::unbounded;
+use tokio::sync::mpsc;
 use tracing::info;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use execution_engine::{
-    audit::AuditLog, config::EngineConfig, orders::OrderStore, router::ExecutionRouter,
-    subscriber,
+    audit::AuditLog, config::EngineConfig, jupiter::JupiterExecutor, orders::OrderStore,
+    router::ExecutionRouter, subscriber,
 };
 
 #[tokio::main]
@@ -21,34 +21,34 @@ async fn main() -> anyhow::Result<()> {
     let config = EngineConfig::from_env();
     info!(
         paper_mode = config.paper_mode,
-        min_confidence = config.min_confidence,
-        max_size_usd = config.max_size_usd,
+        execution_live = config.execution_live,
+        max_position_usd = config.max_position_usd,
         "execution-engine starting"
     );
 
-    if !config.paper_mode {
-        tracing::warn!(
-            "PAPER_MODE=false — live trading path enabled; ensure EXECUTION_KEYPAIR_PATH is set"
-        );
+    if config.execution_live {
+        tracing::warn!("EXECUTION_LIVE=true — real swap transactions may be built");
     }
 
     let orders = Arc::new(OrderStore::new());
     let audit = Arc::new(AuditLog::new(config.audit_path.clone()));
-    let (signal_tx, signal_rx) = unbounded();
-    let (lifecycle_tx, lifecycle_rx) = unbounded();
+    let jupiter = Arc::new(JupiterExecutor::new(config.clone()));
+    jupiter.prewarm().await?;
+
+    let (signal_tx, signal_rx) = mpsc::unbounded_channel();
+    let (lifecycle_tx, mut lifecycle_rx) = mpsc::unbounded_channel();
 
     let router = Arc::new(ExecutionRouter::new(
         config.clone(),
         orders.clone(),
         audit,
+        jupiter,
         Some(lifecycle_tx),
     ));
-    router.spawn_worker(signal_rx);
+    router.spawn(signal_rx);
 
-    std::thread::spawn(move || {
-        while let Ok(ev) = lifecycle_rx.recv() {
-            tracing::debug!(?ev, "lifecycle event");
-        }
+    tokio::spawn(async move {
+        while lifecycle_rx.recv().await.is_some() {}
     });
 
     let demo_interval: u64 = std::env::var("DEMO_SIGNAL_INTERVAL_MS")
@@ -57,7 +57,20 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or(5_000);
 
     subscriber::spawn_intelligence_stub(signal_tx.clone());
-    subscriber::spawn_demo_signal_feed(signal_tx, demo_interval);
+
+    if std::env::var("ALPHA_ENGINE_ENABLED")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false)
+    {
+        let (alpha_tx, alpha_rx) = mpsc::unbounded_channel();
+        subscriber::spawn_alpha_channel_bridge(alpha_rx, signal_tx.clone());
+        info!("alpha-engine channel bridge enabled — wire alpha_tx from in-process spawn");
+        let _ = alpha_tx;
+    } else if let Ok(arb_url) = std::env::var("ARB_WS_URL") {
+        subscriber::spawn_arb_ws_subscriber(arb_url, signal_tx.clone());
+    } else {
+        subscriber::spawn_demo_signal_feed(signal_tx, demo_interval);
+    }
 
     info!("execution-engine running — awaiting signals");
     tokio::signal::ctrl_c().await?;

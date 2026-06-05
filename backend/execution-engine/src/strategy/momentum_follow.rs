@@ -47,7 +47,7 @@ mod tests {
     fn validate_and_size() {
         let s = MomentumFollowStrategy;
         let cfg = EngineConfig::from_env();
-        let sig = TradeSignal::new("w", "SOL", "USDC", 0.7, 10.0, 100.0, "momentum_follow");
+        let sig = TradeSignal::new("SOL", "long", 0.7, 10.0, 100.0, "momentum_follow");
         assert!(s.validate(&sig).is_ok());
         let sized = s.size_position(&sig, &cfg);
         assert!(sized.size_usd <= cfg.max_position_usd);

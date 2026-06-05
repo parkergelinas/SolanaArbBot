@@ -28,6 +28,12 @@ pub enum WalletTier {
     Retail,
 }
 
+impl Default for WalletTier {
+    fn default() -> Self {
+        Self::Retail
+    }
+}
+
 /// Canonical normalized swap (from data-layer).
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SwapEvent {
@@ -37,6 +43,25 @@ pub struct SwapEvent {
     pub amount_sol: f64,
     pub dex: String,
     pub timestamp: u64,
+}
+
+impl From<data_layer::types::SwapEvent> for SwapEvent {
+    fn from(s: data_layer::types::SwapEvent) -> Self {
+        Self {
+            signature: s.signature,
+            wallet: s.wallet,
+            token: s.token,
+            amount_sol: s.amount_sol,
+            dex: s.dex,
+            timestamp: s.timestamp,
+        }
+    }
+}
+
+impl From<&data_layer::types::SwapEvent> for SwapEvent {
+    fn from(s: &data_layer::types::SwapEvent) -> Self {
+        s.clone().into()
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
