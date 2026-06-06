@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
+import type { WalletName } from '@solana/wallet-adapter-base';
 import type { PublicKey } from '@solana/web3.js';
 
 const WALLET_LABELS: Record<string, { title: string; subtitle: string }> = {
@@ -39,7 +40,7 @@ export default function WalletConnectButton() {
   }, [connected]);
 
   const handleSelect = useCallback(
-    async (walletName: string) => {
+    async (walletName: WalletName) => {
       select(walletName);
       setOpen(false);
     },

@@ -44,14 +44,17 @@ export function DsTd({
   align = 'left',
   className = '',
   mono,
+  title,
 }: {
   children: ReactNode;
   align?: 'left' | 'right' | 'center';
   className?: string;
   mono?: boolean;
+  title?: string;
 }) {
   return (
     <td
+      title={title}
       className={`px-2 py-1.5 border-b border-ds-border/50 ${
         mono ? 'font-mono tabular-nums' : ''
       } ${
