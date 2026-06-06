@@ -51,19 +51,23 @@ export function useStrategyBacktest(config: BotStrategyConfig, activePresetId?: 
         (r) => r.id === savedRankingId,
       );
       if (row) {
-        const enabled = new Set(
-          [
+        const enabled = new Set<string>(
+          ([
             config.scalp && 'scalp',
             config.arb && 'arb',
             config.whale_copy && 'whale_copy',
             config.momentum && 'momentum',
             config.sniper && 'sniper',
-          ].filter(Boolean),
+          ].filter(Boolean) as string[]),
         );
         const rowKeys = new Set(row.bot_store_keys);
         const sameKeys =
+<<<<<<< Updated upstream
           enabled.size === rowKeys.size &&
           Array.from(enabled).every((k) => typeof k === 'string' && rowKeys.has(k));
+=======
+          enabled.size === rowKeys.size && Array.from(enabled).every((k) => typeof k === 'string' && rowKeys.has(k));
+>>>>>>> Stashed changes
         if (sameKeys) return metricsFromRanking(row, hours);
       }
     }
