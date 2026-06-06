@@ -1,0 +1,42 @@
+name: Frontend CI
+
+on:
+  push:
+    paths:
+      - 'apps/web/**'
+  pull_request:
+    paths:
+      - 'apps/web/**'
+
+jobs:
+  build:
+    name: Build and Check apps/web
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache NPM
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install (apps/web)
+        run: npm ci --prefix apps/web
+
+      - name: Typecheck
+        run: npm run typecheck --prefix apps/web
+
+      - name: Lint
+        run: npm run lint --prefix apps/web
+
+      - name: Build
+        run: npm run build --prefix apps/web
