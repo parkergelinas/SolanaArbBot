@@ -51,8 +51,8 @@ pub use schema::{
     ArbitrageConfig, CopyTradingConfig, DataSourcesConfig, ExecutionConfig, FeatureFlags,
     IngestionConfig, LiquidationConfig, MonitoringConfig, MomentumConfig, OrchestratorConfig, PipelineConfig,
     PortfolioConfig, RetryConfig, RiskConfig, RpcConfig, ScalerConfig, HotPathConfig,
-    SignalEngineConfig, SniperConfig, StrategyConfig, SystemConfig, WalletConfig, WebSocketConfig,
-    WhaleTrackerConfig,
+    QuoteArbConfig, QuoteArbPair, SignalEngineConfig, SniperConfig, StrategyConfig, SystemConfig,
+    WalletConfig, WebSocketConfig, WhaleTrackerConfig,
 };
 
 use std::path::PathBuf;

@@ -112,6 +112,10 @@ pub struct SystemConfig {
     /// New-token sniper strategy parameters.
     #[serde(default)]
     pub sniper: SniperConfig,
+
+    /// Jupiter route-divergence / quote arbitrage scanner.
+    #[serde(default)]
+    pub quote_arb: QuoteArbConfig,
 }
 
 impl Default for SystemConfig {
@@ -140,6 +144,7 @@ impl Default for SystemConfig {
             arbitrage: ArbitrageConfig::default(),
             liquidation: LiquidationConfig::default(),
             sniper: SniperConfig::default(),
+            quote_arb: QuoteArbConfig::default(),
         }
     }
 }
@@ -168,6 +173,7 @@ impl SystemConfig {
         self.copy_trading.validate()?;
         self.momentum.validate()?;
         self.arbitrage.validate()?;
+        self.quote_arb.validate()?;
         self.sniper.validate()?;
         self.liquidation.validate()?;
         self.features.validate()?;
@@ -652,6 +658,7 @@ impl FeatureFlags {
 pub struct StrategyConfig {
     pub scalp: bool,
     pub arb: bool,
+    pub quote_arb: bool,
     pub whale_copy: bool,
     pub momentum: bool,
     pub sniper: bool,
@@ -663,6 +670,7 @@ impl Default for StrategyConfig {
         Self {
             scalp: true,
             arb: true,
+            quote_arb: false,
             whale_copy: false,
             momentum: false,
             sniper: false,
@@ -676,6 +684,7 @@ impl StrategyConfig {
     pub fn all_disabled(&self) -> bool {
         !self.scalp
             && !self.arb
+            && !self.quote_arb
             && !self.whale_copy
             && !self.momentum
             && !self.sniper
@@ -839,8 +848,12 @@ impl PortfolioConfig {
 pub struct DataSourcesConfig {
     /// Helius free-tier API key — set via `SOLANA_ARB_DATA_SOURCES__HELIUS_API_KEY`.
     pub helius_api_key: String,
-    /// Jupiter Price API v2 base URL.
+    /// Jupiter Price API base URL (`api.jup.ag/price/v3`).
     pub jupiter_price: String,
+    /// Jupiter Swap API base URL (`api.jup.ag/swap/v1`).
+    pub jupiter_swap: String,
+    /// Jupiter Tokens API v2 base URL (`api.jup.ag/tokens/v2`).
+    pub jupiter_tokens: String,
     /// DexScreener REST base URL.
     pub dexscreener_base: String,
     /// Rugcheck token report API base URL.
@@ -854,6 +867,8 @@ impl Default for DataSourcesConfig {
         Self {
             helius_api_key: String::new(),
             jupiter_price: "https://api.jup.ag/price/v3".to_owned(),
+            jupiter_swap: "https://api.jup.ag/swap/v1".to_owned(),
+            jupiter_tokens: "https://api.jup.ag/tokens/v2".to_owned(),
             dexscreener_base: "https://api.dexscreener.com/latest/dex".to_owned(),
             rugcheck_base: "https://api.rugcheck.xyz/v1".to_owned(),
             birdeye_base: "https://public-api.birdeye.so".to_owned(),
@@ -865,6 +880,8 @@ impl DataSourcesConfig {
     fn validate(&self) -> Result<(), String> {
         for (name, url) in [
             ("jupiter_price", &self.jupiter_price),
+            ("jupiter_swap", &self.jupiter_swap),
+            ("jupiter_tokens", &self.jupiter_tokens),
             ("dexscreener_base", &self.dexscreener_base),
             ("rugcheck_base", &self.rugcheck_base),
             ("birdeye_base", &self.birdeye_base),
@@ -1616,6 +1633,86 @@ impl ArbitrageConfig {
         }
         if self.min_leg_liquidity_usd <= 0.0 {
             return Err("arbitrage.min_leg_liquidity_usd must be positive".to_owned());
+        }
+        Ok(())
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quote arb (route divergence)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// One directed pair scanned for Jupiter route-divergence / quote dislocation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuoteArbPair {
+    pub label: String,
+    pub input_mint: String,
+    pub output_mint: String,
+    pub input_decimals: u8,
+    pub output_decimals: u8,
+}
+
+/// Jupiter route-divergence / quote arbitrage scanner.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuoteArbConfig {
+    pub enabled: bool,
+    pub scan_interval_ms: u64,
+    /// Minimum edge in basis points (route divergence or price dislocation).
+    pub min_edge_bps: u64,
+    /// Nominal trade size in USD used to size Jupiter quotes.
+    pub trade_size_usd: f64,
+    pub slippage_bps: u32,
+    /// Require Jupiter strict-list tokens (Tokens API v2 tag).
+    pub require_strict_tokens: bool,
+    /// Pairs to scan each interval.
+    #[serde(default)]
+    pub pairs: Vec<QuoteArbPair>,
+}
+
+impl Default for QuoteArbConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            scan_interval_ms: 2_000,
+            min_edge_bps: 15,
+            trade_size_usd: 100.0,
+            slippage_bps: 50,
+            require_strict_tokens: false,
+            pairs: vec![
+                QuoteArbPair {
+                    label: "SOL→USDC".to_owned(),
+                    input_mint: "So11111111111111111111111111111111111111112".to_owned(),
+                    output_mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".to_owned(),
+                    input_decimals: 9,
+                    output_decimals: 6,
+                },
+                QuoteArbPair {
+                    label: "USDC→SOL".to_owned(),
+                    input_mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".to_owned(),
+                    output_mint: "So11111111111111111111111111111111111111112".to_owned(),
+                    input_decimals: 6,
+                    output_decimals: 9,
+                },
+            ],
+        }
+    }
+}
+
+impl QuoteArbConfig {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.scan_interval_ms == 0 {
+            return Err("quote_arb.scan_interval_ms must be positive".to_owned());
+        }
+        if self.trade_size_usd <= 0.0 {
+            return Err("quote_arb.trade_size_usd must be positive".to_owned());
+        }
+        if self.enabled && self.pairs.is_empty() {
+            return Err("quote_arb.pairs must be non-empty when enabled".to_owned());
+        }
+        for (i, pair) in self.pairs.iter().enumerate() {
+            if pair.input_mint.is_empty() || pair.output_mint.is_empty() {
+                return Err(format!("quote_arb.pairs[{i}] mints must be non-empty"));
+            }
         }
         Ok(())
     }

@@ -58,6 +58,7 @@ pub mod feature_store;
 pub mod live;
 pub mod liquidation;
 pub mod momentum;
+pub mod quote_arb;
 pub mod processor;
 pub mod processors;
 pub mod types;
@@ -82,6 +83,10 @@ pub use external_store::{ExternalSignalStore, NewTokenSignal, VolumeSpikeSignal,
 pub use momentum::{
     momentum_confidence, momentum_signal_to_bus_payload, price_velocity_pct_min, spawn_momentum_poller,
     volume_ratio, MomentumSignal, MomentumTraderState, MOMENTUM_SLIPPAGE_BPS,
+};
+pub use quote_arb::{
+    fetch_reference_prices, scan_pair_divergence, spawn_quote_arb_poller, spawn_quote_arb_publisher,
+    QuoteArbSignal,
 };
 pub use copy_trader::{
     copy_signal_channel, copy_signal_to_bus_payload, execute_copy, plan_copy, spawn_copy_trader,

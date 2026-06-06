@@ -10,11 +10,11 @@ use events::EventBus;
 use ratelimit::{ApiSource, RateLimiter};
 use tracing::{debug, warn};
 
-/// Current Jupiter Price API (v2 `price.jup.ag` retired — DNS no longer resolves).
-pub const JUPITER_PRICE_V3_URL: &str = "https://api.jup.ag/price/v3";
+use crate::jupiter_api::{extract_jupiter_prices, jupiter_get, normalize_jupiter_price_url};
 
 const MIN_DELTA_PCT: f64 = 0.05;
-const LEGACY_JUPITER_HOST: &str = "price.jup.ag";
+
+pub use crate::jupiter_api::JUPITER_PRICE_V3_URL as PRICE_V3;
 
 /// Shared mint list to poll (base58 strings).
 pub type MintWatchlist = Arc<Vec<String>>;
@@ -67,59 +67,6 @@ pub fn spawn_jupiter_poller(
     debug!("jupiter price poller started");
 }
 
-/// Normalize configured URL — auto-upgrade retired `price.jup.ag` host to v3.
-pub fn normalize_jupiter_price_url(url: &str) -> String {
-    let trimmed = url.trim().trim_end_matches('/');
-    if trimmed.contains(LEGACY_JUPITER_HOST) {
-        warn!(
-            configured = %trimmed,
-            migrated = JUPITER_PRICE_V3_URL,
-            "price.jup.ag is deprecated; using Jupiter Price API v3"
-        );
-        return JUPITER_PRICE_V3_URL.to_owned();
-    }
-    trimmed.to_owned()
-}
-
-fn jupiter_get(client: &reqwest::Client, url: &str) -> reqwest::RequestBuilder {
-    let mut req = client.get(url);
-    if let Ok(key) = std::env::var("JUPITER_API_KEY") {
-        let key = key.trim();
-        if !key.is_empty() {
-            req = req.header("x-api-key", key);
-        }
-    }
-    req
-}
-
-/// Parse Jupiter Price API v2 (`data.{mint}.price`) or v3 (`{mint}.usdPrice`).
-pub fn extract_jupiter_prices(body: &serde_json::Value) -> Vec<(String, f64)> {
-    let mut out = Vec::new();
-
-    if let Some(data) = body.get("data").and_then(|d| d.as_object()) {
-        for (mint, entry) in data {
-            if let Some(price) = entry.get("price").and_then(|p| p.as_f64()) {
-                if price.is_finite() && price > 0.0 {
-                    out.push((mint.clone(), price));
-                }
-            }
-        }
-        return out;
-    }
-
-    if let Some(obj) = body.as_object() {
-        for (mint, entry) in obj {
-            if let Some(price) = entry.get("usdPrice").and_then(|p| p.as_f64()) {
-                if price.is_finite() && price > 0.0 {
-                    out.push((mint.clone(), price));
-                }
-            }
-        }
-    }
-
-    out
-}
-
 fn publish_prices(
     bus: &EventBus,
     cache: &Mutex<HashMap<String, f64>>,
@@ -153,6 +100,7 @@ fn publish_prices(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::jupiter_api::JUPITER_PRICE_V3_URL;
 
     #[test]
     fn parses_v3_response() {

@@ -203,6 +203,7 @@ async fn main() {
         subsystem = "strategy_dispatcher",
         paper_mode,
         arb = paper_mode || config.strategy.arb,
+        quote_arb = (paper_mode || config.strategy.quote_arb) && config.quote_arb.enabled,
         sniper = config.strategy.sniper && config.sniper.enabled,
         copy = config.strategy.whale_copy && config.copy_trading.enabled,
         liquidation = config.strategy.liquidation && config.liquidation.enabled,
@@ -214,7 +215,8 @@ async fn main() {
     let live_pollers_enabled = config.whale_tracker.enabled
         || config.copy_trading.enabled
         || (config.liquidation.enabled && !config.strategy.liquidation)
-        || (config.momentum.enabled && !config.strategy.momentum);
+        || (config.momentum.enabled && !config.strategy.momentum)
+        || (config.quote_arb.enabled && !config.strategy.quote_arb);
     let _live_data: Option<LiveDataHandles> = if live_pollers_enabled {
         let data_sources = Arc::new(config.data_sources.clone());
         let whale_cfg = if config.whale_tracker.enabled {
@@ -234,6 +236,11 @@ async fn main() {
         };
         let momentum_cfg = if config.momentum.enabled && !config.strategy.momentum {
             Some(Arc::new(config.momentum.clone()))
+        } else {
+            None
+        };
+        let quote_arb_cfg = if config.quote_arb.enabled && !config.strategy.quote_arb {
+            Some(Arc::new(config.quote_arb.clone()))
         } else {
             None
         };
@@ -262,6 +269,7 @@ async fn main() {
                 copy_cfg,
                 liquidation_cfg,
                 momentum_cfg,
+                quote_arb_cfg,
                 Some(features),
                 strategy_copy_tx,
             )

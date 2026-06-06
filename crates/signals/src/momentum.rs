@@ -9,6 +9,7 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use config::{DataSourcesConfig, FeatureFlags, MomentumConfig};
+use pricing::JUPITER_SWAP_V1_BASE;
 use ratelimit::{ApiSource, RateLimiter};
 use tracing::{info, warn};
 
@@ -20,7 +21,7 @@ const TOKEN_BOOSTS_URL: &str = "https://api.dexscreener.com/token-boosts/latest/
 const POLL_INTERVAL: Duration = Duration::from_secs(15);
 const WHALE_CONFIRM_WINDOW_SECS: u64 = 300;
 const MAX_BOOST_TOKEN_LOOKUPS: usize = 5;
-const JUPITER_SWAP_API: &str = "https://quote-api.jup.ag/v6";
+const JUPITER_SWAP_API: &str = JUPITER_SWAP_V1_BASE;
 
 /// Jupiter market-buy slippage for momentum entries (200 bps).
 pub const MOMENTUM_SLIPPAGE_BPS: u32 = 200;

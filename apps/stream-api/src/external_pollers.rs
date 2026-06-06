@@ -58,6 +58,11 @@ pub fn spawn_optional_external_pollers() {
         } else {
             None
         };
+        let quote_arb_cfg = if handle.quote_arb.enabled {
+            Some(Arc::new(handle.quote_arb.clone()))
+        } else {
+            None
+        };
         let features = Arc::new(handle.features.clone());
         let _handles = signals::spawn_live_data_pollers(
             bus,
@@ -67,6 +72,7 @@ pub fn spawn_optional_external_pollers() {
             copy_cfg,
             liquidation_cfg,
             momentum_cfg,
+            quote_arb_cfg,
             Some(features),
             None,
         )

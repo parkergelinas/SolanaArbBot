@@ -4,21 +4,23 @@ use std::sync::Arc;
 
 use config::{
     CopyTradingConfig, DataSourcesConfig, FeatureFlags, LiquidationConfig, MomentumConfig,
-    WhaleTrackerConfig,
+    QuoteArbConfig, WhaleTrackerConfig,
 };
+use pricing::TokenQualityFilter;
 use crossbeam_channel::Sender;
 use events::EventBus;
 use pricing::{spawn_jupiter_poller, MintWatchlist};
 use ratelimit::RateLimiter;
 
 use crate::{
-    birdeye::{load_jupiter_verified, spawn_birdeye_top_movers_poller, spawn_birdeye_whale_poller},
+    birdeye::{spawn_birdeye_top_movers_poller, spawn_birdeye_whale_poller},
     copy_trader::{copy_signal_channel, spawn_copy_trader, CopySignal, CopyTraderState, RecentSalesTracker},
     dexscreener::{spawn_dexscreener_poller, spawn_volume_spike_poller},
     external_store::ExternalSignalStore,
     liquidation::{spawn_liquidation_hunter, LiquidationStore},
     momentum::spawn_momentum_poller,
     wallet_scoring::{spawn_wallet_scoring_poller, QualifiedWalletSet},
+    quote_arb::spawn_quote_arb_poller,
     whale_discovery::{build_tracked_wallet_set, spawn_whale_discovery},
     whale_watcher::{spawn_whale_watcher, CopyWatcherHooks, WhaleSignalStore, WHALE_WALLETS},
 };
@@ -39,6 +41,7 @@ pub async fn spawn_live_data_pollers(
     copy_cfg: Option<Arc<CopyTradingConfig>>,
     liquidation_cfg: Option<Arc<LiquidationConfig>>,
     momentum_cfg: Option<Arc<MomentumConfig>>,
+    quote_arb_cfg: Option<Arc<QuoteArbConfig>>,
     features: Option<Arc<FeatureFlags>>,
     strategy_copy_tx: Option<Sender<CopySignal>>,
 ) -> LiveDataHandles {
@@ -46,7 +49,7 @@ pub async fn spawn_live_data_pollers(
     let store = ExternalSignalStore::new();
     let whale_store = WhaleSignalStore::new();
 
-    load_jupiter_verified(&store).await;
+    crate::birdeye::load_jupiter_verified_from_base(&store, &data_sources.jupiter_tokens).await;
 
     spawn_dexscreener_poller(store.clone(), Arc::clone(&data_sources), Arc::clone(&limiter));
     spawn_volume_spike_poller(
@@ -123,6 +126,11 @@ pub async fn spawn_live_data_pollers(
             Arc::clone(&data_sources),
             Arc::clone(&limiter),
         );
+    }
+
+    if let Some(cfg) = quote_arb_cfg.filter(|c| c.enabled) {
+        let quality = TokenQualityFilter::new();
+        spawn_quote_arb_poller(Arc::clone(&cfg), Arc::clone(&data_sources), quality);
     }
 
     spawn_jupiter_poller(bus, data_sources, jupiter_mints, limiter);

@@ -102,18 +102,29 @@ fn parse_top_movers(body: &serde_json::Value) -> HashSet<String> {
     out
 }
 
-/// Fetch Jupiter strict token list once at startup.
+/// Fetch Jupiter verified tokens once at startup (Tokens API v2).
 pub async fn load_jupiter_verified(store: &ExternalSignalStore) {
+    load_jupiter_verified_from_base(store, pricing::JUPITER_TOKENS_V2_BASE).await;
+}
+
+/// Fetch verified tokens from a configurable Tokens API v2 base URL.
+pub async fn load_jupiter_verified_from_base(store: &ExternalSignalStore, tokens_base: &str) {
     let client = reqwest::Client::new();
-    let url = "https://token.jup.ag/strict";
-    if let Ok(resp) = client.get(url).send().await {
-        if let Ok(list) = resp.json::<Vec<serde_json::Value>>().await {
-            let mints: HashSet<String> = list
-                .iter()
-                .filter_map(|t| t.get("address").and_then(|a| a.as_str()))
-                .map(str::to_owned)
+    match pricing::fetch_verified_tokens(&client, tokens_base, 5000).await {
+        Ok(tokens) => {
+            let mints: HashSet<String> = tokens
+                .into_iter()
+                .filter(|t| {
+                    t.tags
+                        .iter()
+                        .any(|tag| tag.eq_ignore_ascii_case("verified"))
+                })
+                .map(|t| t.id)
                 .collect();
             store.set_jupiter_verified(mints);
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "jupiter tokens v2 verified load failed");
         }
     }
 }

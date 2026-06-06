@@ -5,11 +5,17 @@
 #![forbid(unsafe_code)]
 
 pub mod jupiter;
+pub mod jupiter_api;
+pub mod token_quality;
 
-pub use jupiter::{
-    extract_jupiter_prices, normalize_jupiter_price_url, spawn_jupiter_poller,
-    JUPITER_PRICE_V3_URL, MintWatchlist,
+pub use jupiter::{spawn_jupiter_poller, MintWatchlist};
+pub use jupiter_api::{
+    build_quote_url, extract_jupiter_prices, fetch_swap_quote, fetch_verified_tokens,
+    jupiter_get, normalize_jupiter_price_url, normalize_jupiter_swap_base,
+    token_passes_quality, JupiterTokenMeta, SwapQuoteRequest, SwapQuoteResponse,
+    JUPITER_API_BASE, JUPITER_PRICE_V3_URL, JUPITER_SWAP_V1_BASE, JUPITER_TOKENS_V2_BASE,
 };
+pub use token_quality::{meta_passes, TokenQualityFilter};
 
 pub mod engine {
     //! Price state update and query responsibilities.

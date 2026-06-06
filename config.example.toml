@@ -22,7 +22,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
 [data_sources]
 helius_api_key   = ""  # helius.dev free tier — set via env SOLANA_ARB_DATA_SOURCES__HELIUS_API_KEY
-jupiter_price    = "https://api.jup.ag/price/v3"  # v2 price.jup.ag retired
+jupiter_price    = "https://api.jup.ag/price/v3"   # price.jup.ag retired
+jupiter_swap     = "https://api.jup.ag/swap/v1"    # quote-api.jup.ag retired
+jupiter_tokens   = "https://api.jup.ag/tokens/v2"  # token.jup.ag/strict retired
 dexscreener_base = "https://api.dexscreener.com/latest/dex"
 rugcheck_base    = "https://api.rugcheck.xyz/v1"
 birdeye_base     = "https://public-api.birdeye.so"
@@ -177,6 +179,7 @@ capital_deployed_pct_max = 0.80
 [strategy]
 scalp       = true
 arb         = true
+quote_arb   = false
 whale_copy  = false
 momentum    = false
 sniper      = false
@@ -324,6 +327,31 @@ bundle_acceptance_target = 0.70
 parallel_endpoints = true
 # Minimum per-leg pool liquidity in USD.
 min_leg_liquidity_usd = 50_000.0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [quote_arb] — Jupiter route-divergence / quote arbitrage scanner
+# ─────────────────────────────────────────────────────────────────────────────
+[quote_arb]
+enabled               = false
+scan_interval_ms      = 2_000
+min_edge_bps          = 15
+trade_size_usd        = 100.0
+slippage_bps          = 50
+require_strict_tokens = false
+
+[[quote_arb.pairs]]
+label           = "SOL→USDC"
+input_mint      = "So11111111111111111111111111111111111111112"
+output_mint     = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+input_decimals  = 9
+output_decimals = 6
+
+[[quote_arb.pairs]]
+label           = "USDC→SOL"
+input_mint      = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+output_mint     = "So11111111111111111111111111111111111111112"
+input_decimals  = 6
+output_decimals = 9
 
 # ─────────────────────────────────────────────────────────────────────────────
 # [whale_tracker] — Helius swap watcher + GMGN whale discovery

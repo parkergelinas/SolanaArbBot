@@ -22,6 +22,7 @@ export interface PaperFill {
 export interface PaperPortfolio {
   cluster: SolanaCluster;
   balances: Record<string, number>;
+  /** Weighted-average cost basis in USD per token unit. */
   costBasisUsd: Record<string, number>;
   fills: PaperFill[];
   realizedPnlUsd: number;
@@ -48,11 +49,18 @@ function defaultBalances(cluster: SolanaCluster): Record<string, number> {
   };
 }
 
+function defaultCostBasis(): Record<string, number> {
+  return {
+    [SOL_MINT]: 0,
+    [USDC_MINT]: 1,
+  };
+}
+
 export function createPortfolio(cluster: SolanaCluster): PaperPortfolio {
   return {
     cluster,
     balances: defaultBalances(cluster),
-    costBasisUsd: {},
+    costBasisUsd: defaultCostBasis(),
     fills: [],
     realizedPnlUsd: 0,
     startedAtMs: Date.now(),
@@ -69,6 +77,7 @@ export function loadPortfolio(cluster: SolanaCluster): PaperPortfolio {
     return {
       ...createPortfolio(cluster),
       ...parsed,
+      costBasisUsd: { ...defaultCostBasis(), ...(parsed.costBasisUsd ?? {}) },
       fills: (parsed.fills ?? []).slice(0, MAX_FILLS),
     };
   } catch {
@@ -95,6 +104,49 @@ function priceForMint(mint: string, prices: Record<string, number>): number {
 function applySlippage(amount: number, bps: number, adverse: boolean): number {
   const factor = adverse ? 1 - bps / 10_000 : 1 + bps / 10_000;
   return amount * factor;
+}
+
+function isQuoteMint(mint: string): boolean {
+  return mint === USDC_MINT;
+}
+
+function isPositionMint(mint: string): boolean {
+  return !isQuoteMint(mint);
+}
+
+function inferSide(tokenIn: string, tokenOut: string): PaperSide {
+  if (isQuoteMint(tokenIn) && isPositionMint(tokenOut)) return 'buy';
+  if (isPositionMint(tokenIn) && isQuoteMint(tokenOut)) return 'sell';
+  if (tokenIn === SOL_MINT && isPositionMint(tokenOut)) return 'buy';
+  if (isPositionMint(tokenIn) && tokenOut === SOL_MINT) return 'sell';
+  return 'buy';
+}
+
+/** Update weighted-average cost basis when acquiring a position token. */
+function recordAcquisition(
+  costBasisUsd: Record<string, number>,
+  mint: string,
+  prevQty: number,
+  acquiredQty: number,
+  usdSpent: number,
+): void {
+  if (acquiredQty <= 0 || usdSpent <= 0) return;
+  const prevBasis = costBasisUsd[mint] ?? 0;
+  const newQty = prevQty + acquiredQty;
+  costBasisUsd[mint] =
+    newQty > 0 ? (prevQty * prevBasis + usdSpent) / newQty : prevBasis;
+}
+
+/** Realized PnL when disposing a position token at market USD price. */
+function recordDisposal(
+  costBasisUsd: Record<string, number>,
+  mint: string,
+  amountSold: number,
+  marketUsdPerUnit: number,
+): number {
+  if (amountSold <= 0) return 0;
+  const basis = costBasisUsd[mint] ?? marketUsdPerUnit;
+  return amountSold * (marketUsdPerUnit - basis);
 }
 
 export interface PaperSwapInput {
@@ -147,38 +199,40 @@ export function executePaperSwap(input: PaperSwapInput): PaperSwapResult {
   let amountOut = usdIn / priceOut;
   amountOut = applySlippage(amountOut, slippageBps, true);
 
-  const balances = { ...portfolio.balances };
-  balances[tokenIn] = balIn - amountIn;
-  balances[tokenOut] = (balances[tokenOut] ?? 0) + amountOut;
-
+  const prevOutQty = portfolio.balances[tokenOut] ?? 0;
   const costBasisUsd = { ...portfolio.costBasisUsd };
   let realizedPnl = portfolio.realizedPnlUsd;
+  let fillPnlUsd = 0;
 
-  if (tokenIn === SOL_MINT || tokenMeta(tokenIn)) {
-    const prevCost = costBasisUsd[tokenOut] ?? priceOut;
-    if (tokenOut !== USDC_MINT) {
-      costBasisUsd[tokenOut] = prevCost;
-    }
+  if (isPositionMint(tokenIn)) {
+    const realized = recordDisposal(costBasisUsd, tokenIn, amountIn, priceIn);
+    realizedPnl += realized;
+    fillPnlUsd += realized;
   }
 
-  if (tokenOut === USDC_MINT || tokenIn !== USDC_MINT) {
-    const basis = costBasisUsd[tokenIn] ?? priceIn;
-    if (tokenIn !== SOL_MINT && tokenOut === USDC_MINT) {
-      realizedPnl += usdIn - amountIn * basis;
-    }
+  if (isPositionMint(tokenOut)) {
+    recordAcquisition(costBasisUsd, tokenOut, prevOutQty, amountOut, usdIn);
+    const markValue = amountOut * priceOut;
+    fillPnlUsd += markValue - usdIn;
+  } else if (isQuoteMint(tokenOut)) {
+    fillPnlUsd = realizedPnl - portfolio.realizedPnlUsd;
   }
+
+  const balances = { ...portfolio.balances };
+  balances[tokenIn] = balIn - amountIn;
+  balances[tokenOut] = prevOutQty + amountOut;
 
   const fill: PaperFill = {
     id: `paper_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     cluster,
-    side: tokenIn === SOL_MINT || tokenIn.startsWith('So1111') ? 'buy' : 'sell',
+    side: inferSide(tokenIn, tokenOut),
     tokenIn,
     tokenOut,
     amountIn,
     amountOut,
     priceUsd: priceOut,
     slippageBps,
-    pnlUsd: amountOut * priceOut - usdIn,
+    pnlUsd: fillPnlUsd,
     timestampMs: Date.now(),
     source,
   };
@@ -205,6 +259,20 @@ export function portfolioValueUsd(
     total += amount * priceForMint(mint, prices);
   }
   return total;
+}
+
+export function unrealizedPnlUsd(
+  portfolio: PaperPortfolio,
+  prices: Record<string, number>,
+): number {
+  let unrealized = 0;
+  for (const [mint, amount] of Object.entries(portfolio.balances)) {
+    if (amount <= 0 || !isPositionMint(mint)) continue;
+    const price = priceForMint(mint, prices);
+    const basis = portfolio.costBasisUsd[mint] ?? price;
+    unrealized += amount * (price - basis);
+  }
+  return unrealized;
 }
 
 export function resetPortfolio(cluster: SolanaCluster): PaperPortfolio {

@@ -10,6 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use config::{CopyTradingConfig, DataSourcesConfig, FeatureFlags};
 use crossbeam_channel::{Receiver, Sender};
+use pricing::JUPITER_SWAP_V1_BASE;
 use tracing::{info, warn};
 
 use crate::wallet_scoring::QualifiedWalletSet;
@@ -18,8 +19,8 @@ use crate::whale_watcher::{short_wallet, DexSource, USDC_MINT};
 /// Jupiter swap slippage for copy trades (1.5%).
 pub const COPY_SLIPPAGE_BPS: u32 = 150;
 
-/// Jupiter v6 quote/swap API base (cold-path submission).
-const JUPITER_SWAP_API: &str = "https://quote-api.jup.ag/v6";
+/// Jupiter Swap API v1 base (cold-path submission).
+const JUPITER_SWAP_API: &str = JUPITER_SWAP_V1_BASE;
 
 /// Whale swap event eligible for copy-trading.
 #[derive(Clone, Debug, PartialEq)]

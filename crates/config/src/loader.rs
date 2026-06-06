@@ -509,6 +509,7 @@ pub(crate) fn apply_env_overrides(config: &mut SystemConfig) {
     // ── [strategy] ────────────────────────────────────────────────────────
     env_bool!("SOLANA_ARB_STRATEGY__SCALP", config.strategy.scalp);
     env_bool!("SOLANA_ARB_STRATEGY__ARB", config.strategy.arb);
+    env_bool!("SOLANA_ARB_STRATEGY__QUOTE_ARB", config.strategy.quote_arb);
     env_bool!("SOLANA_ARB_STRATEGY__WHALE_COPY", config.strategy.whale_copy);
     env_bool!("SOLANA_ARB_STRATEGY__MOMENTUM", config.strategy.momentum);
     env_bool!("SOLANA_ARB_STRATEGY__SNIPER", config.strategy.sniper);
@@ -522,6 +523,14 @@ pub(crate) fn apply_env_overrides(config: &mut SystemConfig) {
     env_string!(
         "SOLANA_ARB_DATA_SOURCES__JUPITER_PRICE",
         config.data_sources.jupiter_price
+    );
+    env_string!(
+        "SOLANA_ARB_DATA_SOURCES__JUPITER_SWAP",
+        config.data_sources.jupiter_swap
+    );
+    env_string!(
+        "SOLANA_ARB_DATA_SOURCES__JUPITER_TOKENS",
+        config.data_sources.jupiter_tokens
     );
     env_string!(
         "SOLANA_ARB_DATA_SOURCES__DEXSCREENER_BASE",
@@ -614,6 +623,33 @@ pub(crate) fn apply_env_overrides(config: &mut SystemConfig) {
     env_bool!(
         "SOLANA_ARB_COPY_TRADING__MIRROR_EXITS",
         config.copy_trading.mirror_exits
+    );
+
+    // ── [quote_arb] ───────────────────────────────────────────────────────
+    env_bool!("SOLANA_ARB_QUOTE_ARB__ENABLED", config.quote_arb.enabled);
+    env_scalar!(
+        "SOLANA_ARB_QUOTE_ARB__SCAN_INTERVAL_MS",
+        config.quote_arb.scan_interval_ms,
+        u64
+    );
+    env_scalar!(
+        "SOLANA_ARB_QUOTE_ARB__MIN_EDGE_BPS",
+        config.quote_arb.min_edge_bps,
+        u64
+    );
+    env_scalar!(
+        "SOLANA_ARB_QUOTE_ARB__TRADE_SIZE_USD",
+        config.quote_arb.trade_size_usd,
+        f64
+    );
+    env_scalar!(
+        "SOLANA_ARB_QUOTE_ARB__SLIPPAGE_BPS",
+        config.quote_arb.slippage_bps,
+        u32
+    );
+    env_bool!(
+        "SOLANA_ARB_QUOTE_ARB__REQUIRE_STRICT_TOKENS",
+        config.quote_arb.require_strict_tokens
     );
 
     // ── [wallet] ──────────────────────────────────────────────────────────

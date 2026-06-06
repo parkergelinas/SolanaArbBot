@@ -4,9 +4,10 @@ use std::sync::Arc;
 
 use config::{MomentumConfig, SystemConfig};
 use crossbeam_channel::{Receiver, Sender};
+use pricing::TokenQualityFilter;
 use signals::{
-    copy_signal_channel, spawn_copy_trader, spawn_liquidation_hunter, CopySignal, CopyTraderState,
-    LiquidationStore, RecentSalesTracker,
+    copy_signal_channel, spawn_copy_trader, spawn_liquidation_hunter, spawn_quote_arb_publisher,
+    CopySignal, CopyTraderState, LiquidationStore, QuoteArbSignal, RecentSalesTracker,
 };
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
@@ -40,6 +41,21 @@ pub fn spawn_strategy_publishers(
         ));
     } else {
         info!(subsystem = "arb_publisher", "disabled via strategy.arb");
+    }
+
+    if (paper_mode || config.strategy.quote_arb) && config.quote_arb.enabled {
+        let quality = TokenQualityFilter::new();
+        let cfg = Arc::new(config.quote_arb.clone());
+        let ds = Arc::new(config.data_sources.clone());
+        let bus_clone = bus.clone();
+        tasks.push((
+            "quote_arb_publisher",
+            spawn_quote_arb_publisher(cfg, ds, quality, shutdown.clone(), move |sig| {
+                bus_clone.publish(quote_arb_to_signal(&sig));
+            }),
+        ));
+    } else if config.quote_arb.enabled {
+        info!(subsystem = "quote_arb_publisher", "disabled via strategy.quote_arb");
     }
 
     if config.strategy.sniper && config.sniper.enabled {
@@ -106,6 +122,28 @@ fn spawn_copy_fanout(
             let _ = exec_tx.try_send(signal);
         }
     })
+}
+
+fn quote_arb_to_signal(sig: &QuoteArbSignal) -> Signal {
+    Signal {
+        strategy: StrategyMode::QuoteArb,
+        signal_id: format!(
+            "qarb-{}-{}",
+            sig.pair_label.replace('→', "-"),
+            sig.detected_at_ms
+        ),
+        notional_usd: sig.expected_pnl_usd.abs().max(1.0),
+        expected_pnl_usd: sig.expected_pnl_usd,
+        payload: SignalPayload::QuoteArb {
+            pair_label: sig.pair_label.clone(),
+            input_mint: sig.input_mint.clone(),
+            output_mint: sig.output_mint.clone(),
+            route_divergence_bps: sig.route_divergence_bps,
+            price_dislocation_bps: sig.price_dislocation_bps,
+            edge_bps: sig.edge_bps,
+            expected_pnl_usd: sig.expected_pnl_usd,
+        },
+    }
 }
 
 fn copy_to_signal(copy: &CopySignal) -> Signal {

@@ -13,8 +13,10 @@ use crate::dexscreener::rugcheck_passes;
 use crate::external_store::ExternalSignalStore;
 use crate::whale_watcher::short_wallet;
 
-/// Jupiter v6 quote/swap API base.
-pub const JUPITER_SWAP_API: &str = "https://quote-api.jup.ag/v6";
+use pricing::JUPITER_SWAP_V1_BASE;
+
+/// Jupiter Swap API v1 base.
+pub const JUPITER_SWAP_API: &str = JUPITER_SWAP_V1_BASE;
 
 /// Default sniper market-buy slippage (3%).
 pub const SNIPER_SLIPPAGE_BPS: u32 = 300;
