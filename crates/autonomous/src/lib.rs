@@ -11,7 +11,7 @@ pub mod strategy;
 pub mod trade_emit;
 
 pub use ingestion::ExternalIngestionBuffer;
-pub use runtime::{spawn_autonomous_runtime, AutonomousCallbacks};
+pub use runtime::{spawn_autonomous_runtime, AutonomousCallbacks, LiveExecutionContext};
 pub use snapshot::RuntimeSnapshot;
 pub use strategy::{
     CyclePlan, IngestionMode, IngestionPlan, RuntimeMode, StrategyController, StrategyTransition,

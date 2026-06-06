@@ -28,6 +28,19 @@ export function loadEnv() {
         scanIntervalMs: Number(env('BOT_SCAN_INTERVAL_MS', '2000')),
         paperMode: env('BOT_PAPER_MODE', '1') !== '0',
         walletPublicKey: process.env.BOT_WALLET_PUBKEY?.trim(),
+        primaryStrategy: env('BOT_PRIMARY_STRATEGY', 'route_divergence_arb'),
+        enableMeanReversion: env('BOT_ENABLE_MEAN_REVERSION', '0') === '1',
+        enableTriggerApi: env('BOT_ENABLE_TRIGGER_API', '0') === '1',
+        enableRecurringApi: env('BOT_ENABLE_RECURRING_API', '0') === '1',
+        cmcApiKey: process.env.CMC_API_KEY?.trim() || process.env.COINMARKETCAP_API_KEY?.trim(),
+        pairSource: env('BOT_PAIR_SOURCE', process.env.CMC_API_KEY ? 'cmc' : 'static'),
+        maxScanPairs: Number(env('BOT_MAX_SCAN_PAIRS', '100')),
+        pairsPerScan: Number(env('BOT_PAIRS_PER_SCAN', '10')),
+        pairQuoteMint: env('BOT_PAIR_QUOTE_MINT', 'USDC'),
+        cmcTopN: Number(env('BOT_CMC_TOP_N', '100')),
+        enablePumpEdge: env('BOT_ENABLE_PUMP_EDGE', '1') === '1',
+        heliusApiKey: process.env.HELIUS_API_KEY?.trim() ||
+            process.env.SOLANA_ARB_DATA_SOURCES__HELIUS_API_KEY?.trim(),
     };
 }
 /** Well-known mints used by default scanners. */

@@ -1,4 +1,20 @@
-import type { JupiterTokenMeta, QuotePairSnapshot } from '../jupiter/types.js';
+import type { JupiterTokenMeta, QuotePairSnapshot, QuoteSnapshot } from '../jupiter/types.js';
+import type { PumpEdgeSignal } from '../pump/edge-scorer.js';
+/** One round-trip quote capture under a specific route construction policy. */
+export interface RouteConstructionSnapshot {
+    label: string;
+    restrictIntermediateTokens: boolean;
+    forward: QuoteSnapshot;
+    reverse: QuoteSnapshot;
+}
+/** Multiple route constructions for the same pair — used by route-divergence arb. */
+export interface RouteDivergenceSnapshot {
+    pairLabel: string;
+    constructions: RouteConstructionSnapshot[];
+    bestConstructionLabel: string;
+    /** Spread in bps between best and worst round-trip outcomes. */
+    divergenceBps: number;
+}
 export interface TokenQuality {
     verified: boolean;
     strict: boolean;
@@ -19,6 +35,14 @@ export interface MarketState {
     universe: string[];
     /** Optional round-trip quote pair from scanner. */
     quotes?: QuotePairSnapshot;
+    /** Multi-route construction comparison from route-divergence scanner. */
+    routeDivergence?: RouteDivergenceSnapshot;
+    /** Per-pair round-trip quotes keyed by pair label. */
+    multiQuotes?: Record<string, QuotePairSnapshot>;
+    /** Per-pair route divergence keyed by pair label. */
+    multiDivergences?: Record<string, RouteDivergenceSnapshot>;
+    /** Pump.fun edge signals ranked by score. */
+    pumpEdges?: PumpEdgeSignal[];
     solPriceUsd: number;
 }
 export interface MarketFilterConfig {

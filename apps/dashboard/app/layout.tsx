@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 
 import AppShell from '@/components/layout/AppShell';
 import Providers from '@/components/Providers';
@@ -8,6 +8,21 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'Solana Arb — Trading Terminal',
   description: 'Live market intelligence and arbitrage terminal for Solana',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'SolArb',
+  },
+  formatDetection: {
+    telephone: false,
+  },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#0a0a0b',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -25,7 +40,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body className="flex h-screen overflow-hidden bg-ds-base text-ds-text-primary">
+      <body className="flex h-[100dvh] overflow-hidden bg-ds-base text-ds-text-primary antialiased">
         <Providers wsUrl={wsUrl} intelUrl={intelUrl}>
           <AppShell>{children}</AppShell>
         </Providers>

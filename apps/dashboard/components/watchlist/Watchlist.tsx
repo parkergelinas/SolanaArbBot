@@ -26,7 +26,13 @@ function sortIndicator(active: boolean, dir: SortDir): string {
   return dir === 'asc' ? ' ▲' : ' ▼';
 }
 
-export default function Watchlist() {
+export default function Watchlist({
+  mobile = false,
+  onAfterSelect,
+}: {
+  mobile?: boolean;
+  onAfterSelect?: () => void;
+}) {
   const entries = useWatchlistStore((s) => s.entries);
   const setAddOpen = useWatchlistStore((s) => s.setAddOpen);
   const removeToken = useWatchlistStore((s) => s.removeToken);
@@ -100,15 +106,23 @@ export default function Watchlist() {
   };
 
   return (
-    <aside className="flex flex-col min-h-0 shrink-0 border-r border-ds-border bg-ds-surface overflow-hidden">
-      <div className="terminal-panel-header justify-between shrink-0">
+    <aside
+      className={`flex flex-col min-h-0 bg-ds-surface overflow-hidden ${
+        mobile ? 'flex-1 w-full border-0' : 'shrink-0 border-r border-ds-border'
+      }`}
+    >
+      <div
+        className={`terminal-panel-header justify-between shrink-0 ${mobile ? '!h-11' : ''}`}
+      >
         <span>Markets</span>
         <button
           type="button"
-          className="text-ds-blue normal-case tracking-normal text-[11px] hover:underline"
+          className={`text-ds-blue normal-case tracking-normal hover:underline ${
+            mobile ? 'touch-target text-[12px] font-medium px-2' : 'text-[11px]'
+          }`}
           onClick={() => setAddOpen(true)}
         >
-          + ADD
+          + Add token
         </button>
       </div>
 
@@ -140,8 +154,12 @@ export default function Watchlist() {
               key={row.mint}
               row={row}
               active={row.mint === selectedMint}
-              onSelect={() => setSelectedMint(row.mint)}
+              onSelect={() => {
+                setSelectedMint(row.mint);
+                onAfterSelect?.();
+              }}
               onRemove={row.custom ? () => handleRemove(row.mint) : undefined}
+              mobile={mobile}
             />
           ))
         )}

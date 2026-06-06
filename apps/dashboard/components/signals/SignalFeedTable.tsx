@@ -81,8 +81,8 @@ export default function SignalFeedTable({
           detail="Start the engine or widen filters to populate the feed."
         />
       ) : (
-        <div className="flex-1 min-h-0 overflow-auto terminal-scroll">
-          <table className="w-full text-[11px]">
+        <div className="flex-1 min-h-0 overflow-auto terminal-scroll mobile-table-scroll">
+          <table className="w-full text-[11px] min-w-[32rem]">
             <thead className="sticky top-0 z-10 bg-ds-elevated border-b border-ds-border">
               <tr>
                 {['Time', 'Type', 'Side', 'Pool', 'Str', 'Conf'].map((h, i) => (

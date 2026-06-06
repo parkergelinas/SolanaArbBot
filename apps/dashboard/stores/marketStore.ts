@@ -43,15 +43,25 @@ export interface TokenRow {
   timestamp_ms: number;
 }
 
+export type ArbSource = 'stream' | 'dexscreener' | 'jupiter';
+
 export interface ArbOpportunity {
   id: string;
   token: string;
+  symbol?: string;
   buyDex: Dex;
   sellDex: Dex;
   buyPrice: number;
   sellPrice: number;
   spreadBps: number;
   timestamp_ms: number;
+  source?: ArbSource;
+  estimatedProfitUsd?: number;
+  minLiquidityUsd?: number;
+  venueCount?: number;
+  winProbability?: number;
+  buyDexLabel?: string;
+  sellDexLabel?: string;
 }
 
 export interface MarketState {
@@ -67,10 +77,11 @@ export interface MarketState {
   lastTsMs: number;
 
   applyMessages: (messages: WSMessage[], meta: { seq: number; ts_ms: number }) => void;
+  mergeArbOpportunities: (external: ArbOpportunity[]) => void;
   clear: () => void;
 }
 
-const empty = (): Omit<MarketState, 'applyMessages' | 'clear'> => ({
+const empty = (): Omit<MarketState, 'applyMessages' | 'mergeArbOpportunities' | 'clear'> => ({
   prices: {},
   tokens: {},
   swaps: [],
@@ -156,6 +167,7 @@ function recomputeArb(
   const spreadBps = ((bestSell[1] - bestBuy[1]) / bestBuy[1]) * 10_000;
   if (spreadBps < 5) return [];
 
+  const grossUsd = 250 * (spreadBps / 10_000);
   return [
     {
       id: `${token}-${ts}`,
@@ -166,8 +178,24 @@ function recomputeArb(
       sellPrice: bestSell[1],
       spreadBps,
       timestamp_ms: ts,
+      source: 'stream',
+      estimatedProfitUsd: Math.max(0, grossUsd - 0.58),
+      winProbability: Math.min(0.9, 0.4 + spreadBps / 120),
+      venueCount: entries.length,
     },
   ];
+}
+
+function dedupeArb(opps: ArbOpportunity[]): ArbOpportunity[] {
+  const byKey = new Map<string, ArbOpportunity>();
+  for (const o of opps) {
+    const key = `${o.token}:${o.buyDex}:${o.sellDex}`;
+    const prev = byKey.get(key);
+    if (!prev || o.spreadBps > prev.spreadBps) byKey.set(key, o);
+  }
+  return Array.from(byKey.values())
+    .sort((a, b) => b.spreadBps - a.spreadBps)
+    .slice(0, 40);
 }
 
 export const useMarketStore = create<MarketState>((set) => ({
@@ -304,6 +332,11 @@ export const useMarketStore = create<MarketState>((set) => ({
       };
     });
   },
+
+  mergeArbOpportunities: (external) =>
+    set((state) => ({
+      arbOpportunities: dedupeArb([...external, ...state.arbOpportunities]),
+    })),
 
   clear: () => set(empty()),
 }));

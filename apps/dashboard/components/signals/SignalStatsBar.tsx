@@ -41,6 +41,7 @@ export default function SignalStatsBar({ stats, connected }: SignalStatsBarProps
       <StatCell label="Whale" value={stats.whale} className="text-ds-blue" />
       <StatCell label="Smart $" value={stats.smartMoney} className="text-purple-400" />
       <StatCell label="Mom" value={stats.momentum} className="text-ds-green" />
+      <StatCell label="Arb" value={stats.arb} className="text-ds-amber" />
       <StatCell label="Avg str" value={formatPct(stats.avgStrength)} className="text-ds-text-secondary" />
       <StatCell label="Avg conf" value={formatPct(stats.avgConfidence)} className="text-ds-text-secondary" />
       <div className="flex items-center gap-2 px-3 py-1.5 ml-auto shrink-0 border-l border-ds-border">

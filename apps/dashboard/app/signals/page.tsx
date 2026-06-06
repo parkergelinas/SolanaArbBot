@@ -6,15 +6,20 @@ import TxTape from '@/components/intelligence/TxTape';
 import WalletRail from '@/components/intelligence/WalletRail';
 import WhaleFeed from '@/components/intelligence/WhaleFeed';
 import WhaleSourcesPanel from '@/components/intelligence/WhaleSourcesPanel';
+import PumpFunScannerPanel from '@/components/signals/PumpFunScannerPanel';
 import SignalDetailPanel from '@/components/signals/SignalDetailPanel';
 import SignalFeedTable from '@/components/signals/SignalFeedTable';
 import SignalFilters from '@/components/signals/SignalFilters';
 import SignalStatsBar from '@/components/signals/SignalStatsBar';
+import SolscanResearcherPanel from '@/components/signals/SolscanResearcherPanel';
 import { useWsContext } from '@/components/WebSocketProvider';
 import { api } from '@/lib/api';
 import { useFetch, useStreamSignals } from '@/lib/hooks';
 import { intelligenceToSignals } from '@/lib/intelligence/bridge';
-import { useIntelConnected, useSmartMoney, useWhales } from '@/lib/intelligence/hooks';
+import { arbOpportunitiesToSignals } from '@/lib/arb/arbSignals';
+import { useIntelConnected, useIntelSwaps, useSmartMoney, useWhales } from '@/lib/intelligence/hooks';
+import { scannerHitsToSignals } from '@/lib/scanners/scannerSignals';
+import { useSolscanResearcher, usePumpFunScanner } from '@/lib/scanners/hooks';
 import { streamSignalsToEvents } from '@/lib/intelligence/streamBridge';
 import {
   filterSignals,
@@ -56,14 +61,24 @@ export default function SignalsPage() {
   const intelConnected = useIntelConnected();
   const streamConnected = useStreamStore((s) => s.connected);
   const marketSignals = useMarketStore((s) => s.signals);
+  const arbOpportunities = useMarketStore((s) => s.arbOpportunities);
   const whales = useWhales();
   const smart = useSmartMoney();
+  const intelSwaps = useIntelSwaps();
+  const { data: solscanData } = useSolscanResearcher(25_000);
+  const { data: pumpData } = usePumpFunScanner(20_000);
 
   const [typeFilter, setTypeFilter] = useState<SignalFilterType>('All');
   const [dirFilter, setDirFilter] = useState<SignalFilterDirection>('All');
   const [sortKey, setSortKey] = useState<SignalSortKey>('time');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [showIntel, setShowIntel] = useState(true);
+  const [mobileDeskTab, setMobileDeskTab] = useState<'feed' | 'inspect'>('feed');
+
+  const handleSelectSignal = (id: number) => {
+    setSelectedId(id);
+    setMobileDeskTab('inspect');
+  };
 
   const fetcher = useCallback(async () => {
     const live = await api.liveSignals({ limit: 200 });
@@ -74,8 +89,22 @@ export default function SignalsPage() {
   const liveSignals = useStreamSignals<SignalEvent>(500);
 
   const intelSignals = useMemo(
-    () => (showIntel ? intelligenceToSignals(whales, smart) : []),
-    [whales, smart, showIntel],
+    () => (showIntel ? intelligenceToSignals(whales, smart, intelSwaps) : []),
+    [whales, smart, intelSwaps, showIntel],
+  );
+
+  const arbSignals = useMemo(
+    () => arbOpportunitiesToSignals(arbOpportunities),
+    [arbOpportunities],
+  );
+
+  const scannerSignals = useMemo(
+    () =>
+      scannerHitsToSignals({
+        solscan: solscanData?.hits ?? [],
+        pumpFun: pumpData?.hits ?? [],
+      }),
+    [solscanData?.hits, pumpData?.hits],
   );
 
   const streamApiSignals = useMemo(
@@ -84,8 +113,14 @@ export default function SignalsPage() {
   );
 
   const organized = useMemo(
-    () => mergeSignals(liveSignals, historical, [...intelSignals, ...streamApiSignals]),
-    [liveSignals, historical, intelSignals, streamApiSignals],
+    () =>
+      mergeSignals(liveSignals, historical, [
+        ...intelSignals,
+        ...streamApiSignals,
+        ...arbSignals,
+        ...scannerSignals,
+      ]),
+    [liveSignals, historical, intelSignals, streamApiSignals, arbSignals, scannerSignals],
   );
 
   const filtered = useMemo(() => {
@@ -101,7 +136,7 @@ export default function SignalsPage() {
   const anyFeedLive = connected || intelConnected || streamConnected;
 
   return (
-    <div className="flex flex-col gap-2 min-h-[calc(100dvh-5.5rem)] max-w-[100rem] mx-auto w-full">
+    <div className="flex flex-col gap-2 min-h-0 flex-1 max-w-[100rem] mx-auto w-full pb-4">
       {/* Header */}
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2 shrink-0 pb-2 border-b border-ds-border">
         <div className="flex items-baseline gap-3 min-w-0">
@@ -113,7 +148,7 @@ export default function SignalsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap ml-auto">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap ml-auto w-full sm:w-auto">
           <button
             type="button"
             onClick={() => setShowIntel((v) => !v)}
@@ -166,39 +201,71 @@ export default function SignalsPage() {
         <WhaleSourcesPanel compact />
       </div>
 
+      {/* Mobile desk tabs */}
+      <div className="lg:hidden flex w-full p-0.5 gap-0.5 bg-ds-elevated border border-ds-border rounded-terminal shrink-0">
+        <button
+          type="button"
+          onClick={() => setMobileDeskTab('feed')}
+          className={`segment-btn flex-1 py-2 ${mobileDeskTab === 'feed' ? 'segment-btn-active' : ''}`}
+        >
+          Feed ({filtered.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileDeskTab('inspect')}
+          className={`segment-btn flex-1 py-2 ${mobileDeskTab === 'inspect' ? 'segment-btn-active' : ''}`}
+        >
+          Inspector
+        </button>
+      </div>
+
       {/* Main desk: table | detail | right rail */}
-      <div className="flex-1 min-h-[420px] grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_17rem] xl:grid-cols-[minmax(0,1fr)_17rem_14.5rem] gap-0 border border-ds-border rounded-terminal overflow-hidden bg-ds-base">
-        <div className="flex flex-col min-h-0 min-w-0 lg:col-span-1 xl:col-span-1 border-b lg:border-b-0 lg:border-r border-ds-border">
+      <div className="shrink-0 min-h-[min(58dvh,520px)] lg:min-h-[min(62dvh,580px)] lg:flex-1 lg:min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_17rem] xl:grid-cols-[minmax(0,1fr)_17rem_14.5rem] grid-rows-1 gap-0 border border-ds-border rounded-terminal overflow-hidden bg-ds-base isolate">
+        <div
+          className={`flex flex-col min-h-0 min-w-0 h-full lg:col-span-1 xl:col-span-1 border-b lg:border-b-0 lg:border-r border-ds-border ${
+            mobileDeskTab === 'feed' ? 'flex' : 'hidden lg:flex'
+          }`}
+        >
           <SignalFeedTable
             signals={filtered}
             liveIds={organized.liveIds}
             selectedId={selectedId}
-            onSelect={setSelectedId}
+            onSelect={handleSelectSignal}
             loading={loading}
           />
         </div>
 
-        <div className="flex flex-col min-h-0 min-w-0 border-b xl:border-b-0 xl:border-r border-ds-border max-h-[320px] lg:max-h-none">
+        <div
+          className={`flex flex-col min-h-0 min-w-0 h-full border-b xl:border-b-0 xl:border-r border-ds-border ${
+            mobileDeskTab === 'inspect' ? 'flex' : 'hidden lg:flex'
+          }`}
+        >
           <SignalDetailPanel
             signal={selected}
             isLive={selected ? organized.liveIds.has(selected.signal_id) : false}
           />
         </div>
 
-        <aside className="hidden xl:flex flex-col min-h-0 divide-y divide-ds-border">
-          <div className="flex-1 min-h-[12rem]">
+        <aside className="hidden xl:flex flex-col min-h-0 h-full divide-y divide-ds-border overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-hidden">
             <WhaleFeed compact fillHeight />
           </div>
-          <div className="flex-1 min-h-[10rem]">
+          <div className="flex-1 min-h-0 overflow-hidden">
             <WalletRail fillHeight />
           </div>
         </aside>
       </div>
 
+      {/* On-chain scanners: Solscan researcher + pump.fun edge */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 shrink-0 items-start">
+        <SolscanResearcherPanel compact />
+        <PumpFunScannerPanel compact />
+      </div>
+
       {/* Mobile / tablet whale rail */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 xl:hidden shrink-0">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 xl:hidden shrink-0 items-start">
         <WhaleFeed compact />
-        <WalletRail />
+        <WalletRail compact />
       </div>
 
       {/* Swap tape */}

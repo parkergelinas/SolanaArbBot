@@ -43,40 +43,45 @@ export default function TerminalTopBar() {
   }, [refreshConnectionMode]);
 
   return (
-    <header className="flex items-center h-12 px-4 border-b border-ds-border bg-ds-surface shrink-0 gap-4">
-      <div className="flex items-center gap-3 shrink-0">
-        <div>
-          <div className="text-[14px] font-semibold tracking-[0.14em] text-ds-text-primary leading-none">
-            SOLARB
+    <header className="flex flex-col sm:flex-row sm:items-center min-h-12 sm:h-12 px-3 sm:px-4 py-2 sm:py-0 border-b border-ds-border bg-ds-surface shrink-0 gap-2 sm:gap-4">
+      <div className="flex items-center justify-between sm:justify-start gap-3 shrink-0 w-full sm:w-auto">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div>
+            <div className="text-[13px] sm:text-[14px] font-semibold tracking-[0.14em] text-ds-text-primary leading-none">
+              SOLARB
+            </div>
+            <div className="hidden sm:block text-[9px] text-ds-text-muted uppercase tracking-[0.2em] mt-0.5">
+              Pro Terminal
+            </div>
           </div>
-          <div className="text-[9px] text-ds-text-muted uppercase tracking-[0.2em] mt-0.5">
-            Pro Terminal
+          <div
+            className={`flex items-center gap-1.5 px-2 py-1 border rounded-terminal text-[10px] font-mono ${mode.ring}`}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${mode.dot}`} />
+            <span className="text-ds-text-secondary">{mode.label}</span>
           </div>
         </div>
-        <div
-          className={`flex items-center gap-1.5 px-2 py-1 border rounded-terminal text-[10px] font-mono ${mode.ring}`}
-        >
-          <span className={`w-1.5 h-1.5 rounded-full ${mode.dot}`} />
-          <span className="text-ds-text-secondary">{mode.label}</span>
-        </div>
+        <span className="sm:hidden text-[10px] font-mono text-ds-text-secondary tabular-nums">
+          {clock}
+        </span>
       </div>
 
-      <div className="flex items-baseline gap-3 min-w-0 flex-1 justify-center">
-        <span className="text-[13px] font-semibold text-ds-text-primary">{symbol}</span>
-        <span className="text-[22px] font-mono font-medium tabular-nums text-ds-text-primary leading-none">
+      <div className="flex items-baseline gap-2 sm:gap-3 min-w-0 flex-1 sm:justify-center overflow-x-auto terminal-scroll">
+        <span className="text-[12px] sm:text-[13px] font-semibold text-ds-text-primary shrink-0">{symbol}</span>
+        <span className="text-[18px] sm:text-[22px] font-mono font-medium tabular-nums text-ds-text-primary leading-none shrink-0">
           ${formatPrice(price)}
         </span>
         <span
-          className={`text-[12px] font-mono tabular-nums ${up ? 'text-ds-green' : 'text-ds-red'}`}
+          className={`text-[11px] sm:text-[12px] font-mono tabular-nums shrink-0 ${up ? 'text-ds-green' : 'text-ds-red'}`}
         >
           {formatChangePct(changePct)}
         </span>
-        <span className="hidden lg:inline text-[11px] font-mono text-ds-text-secondary">
+        <span className="hidden lg:inline text-[11px] font-mono text-ds-text-secondary shrink-0">
           Vol {formatVolume(volume)}
         </span>
       </div>
 
-      <div className="flex items-center gap-4 shrink-0">
+      <div className="hidden sm:flex items-center gap-4 shrink-0">
         <div className="hidden md:block text-right">
           <div className="text-[9px] text-ds-text-muted uppercase tracking-wider">SOL</div>
           <div className="text-[12px] font-mono tabular-nums text-ds-text-primary">

@@ -4,6 +4,13 @@
 
 /* ── Design system — Bloomberg × Linear terminal palette ─────────────────── */
 :root {
+  --app-header-height: 2.25rem;
+  --app-bottom-nav-height: 0px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
   --bg-base:        #0a0a0b;
   --bg-surface:     #111113;
   --bg-elevated:    #18181c;
@@ -43,10 +50,39 @@
   box-sizing: border-box;
 }
 
+@media (max-width: 767px) {
+  :root {
+    --app-header-height: 2.75rem;
+    --app-bottom-nav-height: 3.25rem;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 body {
   background-color: var(--bg-base);
   color: var(--text-primary);
   font-family: var(--font-ui);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+.page-desk-height {
+  min-height: calc(
+    100dvh - var(--app-header-height) - var(--app-bottom-nav-height) - var(--safe-top) - var(--safe-bottom)
+  );
+}
+
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
 }
 
 /* ── Terminal shell ──────────────────────────────────────────────────────── */
@@ -138,6 +174,54 @@ body {
   border-top: 1px solid var(--bg-border);
 }
 
+@media (max-width: 1023px) {
+  .terminal-grid-main {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+
+  .terminal-grid-center {
+    border-left: none;
+    border-right: none;
+  }
+
+  .terminal-grid-bottom {
+    grid-template-columns: 1fr;
+    height: auto;
+    min-height: 0;
+  }
+}
+
+.mobile-bottom-nav {
+  padding-bottom: max(0.25rem, var(--safe-bottom));
+}
+
+/* Terminal uses its own mobile chrome — no global bottom nav */
+.terminal-app-shell {
+  --app-bottom-nav-height: 0px;
+}
+
+@media (max-width: 1023px) {
+  .terminal-app-shell .terminal-desk {
+    height: 100%;
+  }
+
+  .terminal-mobile-panel {
+    flex: 1 1 0%;
+    min-height: 0;
+    overflow: hidden;
+  }
+}
+
+.mobile-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mobile-table-scroll table {
+  min-width: 36rem;
+}
+
 .terminal-btn-buy {
   background: color-mix(in srgb, var(--green) 12%, var(--bg-elevated));
   border: 1px solid color-mix(in srgb, var(--green) 40%, var(--bg-border));
@@ -194,6 +278,25 @@ body {
   flex: 1 1 0%;
   min-height: 0;
   overflow-y: auto;
+}
+
+/* Tall desk pages (bot) scroll via main instead of clipping inner shell */
+.app-main > [data-page-scroll] {
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow: visible;
+}
+
+/* Higher contrast on desk pages — Terminal keeps original muted palette */
+.page-desk-contrast {
+  --text-primary:   #f2f2f6;
+  --text-secondary: #a8a8b8;
+  --text-muted:     #7a7a8c;
+}
+
+.page-desk-contrast .ds-table thead th,
+.page-desk-contrast .data-table thead th {
+  color: var(--text-muted);
 }
 
 .segment-control {

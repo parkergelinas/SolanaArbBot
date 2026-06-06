@@ -1,9 +1,10 @@
 //! In-process strategy signal bus and dispatcher facade.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use config::SystemConfig;
 use tokio_util::sync::CancellationToken;
+use tracing::debug;
 
 use crate::publishers::{spawn_strategy_publishers, PublisherHandles};
 
@@ -61,29 +62,46 @@ pub struct Signal {
     pub payload: SignalPayload,
 }
 
-/// Lightweight in-memory bus for strategy publishers (distinct from `signal_bus` crate).
-#[derive(Clone, Debug)]
+struct BusInner {
+    subscribers: Vec<crossbeam_channel::Sender<Signal>>,
+}
+
+/// Fan-out in-memory bus for strategy publishers (distinct from `signal_bus` crate).
+#[derive(Clone)]
 pub struct SignalBus {
-    tx: crossbeam_channel::Sender<Signal>,
+    inner: Arc<Mutex<BusInner>>,
 }
 
 impl SignalBus {
     pub fn new() -> Self {
-        let (tx, _rx) = crossbeam_channel::unbounded();
-        Self { tx }
+        Self {
+            inner: Arc::new(Mutex::new(BusInner {
+                subscribers: Vec::new(),
+            })),
+        }
     }
 
     pub fn publish(&self, signal: Signal) {
-        if self.tx.send(signal).is_err() {
+        let mut inner = self.inner.lock().expect("signal bus lock");
+        inner.subscribers.retain(|tx| tx.send(signal.clone()).is_ok());
+        if inner.subscribers.is_empty() {
             tracing::warn!(subsystem = "signal_bus", "no subscribers — signal dropped");
         }
     }
 
+    /// Returns a receiver wired to this bus. Each call adds a new subscriber.
     pub fn subscribe(&self) -> crossbeam_channel::Receiver<Signal> {
-        let (_tx, rx) = crossbeam_channel::unbounded();
-        // Re-wire: clone sender side by sharing the same channel via pairing at construction.
-        // For the minimal facade we expose only publish; tests can use paired buses.
+        let (tx, rx) = crossbeam_channel::unbounded();
+        self.inner
+            .lock()
+            .expect("signal bus lock")
+            .subscribers
+            .push(tx);
         rx
+    }
+
+    pub fn subscriber_count(&self) -> usize {
+        self.inner.lock().expect("signal bus lock").subscribers.len()
     }
 }
 
@@ -112,6 +130,31 @@ impl StrategyDispatcher {
     }
 
     pub fn start(&self, paper_mode: bool, shutdown: CancellationToken) -> PublisherHandles {
+        if self.bus.subscriber_count() == 0 {
+            let rx = self.bus.subscribe();
+            let drain_shutdown = shutdown.clone();
+            tokio::task::spawn_blocking(move || {
+                loop {
+                    if drain_shutdown.is_cancelled() {
+                        return;
+                    }
+                    match rx.recv_timeout(std::time::Duration::from_millis(200)) {
+                        Ok(signal) => {
+                            debug!(
+                                subsystem = "signal_bus",
+                                strategy = ?signal.strategy,
+                                signal_id = %signal.signal_id,
+                                expected_pnl_usd = signal.expected_pnl_usd,
+                                "strategy signal received"
+                            );
+                        }
+                        Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
+                        Err(crossbeam_channel::RecvTimeoutError::Disconnected) => return,
+                    }
+                }
+            });
+        }
+
         spawn_strategy_publishers(
             Arc::clone(&self.config),
             self.bus.clone(),

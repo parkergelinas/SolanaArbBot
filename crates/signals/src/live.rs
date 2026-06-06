@@ -6,21 +6,23 @@ use config::{
     CopyTradingConfig, DataSourcesConfig, FeatureFlags, LiquidationConfig, MomentumConfig,
     QuoteArbConfig, WhaleTrackerConfig,
 };
-use pricing::TokenQualityFilter;
 use crossbeam_channel::Sender;
 use events::EventBus;
-use pricing::{spawn_jupiter_poller, MintWatchlist};
+use pricing::{spawn_jupiter_poller, MintWatchlist, TokenQualityFilter};
 use ratelimit::RateLimiter;
 
 use crate::{
-    birdeye::{spawn_birdeye_top_movers_poller, spawn_birdeye_whale_poller},
+    birdeye::{load_jupiter_verified, spawn_birdeye_top_movers_poller, spawn_birdeye_whale_poller},
     copy_trader::{copy_signal_channel, spawn_copy_trader, CopySignal, CopyTraderState, RecentSalesTracker},
     dexscreener::{spawn_dexscreener_poller, spawn_volume_spike_poller},
     external_store::ExternalSignalStore,
     liquidation::{spawn_liquidation_hunter, LiquidationStore},
     momentum::spawn_momentum_poller,
-    wallet_scoring::{spawn_wallet_scoring_poller, QualifiedWalletSet},
+    pump_scanner::spawn_pump_scanner,
     quote_arb::spawn_quote_arb_poller,
+    scanner_store::ScannerStore,
+    solscan_researcher::spawn_solscan_researcher,
+    wallet_scoring::{spawn_wallet_scoring_poller, QualifiedWalletSet},
     whale_discovery::{build_tracked_wallet_set, spawn_whale_discovery},
     whale_watcher::{spawn_whale_watcher, CopyWatcherHooks, WhaleSignalStore, WHALE_WALLETS},
 };
@@ -30,9 +32,10 @@ use crate::{
 pub struct LiveDataHandles {
     pub external: ExternalSignalStore,
     pub whale: WhaleSignalStore,
+    pub scanners: ScannerStore,
 }
 
-/// Start DexScreener, Birdeye, Jupiter, whale tracker, and optional strategy pollers.
+/// Start DexScreener, Birdeye, Jupiter, whale tracker, scanners, and optional strategy pollers.
 pub async fn spawn_live_data_pollers(
     bus: EventBus,
     data_sources: Arc<DataSourcesConfig>,
@@ -45,11 +48,13 @@ pub async fn spawn_live_data_pollers(
     features: Option<Arc<FeatureFlags>>,
     strategy_copy_tx: Option<Sender<CopySignal>>,
 ) -> LiveDataHandles {
+    let _ = bus;
     let limiter = Arc::new(RateLimiter::free_tier_defaults());
     let store = ExternalSignalStore::new();
     let whale_store = WhaleSignalStore::new();
+    let scanner_store = ScannerStore::new();
 
-    crate::birdeye::load_jupiter_verified_from_base(&store, &data_sources.jupiter_tokens).await;
+    load_jupiter_verified(&store).await;
 
     spawn_dexscreener_poller(store.clone(), Arc::clone(&data_sources), Arc::clone(&limiter));
     spawn_volume_spike_poller(
@@ -59,6 +64,9 @@ pub async fn spawn_live_data_pollers(
         jupiter_mints.clone(),
     );
     spawn_birdeye_top_movers_poller(store.clone(), Arc::clone(&data_sources), Arc::clone(&limiter));
+
+    spawn_solscan_researcher(scanner_store.clone(), Arc::clone(&data_sources), Arc::clone(&limiter));
+    spawn_pump_scanner(scanner_store.clone(), Arc::clone(&data_sources), Arc::clone(&limiter));
 
     let wallets: Arc<Vec<String>> =
         Arc::new(WHALE_WALLETS.iter().map(|s| (*s).to_owned()).collect());
@@ -89,13 +97,13 @@ pub async fn spawn_live_data_pollers(
         spawn_whale_discovery(Arc::clone(&tracked), Arc::clone(&cfg));
 
         let copy_hooks = copy_cfg.as_ref().filter(|c| c.enabled).and_then(|copy| {
-                strategy_copy_tx.as_ref().map(|copy_tx| CopyWatcherHooks {
-                    copy_tx: copy_tx.clone(),
-                    copy_cfg: Arc::clone(copy),
-                    recent_sales: RecentSalesTracker::new(),
-                    qualified: Some(QualifiedWalletSet::new()),
-                })
-            });
+            strategy_copy_tx.as_ref().map(|copy_tx| CopyWatcherHooks {
+                copy_tx: copy_tx.clone(),
+                copy_cfg: Arc::clone(copy),
+                recent_sales: RecentSalesTracker::new(),
+                qualified: Some(QualifiedWalletSet::new()),
+            })
+        });
 
         spawn_whale_watcher(
             whale_store.clone(),
@@ -130,13 +138,20 @@ pub async fn spawn_live_data_pollers(
 
     if let Some(cfg) = quote_arb_cfg.filter(|c| c.enabled) {
         let quality = TokenQualityFilter::new();
-        spawn_quote_arb_poller(Arc::clone(&cfg), Arc::clone(&data_sources), quality);
+        quality.refresh(&data_sources).await;
+        let _ = spawn_quote_arb_poller(cfg, Arc::clone(&data_sources), quality);
     }
 
-    spawn_jupiter_poller(bus, data_sources, jupiter_mints, limiter);
+    spawn_jupiter_poller(
+        bus,
+        Arc::clone(&data_sources),
+        jupiter_mints,
+        Arc::clone(&limiter),
+    );
 
     LiveDataHandles {
         external: store,
         whale: whale_store,
+        scanners: scanner_store,
     }
 }

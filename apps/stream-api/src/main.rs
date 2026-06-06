@@ -10,8 +10,10 @@ mod hub_client;
 mod ingestion;
 mod market;
 mod pricing;
+mod pump_pollers;
 mod router;
 mod routes;
+mod scanner_pollers;
 
 use std::sync::Arc;
 
@@ -78,6 +80,7 @@ pub struct AppState {
     pub batch_tx: broadcast::Sender<WSBatchFrame>,
     pub market: Arc<market::MarketEngineHandle>,
     pub signal_bus: Arc<SignalBus>,
+    pub scanners: signals::ScannerStore,
 }
 
 #[tokio::main]
@@ -101,6 +104,8 @@ async fn main() -> anyhow::Result<()> {
     spawn_signal_bus_fanout(signal_bus.clone(), ws_tx.clone());
     external_pollers::spawn_optional_external_pollers();
     pricing::spawn_jupiter_price_poller(ws_tx.clone());
+
+    let pump_swap_tx = swap_tx.clone();
 
     let hub_url = std::env::var("SIGNAL_HUB_URL").ok().filter(|s| !s.is_empty());
     let use_mock = std::env::var("STREAM_USE_MOCK")
@@ -128,10 +133,15 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|v| v.parse().ok())
         .unwrap_or(8080);
 
+    let scanners = signals::ScannerStore::new();
+    scanner_pollers::spawn_scanner_pollers(scanners.clone());
+    pump_pollers::spawn_pump_pollers(pump_swap_tx, ws_tx.clone(), scanners.clone());
+
     let state = AppState {
         batch_tx,
         market: Arc::new(market),
         signal_bus,
+        scanners,
     };
 
     let addr = format!("0.0.0.0:{port}");

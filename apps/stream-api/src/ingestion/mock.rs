@@ -42,10 +42,11 @@ pub fn spawn_mock_ingestion(
                 .map(|d| d.as_millis() as u64)
                 .unwrap_or(0);
 
-            let dex = match seq % 3 {
+            let dex = match seq % 4 {
                 0 => Dex::Raydium,
                 1 => Dex::Orca,
-                _ => Dex::Jupiter,
+                2 => Dex::Jupiter,
+                _ => Dex::Pump,
             };
 
             let (token_in, price_in) = MINTS[(seq as usize) % MINTS.len()];

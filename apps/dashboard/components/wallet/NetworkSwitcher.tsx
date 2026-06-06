@@ -28,9 +28,9 @@ export default function NetworkSwitcher({ compact = false }: { compact?: boolean
       onClick={toggle}
       disabled={switching}
       title={`Switch to ${isDevnet ? 'mainnet' : 'devnet'}`}
-      className={`flex items-center gap-1.5 rounded-terminal border font-medium font-mono transition-colors disabled:opacity-50 ${
+      className={`flex items-center gap-1 rounded-terminal border font-medium font-mono transition-colors disabled:opacity-50 min-h-[44px] sm:min-h-0 ${
         compact
-          ? 'px-2 py-1 text-[9px]'
+          ? 'px-1.5 sm:px-2 py-1 text-[8px] sm:text-[9px]'
           : 'px-2.5 py-1.5 text-[10px]'
       } ${
         isDevnet
@@ -41,7 +41,8 @@ export default function NetworkSwitcher({ compact = false }: { compact?: boolean
       <span
         className={`w-1.5 h-1.5 rounded-full ${isDevnet ? 'bg-amber-400' : 'bg-emerald-400'}`}
       />
-      {clusterLabel(cluster)}
+      <span className="sm:hidden">{isDevnet ? 'DEV' : 'MAIN'}</span>
+      <span className="hidden sm:inline">{clusterLabel(cluster)}</span>
     </button>
   );
 }

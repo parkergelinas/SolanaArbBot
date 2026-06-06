@@ -45,6 +45,25 @@ impl PoolCreationSource {
     }
 }
 
+/// Pump.fun bonding-curve buy or sell detected from program logs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PumpTradeSide {
+    Buy,
+    Sell,
+}
+
+/// Parsed pump.fun trade from `buy` / `sell` instructions.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PumpTradeEvent {
+    pub side: PumpTradeSide,
+    pub token_mint: String,
+    pub wallet: String,
+    pub signature: String,
+    pub slot: u64,
+    /// Best-effort SOL lamports from logs (0 when unknown).
+    pub sol_lamports: u64,
+}
+
 /// Parsed new-pool event forwarded to the sniper executor.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PoolCreationEvent {
@@ -105,6 +124,112 @@ async fn subscribe_once(ws_url: &str, tx: &Sender<PoolCreationEvent>) -> anyhow:
         let msg = msg?;
         if let Message::Text(text) = msg {
             if let Some(event) = parse_pool_creation_notification(&text) {
+                if tx.send(event).is_err() {
+                    return Ok(());
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Parse pump.fun buy/sell from transaction logs.
+pub fn parse_pump_trade_from_logs(
+    logs: &[String],
+    signature: &str,
+    slot: u64,
+) -> Option<PumpTradeEvent> {
+    let joined = logs.join("\n");
+    if !joined.contains(PUMP_FUN) {
+        return None;
+    }
+
+    let side = if joined.contains("Instruction: Buy") || joined.contains("Instruction: buy") {
+        PumpTradeSide::Buy
+    } else if joined.contains("Instruction: Sell") || joined.contains("Instruction: sell") {
+        PumpTradeSide::Sell
+    } else {
+        return None;
+    };
+
+    let addresses = extract_base58_addresses(&joined);
+    let token_mint = pick_token_mint(&addresses)?;
+    let wallet = pick_creator(&addresses, &token_mint, "trade");
+    let sol_lamports = extract_liquidity_sol(&joined)
+        .map(|sol| (sol * 1_000_000_000.0) as u64)
+        .unwrap_or(0);
+
+    Some(PumpTradeEvent {
+        side,
+        token_mint,
+        wallet,
+        signature: signature.to_owned(),
+        slot,
+        sol_lamports,
+    })
+}
+
+/// Parse a Helius `logsNotification` into a pump trade when matched.
+pub fn parse_pump_trade_notification(text: &str) -> Option<PumpTradeEvent> {
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    let result = v.pointer("/params/result/value")?;
+    let signature = result.get("signature")?.as_str()?.to_owned();
+    let slot = result
+        .pointer("/context/slot")
+        .and_then(|s| s.as_u64())
+        .unwrap_or(0);
+    let logs: Vec<String> = result
+        .get("logs")?
+        .as_array()?
+        .iter()
+        .filter_map(|l| l.as_str().map(str::to_owned))
+        .collect();
+    parse_pump_trade_from_logs(&logs, &signature, slot)
+}
+
+/// Spawn pump.fun trade ingestion (Helius logsSubscribe on pump program).
+pub fn spawn_pump_trade_ingest(
+    tx: Sender<PumpTradeEvent>,
+    data_sources: Arc<DataSourcesConfig>,
+) {
+    let Some(ws_url) = data_sources.helius_ws_url() else {
+        info!("pump trade ingest skipped — no helius_api_key");
+        return;
+    };
+
+    info!("pump trade ingest: helius logsSubscribe");
+    tokio::spawn(async move {
+        loop {
+            if let Err(e) = subscribe_pump_trades_once(&ws_url, &tx).await {
+                warn!(error = %e, "pump trade stream disconnected, retry in 5s");
+            }
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+    });
+}
+
+async fn subscribe_pump_trades_once(
+    ws_url: &str,
+    tx: &Sender<PumpTradeEvent>,
+) -> anyhow::Result<()> {
+    let (ws, _) = connect_async(ws_url).await?;
+    let (mut write, mut read) = ws.split();
+
+    let sub = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": "pump_trades",
+        "method": "logsSubscribe",
+        "params": [
+            { "mentions": [PUMP_FUN] },
+            { "commitment": "confirmed" }
+        ]
+    });
+    write.send(Message::Text(sub.to_string())).await?;
+
+    while let Some(msg) = read.next().await {
+        let msg = msg?;
+        if let Message::Text(text) = msg {
+            if let Some(event) = parse_pump_trade_notification(&text) {
                 if tx.send(event).is_err() {
                     return Ok(());
                 }
@@ -294,5 +419,21 @@ mod tests {
             "Program log: swap".to_owned(),
         ];
         assert!(parse_pool_creation_from_logs(&logs, "sig3", 0).is_none());
+    }
+
+    #[test]
+    fn detects_pump_buy() {
+        let logs = vec![
+            format!("Program {PUMP_FUN} invoke [1]"),
+            "Program log: Instruction: Buy".to_owned(),
+            "Program log: mint: 7GCihgDB8fe6KNjn2MYtkzZcRjZy3q9jtK68W89Qjcb2".to_owned(),
+            "Program log: sol_amount: 500000000".to_owned(),
+        ];
+        let ev = parse_pump_trade_from_logs(&logs, "sig4", 101).expect("trade");
+        assert_eq!(ev.side, PumpTradeSide::Buy);
+        assert_eq!(
+            ev.token_mint,
+            "7GCihgDB8fe6KNjn2MYtkzZcRjZy3q9jtK68W89Qjcb2"
+        );
     }
 }

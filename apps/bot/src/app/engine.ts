@@ -1,32 +1,57 @@
 import { loadEnv, SOL_MINT, USDC_MINT } from '../config/env.js';
-import { createMarketStack } from '../market/data-layer.js';
+
+import { createMarketStack } from '../market-data/index.js';
+import { pairRegistryFromEnv } from '../market/pair-registry.js';
+
 import { computeDynamicSize } from '../sizing/dynamic.js';
+
 import {
   checkStrategyRisk,
   DEFAULT_RISK_LIMITS,
   recordExecutionOutcome,
   type StrategyRiskState,
-} from '../risk/limits.js';
-import { StrategyRegistry } from '../strategy/registry.js';
-import { RoundTripQuoteArbStrategy } from '../strategy/round-trip-arb.js';
+} from '../risk/index.js';
+
+import {
+  DEFAULT_MEAN_REVERSION_CONFIG,
+  MeanReversionStrategy,
+  PumpEdgeStrategy,
+  RouteDivergenceArbStrategy,
+  RoundTripQuoteArbStrategy,
+  StrategyRegistry,
+  type ScannableStrategy,
+} from '../signals/index.js';
+
+import type { Strategy } from '../signals/types.js';
+
 import { TradeJournal } from '../state/journal.js';
+
 import { computeAnalytics } from '../analytics/metrics.js';
-import { LiveExecutor } from '../execution/live-executor.js';
+
+import { LiveExecutor } from '../execution/index.js';
 
 export interface EngineStats {
   scans: number;
   actionable: number;
   executed: number;
   rejected: number;
+  pairCount: number;
 }
 
-/** Main scan loop — market data → strategy → risk → sizing → execution. */
+/**
+ * Main orchestrator — 4-layer pipeline:
+ * MarketData → Signal → Risk → Execution
+ */
 export class BotEngine {
   private readonly env = loadEnv();
   private readonly journal = new TradeJournal();
   private readonly registry = new StrategyRegistry();
   private readonly stack = createMarketStack(this.env);
+  private readonly pairRegistry = pairRegistryFromEnv(this.stack.client, this.env);
   private readonly executor: LiveExecutor;
+  private readonly scannable: ScannableStrategy[] = [];
+  private pumpStrategy: PumpEdgeStrategy | null = null;
+
   private riskState: StrategyRiskState = {
     sessionLossUsd: 0,
     consecutiveQuoteFailures: 0,
@@ -34,16 +59,56 @@ export class BotEngine {
     routeFamilyFailures: {},
     cooldownUntilMs: 0,
   };
-  private stats: EngineStats = { scans: 0, actionable: 0, executed: 0, rejected: 0 };
+
+  private stats: EngineStats = { scans: 0, actionable: 0, executed: 0, rejected: 0, pairCount: 0 };
   private failureRate = 0;
   private running = false;
-  private readonly quoteArb: RoundTripQuoteArbStrategy;
   private tradeAmountUi: number;
+  private initialized = false;
 
   constructor() {
     this.tradeAmountUi = this.env.tradeAmountUi;
-    this.quoteArb = new RoundTripQuoteArbStrategy(this.stack.client, this.tradeAmountUi);
-    this.registry.register(this.quoteArb);
+
+    const routeDiv = new RouteDivergenceArbStrategy(
+      this.stack.client,
+      this.tradeAmountUi,
+      this.pairRegistry,
+      {
+        minDivergenceBps: 12,
+        minSurvivingEdgeBps: 8,
+        pairsPerScan: this.env.pairsPerScan,
+        scanConcurrency: 2,
+      },
+    );
+
+    const roundTrip = new RoundTripQuoteArbStrategy(
+      this.stack.client,
+      this.tradeAmountUi,
+      this.pairRegistry,
+      { pairsPerScan: this.env.pairsPerScan, scanConcurrency: 3 },
+    );
+
+    const meanRev = new MeanReversionStrategy({
+      ...DEFAULT_MEAN_REVERSION_CONFIG,
+      enabled: this.env.enableMeanReversion,
+    });
+
+    this.scannable.push(routeDiv, roundTrip);
+    this.registry.register(routeDiv);
+    this.registry.register(roundTrip);
+    this.registry.register(meanRev);
+
+    if (this.env.enablePumpEdge) {
+      this.pumpStrategy = new PumpEdgeStrategy(
+        this.stack.client,
+        this.env.rpcUrl,
+        undefined,
+        this.env.heliusApiKey,
+      );
+      this.scannable.push(this.pumpStrategy);
+      this.registry.register(this.pumpStrategy);
+    }
+
     this.executor = new LiveExecutor(this.env, this.stack.client, this.journal);
   }
 
@@ -59,22 +124,51 @@ export class BotEngine {
     return computeAnalytics(this.journal.all());
   }
 
+  getStrategies(): readonly Strategy[] {
+    return this.registry.list();
+  }
+
+  getPairCount(): number {
+    return this.pairRegistry.allPairs.length;
+  }
+
+  private async ensureInitialized(): Promise<void> {
+    if (this.initialized) return;
+    const pairs = await this.pairRegistry.refresh();
+    this.stats.pairCount = pairs.length;
+
+    if (this.pumpStrategy) {
+      for (const meta of this.pairRegistry.pairMeta) {
+        this.pumpStrategy.watchMint(meta.mint);
+      }
+    }
+
+    console.log(
+      `[bot] loaded ${pairs.length} scan pairs (source=${this.env.pairSource}, batch=${this.env.pairsPerScan})`,
+    );
+    this.initialized = true;
+  }
+
   async scanOnce(): Promise<void> {
+    await this.ensureInitialized();
     this.stats.scans += 1;
-    this.journal.append({ type: 'scan', pairLabel: 'SOL/USDC' });
 
-    let state = await this.stack.dataLayer.buildState([SOL_MINT, USDC_MINT], {
-      alwaysInclude: [SOL_MINT, USDC_MINT],
-      tokenLimit: 100,
+    const batchLabel = `batch-${this.stats.scans}`;
+    this.journal.append({ type: 'scan', pairLabel: batchLabel });
+
+    const allMints = this.pairRegistry.allPairs.flatMap((p) => [p.baseMint, p.quoteMint]);
+    const uniqueMints = [...new Set(allMints)];
+
+    let state = await this.stack.dataLayer.buildState(uniqueMints, {
+      alwaysInclude: [SOL_MINT, USDC_MINT, ...uniqueMints.slice(0, 50)],
+      tokenLimit: 200,
     });
 
-    const strat = this.quoteArb;
-    state = await strat.scan(state);
+    for (const strat of this.scannable) {
+      state = await strat.scan(state);
+    }
 
-    const decision = this.registry.best(state, {
-      minProfitUsd: this.env.minProfitUsd,
-      slippageBps: this.env.slippageBps,
-    });
+    const decision = this.pickDecision(state);
 
     if (!decision) return;
 
@@ -88,6 +182,7 @@ export class BotEngine {
         grossSpreadBps: decision.grossSpreadBps,
         routeQuality: decision.routeQualityScore,
         freshness: decision.freshnessScore,
+        ...decision.metadata,
       },
     });
 
@@ -131,6 +226,32 @@ export class BotEngine {
     }
   }
 
+  private pickDecision(state: import('../market/state.js').MarketState) {
+    const ctx = {
+      minProfitUsd: this.env.minProfitUsd,
+      slippageBps: this.env.slippageBps,
+    };
+
+    if (this.env.primaryStrategy === 'pump_edge' && this.pumpStrategy) {
+      const pump = this.registry
+        .evaluateAll(state, ctx)
+        .find((d) => d.strategyId === 'pump_edge');
+      if (pump && !pump.rejectionReason) return pump;
+    }
+
+    if (this.env.primaryStrategy === 'round_trip_quote_arb') {
+      const rt = this.registry
+        .evaluateAll(state, ctx)
+        .find((d) => d.strategyId === 'round_trip_quote_arb');
+      return rt ?? this.registry.best(state, ctx);
+    }
+
+    const routeDiv = this.registry
+      .evaluateAll(state, ctx)
+      .find((d) => d.strategyId === 'route_divergence_arb');
+    return routeDiv ?? this.registry.best(state, ctx);
+  }
+
   async runLoop(maxIterations?: number): Promise<void> {
     this.running = true;
     let i = 0;
@@ -140,9 +261,11 @@ export class BotEngine {
       if (maxIterations && i >= maxIterations) break;
       await new Promise((r) => setTimeout(r, this.env.scanIntervalMs));
     }
+    this.pumpStrategy?.stop();
   }
 
   stop(): void {
     this.running = false;
+    this.pumpStrategy?.stop();
   }
 }

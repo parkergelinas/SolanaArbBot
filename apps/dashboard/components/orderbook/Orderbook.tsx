@@ -13,7 +13,7 @@ export default function Orderbook() {
   const empty = !hasLiveDepth;
 
   return (
-    <section className="flex flex-col h-full min-h-0 bg-ds-surface border-r border-ds-border overflow-hidden">
+    <section className="flex flex-col h-full min-h-0 bg-ds-surface lg:border-r border-ds-border overflow-hidden">
       <div className="terminal-panel-header justify-between shrink-0">
         <span>Orderbook</span>
         <span className="font-mono normal-case tracking-normal text-ds-text-primary">

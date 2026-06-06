@@ -47,6 +47,7 @@ const DEX_CLASS: Record<string, string> = {
   raydium: 'text-violet-400',
   orca: 'text-cyan-400',
   jupiter: 'text-amber-400',
+  pump: 'text-emerald-400',
 };
 
 const DIR_CLASS: Record<string, string> = {

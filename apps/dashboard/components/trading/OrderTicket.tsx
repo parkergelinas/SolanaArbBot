@@ -91,7 +91,7 @@ export default function OrderTicket() {
               type="button"
               disabled={!canTrade}
               onClick={() => trade('buy', amt)}
-              className="terminal-btn terminal-btn-buy"
+              className="terminal-btn terminal-btn-buy lg:!py-1.5 !py-2.5 text-[12px] lg:text-[11px] min-h-[44px] lg:min-h-0"
             >
               {amt} SOL
             </button>
@@ -108,7 +108,7 @@ export default function OrderTicket() {
               type="button"
               disabled={!canTrade}
               onClick={() => trade('sell', amt)}
-              className="terminal-btn terminal-btn-sell"
+              className="terminal-btn terminal-btn-sell lg:!py-1.5 !py-2.5 text-[12px] lg:text-[11px] min-h-[44px] lg:min-h-0"
             >
               {amt} SOL
             </button>

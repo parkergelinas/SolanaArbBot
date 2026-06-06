@@ -4,7 +4,7 @@
 
 export const SCHEMA_VERSION = 1;
 
-export type Dex = 'raydium' | 'orca' | 'jupiter';
+export type Dex = 'raydium' | 'orca' | 'jupiter' | 'pump';
 export type CandleInterval = '1s' | '5s' | '1m';
 
 export interface SwapEvent {

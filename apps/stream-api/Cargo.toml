@@ -13,6 +13,8 @@ data-layer  = { path = "../../backend/data-layer" }
 signal-bus  = { path = "../../crates/signal-bus" }
 config      = { path = "../../crates/config" }
 signals     = { path = "../../crates/signals" }
+ingestion   = { path = "../../crates/ingestion" }
+ratelimit   = { path = "../../crates/ratelimit" }
 events      = { path = "../../crates/events" }
 pricing     = { path = "../../crates/pricing" }
 axum        = { version = "0.7", features = ["ws", "macros"] }

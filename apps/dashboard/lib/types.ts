@@ -1,6 +1,6 @@
 // ─── Core domain types (mirror of Rust DTOs) ────────────────────────────────
 
-export type SignalType = 'WhaleFlow' | 'SmartMoney' | 'Momentum' | 'Swap';
+export type SignalType = 'WhaleFlow' | 'SmartMoney' | 'Momentum' | 'Swap' | 'Arb';
 export type Direction  = 'Long' | 'Short' | 'Neutral';
 
 export interface FeatureVector {
