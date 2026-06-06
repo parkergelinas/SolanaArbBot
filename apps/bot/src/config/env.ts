@@ -19,6 +19,22 @@ export interface BotEnv {
   enableTriggerApi: boolean;
   /** Stub only — Jupiter Recurring API (DCA/treasury). */
   enableRecurringApi: boolean;
+  /** CoinMarketCap Pro API key for top-100 pair loading. */
+  cmcApiKey?: string;
+  /** Pair source: `cmc` (live API) or `static` (built-in map). */
+  pairSource: 'cmc' | 'static';
+  /** Max scan pairs including SOL/USDC. */
+  maxScanPairs: number;
+  /** Pairs scanned per engine tick (rate-limit rotation). */
+  pairsPerScan: number;
+  /** Quote mint for alt pairs: USDC or SOL. */
+  pairQuoteMint: 'USDC' | 'SOL';
+  /** CMC listings to fetch when pairSource=cmc. */
+  cmcTopN: number;
+  /** Enable Pump.fun bonding curve edge strategy. */
+  enablePumpEdge: boolean;
+  /** Helius API key for pump launch monitoring. */
+  heliusApiKey?: string;
 }
 
 const LEGACY_LITE_HOST = 'lite-api.jup.ag';
@@ -61,6 +77,16 @@ export function loadEnv(): BotEnv {
     enableMeanReversion: env('BOT_ENABLE_MEAN_REVERSION', '0') === '1',
     enableTriggerApi: env('BOT_ENABLE_TRIGGER_API', '0') === '1',
     enableRecurringApi: env('BOT_ENABLE_RECURRING_API', '0') === '1',
+    cmcApiKey: process.env.CMC_API_KEY?.trim() || process.env.COINMARKETCAP_API_KEY?.trim(),
+    pairSource: (env('BOT_PAIR_SOURCE', process.env.CMC_API_KEY ? 'cmc' : 'static') as 'cmc' | 'static'),
+    maxScanPairs: Number(env('BOT_MAX_SCAN_PAIRS', '100')),
+    pairsPerScan: Number(env('BOT_PAIRS_PER_SCAN', '10')),
+    pairQuoteMint: (env('BOT_PAIR_QUOTE_MINT', 'USDC') as 'USDC' | 'SOL'),
+    cmcTopN: Number(env('BOT_CMC_TOP_N', '100')),
+    enablePumpEdge: env('BOT_ENABLE_PUMP_EDGE', '1') === '1',
+    heliusApiKey:
+      process.env.HELIUS_API_KEY?.trim() ||
+      process.env.SOLANA_ARB_DATA_SOURCES__HELIUS_API_KEY?.trim(),
   };
 }
 

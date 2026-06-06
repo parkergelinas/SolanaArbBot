@@ -28,6 +28,7 @@ jupiter_tokens   = "https://api.jup.ag/tokens/v2"  # token.jup.ag/strict retired
 dexscreener_base = "https://api.dexscreener.com/latest/dex"
 rugcheck_base    = "https://api.rugcheck.xyz/v1"
 birdeye_base     = "https://public-api.birdeye.so"
+coinmarketcap_api_key = ""  # pro.coinmarketcap.com — set via CMC_API_KEY or SOLANA_ARB_DATA_SOURCES__COINMARKETCAP_API_KEY
 
 # ─────────────────────────────────────────────────────────────────────────────
 # [rpc] — Solana JSON-RPC connection
@@ -363,6 +364,30 @@ signal_ttl_seconds   = 60         # how long a whale signal boosts a route
 max_tracked_wallets  = 200        # cap on dynamic discovery list
 discovery_interval_s = 300        # how often to poll GMGN for new whales
 persist_path         = "data/discovered_whales.json"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [coinmarketcap] — Top-100 pair universe for quote_arb / bot scanning
+# ─────────────────────────────────────────────────────────────────────────────
+[coinmarketcap]
+enabled       = false
+top_n         = 100
+quote_mint    = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"  # USDC
+max_pairs     = 100
+refresh_hours = 6
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [pump_fun] — Pump.fun bonding curve edge strategy
+# Docs: https://github.com/pump-fun/pump-public-docs
+# ─────────────────────────────────────────────────────────────────────────────
+[pump_fun]
+enabled                        = false
+min_edge_bps                   = 50
+trade_sol                      = 0.5
+min_graduation_pct             = 80.0
+max_graduation_pct             = 99.0
+max_early_impact_bps           = 300
+min_curve_jupiter_divergence_bps = 75
+monitor_launches               = true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # [sniper] — New-token pool-creation sniper (default disabled)

@@ -59,6 +59,9 @@ pub mod live;
 pub mod liquidation;
 pub mod momentum;
 pub mod quote_arb;
+pub mod pump_scanner;
+pub mod scanner_store;
+pub mod solscan_researcher;
 pub mod processor;
 pub mod processors;
 pub mod types;
@@ -105,6 +108,9 @@ pub use liquidation::{
     LendingProtocol, LiquidationPlan, LiquidationStore,
 };
 pub use live::{spawn_live_data_pollers, LiveDataHandles};
+pub use pump_scanner::spawn_pump_scanner;
+pub use scanner_store::{PumpMomentumHit, ScannerMeta, ScannerStore, ShitcoinWhaleHit};
+pub use solscan_researcher::spawn_solscan_researcher;
 pub use wallet_scoring::{
     fetch_wallet_score, qualifies_wallet, score_from_gmgn_row, spawn_wallet_scoring_poller,
     QualifiedWalletSet, WalletScore,

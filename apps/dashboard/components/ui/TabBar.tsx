@@ -16,7 +16,7 @@ export default function TabBar<T extends string>({ tabs, active, onChange }: Tab
             key={tab.id}
             type="button"
             onClick={() => onChange(tab.id)}
-            className={`flex-1 h-8 text-[11px] font-medium uppercase tracking-[0.08em] transition-colors border-b-2 -mb-px ${
+            className={`flex-1 min-h-[44px] lg:min-h-0 lg:h-8 text-[11px] font-medium uppercase tracking-[0.08em] transition-colors border-b-2 -mb-px ${
               isActive
                 ? 'text-ds-text-primary border-ds-blue bg-ds-elevated/50'
                 : 'text-ds-text-secondary border-transparent hover:text-ds-text-primary hover:bg-ds-elevated/30'

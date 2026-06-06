@@ -40,7 +40,11 @@ export function CompactPageHeader({ title, subtitle, actions }: CompactPageHeade
           <p className="hidden sm:inline text-[11px] text-ds-text-muted truncate">{subtitle}</p>
         )}
       </div>
-      {actions && <div className="flex items-center gap-2 flex-wrap ml-auto">{actions}</div>}
+      {actions && (
+        <div className="flex items-center gap-2 flex-wrap ml-auto [&_button]:min-h-[40px] [&_button]:sm:min-h-0">
+          {actions}
+        </div>
+      )}
     </header>
   );
 }
@@ -53,8 +57,8 @@ interface PageShellProps {
 
 export function PageShell({ children, className = '', desk }: PageShellProps) {
   const base = desk
-    ? 'flex flex-col gap-2 min-h-[calc(100dvh-5.5rem)] max-w-[100rem] mx-auto w-full pb-4'
-    : 'flex flex-col gap-3 max-w-[90rem] pb-6';
+    ? 'flex flex-col gap-2 page-desk-height max-w-[100rem] mx-auto w-full pb-2 md:pb-4'
+    : 'flex flex-col gap-3 max-w-[90rem] pb-4 md:pb-6';
   return <div className={`${base} ${className}`}>{children}</div>;
 }
 

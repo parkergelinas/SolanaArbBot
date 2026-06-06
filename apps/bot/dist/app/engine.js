@@ -1,25 +1,25 @@
 import { loadEnv, SOL_MINT, USDC_MINT } from '../config/env.js';
 import { createMarketStack } from '../market-data/index.js';
+import { pairRegistryFromEnv } from '../market/pair-registry.js';
 import { computeDynamicSize } from '../sizing/dynamic.js';
 import { checkStrategyRisk, DEFAULT_RISK_LIMITS, recordExecutionOutcome, } from '../risk/index.js';
-import { DEFAULT_MEAN_REVERSION_CONFIG, MeanReversionStrategy, RouteDivergenceArbStrategy, RoundTripQuoteArbStrategy, StrategyRegistry, } from '../signals/index.js';
+import { DEFAULT_MEAN_REVERSION_CONFIG, MeanReversionStrategy, PumpEdgeStrategy, RouteDivergenceArbStrategy, RoundTripQuoteArbStrategy, StrategyRegistry, } from '../signals/index.js';
 import { TradeJournal } from '../state/journal.js';
 import { computeAnalytics } from '../analytics/metrics.js';
 import { LiveExecutor } from '../execution/index.js';
 /**
-
  * Main orchestrator — 4-layer pipeline:
-
  * MarketData → Signal → Risk → Execution
-
  */
 export class BotEngine {
     env = loadEnv();
     journal = new TradeJournal();
     registry = new StrategyRegistry();
     stack = createMarketStack(this.env);
+    pairRegistry = pairRegistryFromEnv(this.stack.client, this.env);
     executor;
     scannable = [];
+    pumpStrategy = null;
     riskState = {
         sessionLossUsd: 0,
         consecutiveQuoteFailures: 0,
@@ -27,14 +27,20 @@ export class BotEngine {
         routeFamilyFailures: {},
         cooldownUntilMs: 0,
     };
-    stats = { scans: 0, actionable: 0, executed: 0, rejected: 0 };
+    stats = { scans: 0, actionable: 0, executed: 0, rejected: 0, pairCount: 0 };
     failureRate = 0;
     running = false;
     tradeAmountUi;
+    initialized = false;
     constructor() {
         this.tradeAmountUi = this.env.tradeAmountUi;
-        const routeDiv = new RouteDivergenceArbStrategy(this.stack.client, this.tradeAmountUi);
-        const roundTrip = new RoundTripQuoteArbStrategy(this.stack.client, this.tradeAmountUi);
+        const routeDiv = new RouteDivergenceArbStrategy(this.stack.client, this.tradeAmountUi, this.pairRegistry, {
+            minDivergenceBps: 12,
+            minSurvivingEdgeBps: 8,
+            pairsPerScan: this.env.pairsPerScan,
+            scanConcurrency: 2,
+        });
+        const roundTrip = new RoundTripQuoteArbStrategy(this.stack.client, this.tradeAmountUi, this.pairRegistry, { pairsPerScan: this.env.pairsPerScan, scanConcurrency: 3 });
         const meanRev = new MeanReversionStrategy({
             ...DEFAULT_MEAN_REVERSION_CONFIG,
             enabled: this.env.enableMeanReversion,
@@ -43,6 +49,11 @@ export class BotEngine {
         this.registry.register(routeDiv);
         this.registry.register(roundTrip);
         this.registry.register(meanRev);
+        if (this.env.enablePumpEdge) {
+            this.pumpStrategy = new PumpEdgeStrategy(this.stack.client, this.env.rpcUrl, undefined, this.env.heliusApiKey);
+            this.scannable.push(this.pumpStrategy);
+            this.registry.register(this.pumpStrategy);
+        }
         this.executor = new LiveExecutor(this.env, this.stack.client, this.journal);
     }
     getStats() {
@@ -57,12 +68,32 @@ export class BotEngine {
     getStrategies() {
         return this.registry.list();
     }
+    getPairCount() {
+        return this.pairRegistry.allPairs.length;
+    }
+    async ensureInitialized() {
+        if (this.initialized)
+            return;
+        const pairs = await this.pairRegistry.refresh();
+        this.stats.pairCount = pairs.length;
+        if (this.pumpStrategy) {
+            for (const meta of this.pairRegistry.pairMeta) {
+                this.pumpStrategy.watchMint(meta.mint);
+            }
+        }
+        console.log(`[bot] loaded ${pairs.length} scan pairs (source=${this.env.pairSource}, batch=${this.env.pairsPerScan})`);
+        this.initialized = true;
+    }
     async scanOnce() {
+        await this.ensureInitialized();
         this.stats.scans += 1;
-        this.journal.append({ type: 'scan', pairLabel: 'SOL/USDC' });
-        let state = await this.stack.dataLayer.buildState([SOL_MINT, USDC_MINT], {
-            alwaysInclude: [SOL_MINT, USDC_MINT],
-            tokenLimit: 100,
+        const batchLabel = `batch-${this.stats.scans}`;
+        this.journal.append({ type: 'scan', pairLabel: batchLabel });
+        const allMints = this.pairRegistry.allPairs.flatMap((p) => [p.baseMint, p.quoteMint]);
+        const uniqueMints = [...new Set(allMints)];
+        let state = await this.stack.dataLayer.buildState(uniqueMints, {
+            alwaysInclude: [SOL_MINT, USDC_MINT, ...uniqueMints.slice(0, 50)],
+            tokenLimit: 200,
         });
         for (const strat of this.scannable) {
             state = await strat.scan(state);
@@ -119,6 +150,13 @@ export class BotEngine {
             minProfitUsd: this.env.minProfitUsd,
             slippageBps: this.env.slippageBps,
         };
+        if (this.env.primaryStrategy === 'pump_edge' && this.pumpStrategy) {
+            const pump = this.registry
+                .evaluateAll(state, ctx)
+                .find((d) => d.strategyId === 'pump_edge');
+            if (pump && !pump.rejectionReason)
+                return pump;
+        }
         if (this.env.primaryStrategy === 'round_trip_quote_arb') {
             const rt = this.registry
                 .evaluateAll(state, ctx)
@@ -140,8 +178,10 @@ export class BotEngine {
                 break;
             await new Promise((r) => setTimeout(r, this.env.scanIntervalMs));
         }
+        this.pumpStrategy?.stop();
     }
     stop() {
         this.running = false;
+        this.pumpStrategy?.stop();
     }
 }

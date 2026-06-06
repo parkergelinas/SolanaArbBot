@@ -7,7 +7,7 @@ interface DsTableProps {
 
 export function DsTable({ children, className = '' }: DsTableProps) {
   return (
-    <div className={`flex-1 min-h-0 overflow-auto terminal-scroll ${className}`}>
+    <div className={`flex-1 min-h-0 overflow-auto terminal-scroll mobile-table-scroll ${className}`}>
       <table className="ds-table w-full text-[11px]">{children}</table>
     </div>
   );

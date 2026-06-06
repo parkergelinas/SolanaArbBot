@@ -1,10 +1,12 @@
 import { DEFAULT_SCAN_PAIRS } from '../strategy/arb-scanner.js';
-import { scanRouteDivergence } from '../strategy/route-divergence-scanner.js';
+import { scanMultipleRouteDivergences } from '../strategy/multi-pair-scanner.js';
 import { evaluateQuoteFreshness, scoreRouteQuality } from '../strategy/route-quality.js';
 import { estimateFeesUsd, scoreRoundTripUsd } from '../strategy/scorer.js';
 export const DEFAULT_ROUTE_DIVERGENCE_CONFIG = {
     minDivergenceBps: 12,
     minSurvivingEdgeBps: 8,
+    pairsPerScan: 10,
+    scanConcurrency: 2,
 };
 function constructionToPair(pairLabel, c) {
     return {
@@ -14,29 +16,60 @@ function constructionToPair(pairLabel, c) {
     };
 }
 /**
- * Route divergence arb — compare restricted vs unrestricted (and alternate)
- * route constructions; trade only when spread survives fees, latency, and staleness.
+ * Route divergence arb — compare restricted vs unrestricted route constructions
+ * across CMC top-100 Solana pairs (rotating batch per scan).
  */
 export class RouteDivergenceArbStrategy {
     client;
     tradeAmountUi;
+    pairRegistry;
     cfg;
     id = 'route_divergence_arb';
-    constructor(client, tradeAmountUi, cfg = DEFAULT_ROUTE_DIVERGENCE_CONFIG) {
+    constructor(client, tradeAmountUi, pairRegistry = null, cfg = DEFAULT_ROUTE_DIVERGENCE_CONFIG) {
         this.client = client;
         this.tradeAmountUi = tradeAmountUi;
+        this.pairRegistry = pairRegistry;
         this.cfg = cfg;
     }
     async scan(state) {
-        const pair = DEFAULT_SCAN_PAIRS[0];
-        const divergence = await scanRouteDivergence(this.client, pair, this.tradeAmountUi, { slippageBps: 50 });
-        return { ...state, routeDivergence: divergence };
+        const pairs = this.pairRegistry
+            ? this.pairRegistry.nextBatch(this.cfg.pairsPerScan)
+            : DEFAULT_SCAN_PAIRS;
+        const result = await scanMultipleRouteDivergences(this.client, pairs, this.tradeAmountUi, { slippageBps: 50, concurrency: this.cfg.scanConcurrency });
+        const multiDivergences = {};
+        for (const [label, div] of result.divergences) {
+            multiDivergences[label] = div;
+        }
+        const firstDiv = result.divergences.values().next().value;
+        return {
+            ...state,
+            routeDivergence: firstDiv,
+            multiDivergences,
+        };
     }
     evaluate(state, ctx) {
-        const div = state.routeDivergence;
+        const allDivs = state.multiDivergences ?? {};
+        const entries = Object.entries(allDivs);
+        if (entries.length === 0 && state.routeDivergence) {
+            return this.evaluateOne(state.routeDivergence, state, ctx, DEFAULT_SCAN_PAIRS[0]);
+        }
+        let best = null;
+        let bestProfit = -Infinity;
+        for (const [label, div] of entries) {
+            const pair = this.pairRegistry?.allPairs.find((p) => p.label === label)
+                ?? DEFAULT_SCAN_PAIRS.find((p) => p.label === label)
+                ?? DEFAULT_SCAN_PAIRS[0];
+            const decision = this.evaluateOne(div, state, ctx, pair);
+            if (decision && (decision.netProfitUsd > bestProfit)) {
+                bestProfit = decision.netProfitUsd;
+                best = decision;
+            }
+        }
+        return best;
+    }
+    evaluateOne(div, state, ctx, pair) {
         if (!div || div.constructions.length === 0)
             return null;
-        const pair = DEFAULT_SCAN_PAIRS[0];
         const inputMint = pair.baseMint;
         const outputMint = pair.quoteMint;
         const inputDecimals = state.decimals[inputMint] ?? pair.baseDecimals;

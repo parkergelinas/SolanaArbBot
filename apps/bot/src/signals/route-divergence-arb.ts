@@ -1,7 +1,8 @@
 import type { JupiterClient } from '../jupiter/client.js';
 import type { MarketState, RouteConstructionSnapshot } from '../market/state.js';
+import type { PairRegistry } from '../market/pair-registry.js';
 import { DEFAULT_SCAN_PAIRS } from '../strategy/arb-scanner.js';
-import { scanRouteDivergence } from '../strategy/route-divergence-scanner.js';
+import { scanMultipleRouteDivergences } from '../strategy/multi-pair-scanner.js';
 import { evaluateQuoteFreshness, scoreRouteQuality } from '../strategy/route-quality.js';
 import { estimateFeesUsd, scoreRoundTripUsd } from '../strategy/scorer.js';
 import type { QuotePairSnapshot } from '../jupiter/types.js';
@@ -11,11 +12,15 @@ import type { StrategyContext, TradeDecision } from '../strategy/types.js';
 export interface RouteDivergenceConfig {
   minDivergenceBps: number;
   minSurvivingEdgeBps: number;
+  pairsPerScan: number;
+  scanConcurrency: number;
 }
 
 export const DEFAULT_ROUTE_DIVERGENCE_CONFIG: RouteDivergenceConfig = {
   minDivergenceBps: 12,
   minSurvivingEdgeBps: 8,
+  pairsPerScan: 10,
+  scanConcurrency: 2,
 };
 
 function constructionToPair(
@@ -30,8 +35,8 @@ function constructionToPair(
 }
 
 /**
- * Route divergence arb — compare restricted vs unrestricted (and alternate)
- * route constructions; trade only when spread survives fees, latency, and staleness.
+ * Route divergence arb — compare restricted vs unrestricted route constructions
+ * across CMC top-100 Solana pairs (rotating batch per scan).
  */
 export class RouteDivergenceArbStrategy implements ScannableStrategy {
   readonly id = 'route_divergence_arb';
@@ -39,25 +44,67 @@ export class RouteDivergenceArbStrategy implements ScannableStrategy {
   constructor(
     private readonly client: JupiterClient,
     private readonly tradeAmountUi: number,
+    private readonly pairRegistry: PairRegistry | null = null,
     private readonly cfg: RouteDivergenceConfig = DEFAULT_ROUTE_DIVERGENCE_CONFIG,
   ) {}
 
   async scan(state: MarketState): Promise<MarketState> {
-    const pair = DEFAULT_SCAN_PAIRS[0]!;
-    const divergence = await scanRouteDivergence(
+    const pairs = this.pairRegistry
+      ? this.pairRegistry.nextBatch(this.cfg.pairsPerScan)
+      : DEFAULT_SCAN_PAIRS;
+
+    const result = await scanMultipleRouteDivergences(
       this.client,
-      pair,
+      pairs,
       this.tradeAmountUi,
-      { slippageBps: 50 },
+      { slippageBps: 50, concurrency: this.cfg.scanConcurrency },
     );
-    return { ...state, routeDivergence: divergence };
+
+    const multiDivergences: Record<string, import('../market/state.js').RouteDivergenceSnapshot> = {};
+    for (const [label, div] of result.divergences) {
+      multiDivergences[label] = div;
+    }
+
+    const firstDiv = result.divergences.values().next().value;
+    return {
+      ...state,
+      routeDivergence: firstDiv,
+      multiDivergences,
+    };
   }
 
   evaluate(state: MarketState, ctx: StrategyContext): TradeDecision | null {
-    const div = state.routeDivergence;
+    const allDivs = state.multiDivergences ?? {};
+    const entries = Object.entries(allDivs);
+    if (entries.length === 0 && state.routeDivergence) {
+      return this.evaluateOne(state.routeDivergence, state, ctx, DEFAULT_SCAN_PAIRS[0]!);
+    }
+
+    let best: TradeDecision | null = null;
+    let bestProfit = -Infinity;
+
+    for (const [label, div] of entries) {
+      const pair = this.pairRegistry?.allPairs.find((p) => p.label === label)
+        ?? DEFAULT_SCAN_PAIRS.find((p) => p.label === label)
+        ?? DEFAULT_SCAN_PAIRS[0]!;
+      const decision = this.evaluateOne(div, state, ctx, pair);
+      if (decision && (decision.netProfitUsd > bestProfit)) {
+        bestProfit = decision.netProfitUsd;
+        best = decision;
+      }
+    }
+
+    return best;
+  }
+
+  private evaluateOne(
+    div: import('../market/state.js').RouteDivergenceSnapshot,
+    state: MarketState,
+    ctx: StrategyContext,
+    pair: import('../strategy/arb-scanner.js').ScanPair,
+  ): TradeDecision | null {
     if (!div || div.constructions.length === 0) return null;
 
-    const pair = DEFAULT_SCAN_PAIRS[0]!;
     const inputMint = pair.baseMint;
     const outputMint = pair.quoteMint;
     const inputDecimals = state.decimals[inputMint] ?? pair.baseDecimals;

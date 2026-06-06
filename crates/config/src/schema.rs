@@ -116,6 +116,14 @@ pub struct SystemConfig {
     /// Jupiter route-divergence / quote arbitrage scanner.
     #[serde(default)]
     pub quote_arb: QuoteArbConfig,
+
+    /// CoinMarketCap top-N pair universe loader.
+    #[serde(default)]
+    pub coinmarketcap: CoinMarketCapConfig,
+
+    /// Pump.fun bonding curve edge strategy.
+    #[serde(default)]
+    pub pump_fun: PumpFunConfig,
 }
 
 impl Default for SystemConfig {
@@ -145,6 +153,8 @@ impl Default for SystemConfig {
             liquidation: LiquidationConfig::default(),
             sniper: SniperConfig::default(),
             quote_arb: QuoteArbConfig::default(),
+            coinmarketcap: CoinMarketCapConfig::default(),
+            pump_fun: PumpFunConfig::default(),
         }
     }
 }
@@ -174,6 +184,8 @@ impl SystemConfig {
         self.momentum.validate()?;
         self.arbitrage.validate()?;
         self.quote_arb.validate()?;
+        self.coinmarketcap.validate()?;
+        self.pump_fun.validate()?;
         self.sniper.validate()?;
         self.liquidation.validate()?;
         self.features.validate()?;
@@ -860,6 +872,8 @@ pub struct DataSourcesConfig {
     pub rugcheck_base: String,
     /// Birdeye public API base URL (free tier, no key).
     pub birdeye_base: String,
+    /// CoinMarketCap Pro API key for top-100 pair loading.
+    pub coinmarketcap_api_key: String,
 }
 
 impl Default for DataSourcesConfig {
@@ -872,6 +886,7 @@ impl Default for DataSourcesConfig {
             dexscreener_base: "https://api.dexscreener.com/latest/dex".to_owned(),
             rugcheck_base: "https://api.rugcheck.xyz/v1".to_owned(),
             birdeye_base: "https://public-api.birdeye.so".to_owned(),
+            coinmarketcap_api_key: String::new(),
         }
     }
 }
@@ -1713,6 +1728,103 @@ impl QuoteArbConfig {
             if pair.input_mint.is_empty() || pair.output_mint.is_empty() {
                 return Err(format!("quote_arb.pairs[{i}] mints must be non-empty"));
             }
+        }
+        Ok(())
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CoinMarketCap
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// CoinMarketCap top-N listings mapped to Solana mints for pair scanning.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoinMarketCapConfig {
+    pub enabled: bool,
+    /// Number of top listings to fetch (max 100 on free tier).
+    pub top_n: u32,
+    /// Quote mint for alt pairs (typically USDC).
+    pub quote_mint: String,
+    /// Maximum pairs to include in scan universe.
+    pub max_pairs: u32,
+    /// Hours between CMC cache refreshes.
+    pub refresh_hours: u32,
+}
+
+impl Default for CoinMarketCapConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            top_n: 100,
+            quote_mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".to_owned(),
+            max_pairs: 100,
+            refresh_hours: 6,
+        }
+    }
+}
+
+impl CoinMarketCapConfig {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.top_n == 0 {
+            return Err("coinmarketcap.top_n must be positive".to_owned());
+        }
+        if self.max_pairs == 0 {
+            return Err("coinmarketcap.max_pairs must be positive".to_owned());
+        }
+        if self.enabled && self.quote_mint.is_empty() {
+            return Err("coinmarketcap.quote_mint must be set when enabled".to_owned());
+        }
+        Ok(())
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pump.fun
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Pump.fun bonding curve edge strategy parameters.
+/// See: https://github.com/pump-fun/pump-public-docs
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PumpFunConfig {
+    pub enabled: bool,
+    /// Minimum edge in basis points to act on a signal.
+    pub min_edge_bps: u32,
+    /// Nominal trade size in SOL for curve impact calculation.
+    pub trade_sol: f64,
+    /// Min graduation % for proximity plays (migration arb window).
+    pub min_graduation_pct: f64,
+    /// Max graduation % for proximity plays.
+    pub max_graduation_pct: f64,
+    /// Max price impact bps for early curve entries.
+    pub max_early_impact_bps: u32,
+    /// Min divergence bps between bonding curve and Jupiter price.
+    pub min_curve_jupiter_divergence_bps: u32,
+    /// Subscribe to Pump.fun Create events via Helius logs.
+    pub monitor_launches: bool,
+}
+
+impl Default for PumpFunConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            min_edge_bps: 50,
+            trade_sol: 0.5,
+            min_graduation_pct: 80.0,
+            max_graduation_pct: 99.0,
+            max_early_impact_bps: 300,
+            min_curve_jupiter_divergence_bps: 75,
+            monitor_launches: true,
+        }
+    }
+}
+
+impl PumpFunConfig {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.trade_sol <= 0.0 {
+            return Err("pump_fun.trade_sol must be positive".to_owned());
+        }
+        if self.min_graduation_pct >= self.max_graduation_pct {
+            return Err("pump_fun.min_graduation_pct must be < max_graduation_pct".to_owned());
         }
         Ok(())
     }

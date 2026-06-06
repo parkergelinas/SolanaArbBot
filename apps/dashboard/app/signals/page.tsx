@@ -6,10 +6,12 @@ import TxTape from '@/components/intelligence/TxTape';
 import WalletRail from '@/components/intelligence/WalletRail';
 import WhaleFeed from '@/components/intelligence/WhaleFeed';
 import WhaleSourcesPanel from '@/components/intelligence/WhaleSourcesPanel';
+import PumpFunScannerPanel from '@/components/signals/PumpFunScannerPanel';
 import SignalDetailPanel from '@/components/signals/SignalDetailPanel';
 import SignalFeedTable from '@/components/signals/SignalFeedTable';
 import SignalFilters from '@/components/signals/SignalFilters';
 import SignalStatsBar from '@/components/signals/SignalStatsBar';
+import SolscanResearcherPanel from '@/components/signals/SolscanResearcherPanel';
 import { useWsContext } from '@/components/WebSocketProvider';
 import { api } from '@/lib/api';
 import { useFetch, useStreamSignals } from '@/lib/hooks';
@@ -101,7 +103,7 @@ export default function SignalsPage() {
   const anyFeedLive = connected || intelConnected || streamConnected;
 
   return (
-    <div className="flex flex-col gap-2 min-h-[calc(100dvh-5.5rem)] max-w-[100rem] mx-auto w-full">
+    <div className="flex flex-col gap-2 page-desk-height max-w-[100rem] mx-auto w-full">
       {/* Header */}
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2 shrink-0 pb-2 border-b border-ds-border">
         <div className="flex items-baseline gap-3 min-w-0">
@@ -113,7 +115,7 @@ export default function SignalsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap ml-auto">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap ml-auto w-full sm:w-auto">
           <button
             type="button"
             onClick={() => setShowIntel((v) => !v)}
@@ -193,6 +195,12 @@ export default function SignalsPage() {
             <WalletRail fillHeight />
           </div>
         </aside>
+      </div>
+
+      {/* On-chain scanners: Solscan researcher + pump.fun edge */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 shrink-0">
+        <SolscanResearcherPanel compact />
+        <PumpFunScannerPanel compact />
       </div>
 
       {/* Mobile / tablet whale rail */}

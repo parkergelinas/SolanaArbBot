@@ -12,6 +12,7 @@ mod market;
 mod pricing;
 mod router;
 mod routes;
+mod scanner_pollers;
 
 use std::sync::Arc;
 
@@ -78,6 +79,7 @@ pub struct AppState {
     pub batch_tx: broadcast::Sender<WSBatchFrame>,
     pub market: Arc<market::MarketEngineHandle>,
     pub signal_bus: Arc<SignalBus>,
+    pub scanners: signals::ScannerStore,
 }
 
 #[tokio::main]
@@ -128,10 +130,14 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|v| v.parse().ok())
         .unwrap_or(8080);
 
+    let scanners = signals::ScannerStore::new();
+    scanner_pollers::spawn_scanner_pollers(scanners.clone());
+
     let state = AppState {
         batch_tx,
         market: Arc::new(market),
         signal_bus,
+        scanners,
     };
 
     let addr = format!("0.0.0.0:{port}");

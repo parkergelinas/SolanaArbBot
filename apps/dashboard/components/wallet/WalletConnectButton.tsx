@@ -65,7 +65,7 @@ export default function WalletConnectButton() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         disabled={connecting}
-        className={`inline-flex items-center gap-1.5 h-7 px-2.5 text-[11px] font-medium rounded-terminal border transition-colors ${
+        className={`inline-flex items-center gap-1.5 min-h-[44px] sm:min-h-0 h-7 px-2 sm:px-2.5 text-[10px] sm:text-[11px] font-medium rounded-terminal border transition-colors ${
           connected
             ? 'bg-ds-elevated/60 border-ds-green/30 text-ds-green hover:bg-ds-green/10'
             : 'bg-ds-surface border-ds-border text-ds-text-secondary hover:text-ds-text-primary hover:border-ds-blue/40 hover:bg-ds-elevated/50'
@@ -79,7 +79,14 @@ export default function WalletConnectButton() {
             <span className="font-mono tabular-nums">{shortenAddress(publicKey)}</span>
           </>
         ) : (
-          <span>{connecting ? 'Connecting…' : 'Connect Wallet'}</span>
+          <span>
+            {connecting ? 'Connecting…' : (
+              <>
+                <span className="sm:hidden">Connect</span>
+                <span className="hidden sm:inline">Connect Wallet</span>
+              </>
+            )}
+          </span>
         )}
         <span className="text-ds-text-muted text-[9px]">{open ? '▴' : '▾'}</span>
       </button>
@@ -87,7 +94,7 @@ export default function WalletConnectButton() {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-[calc(100%+4px)] z-[10001] min-w-[13.5rem] py-1 bg-ds-surface border border-ds-border rounded-terminal shadow-lg shadow-black/40"
+          className="absolute right-0 sm:right-0 left-0 sm:left-auto top-[calc(100%+4px)] z-[10001] min-w-[13.5rem] max-w-[calc(100vw-1.5rem)] py-1 bg-ds-surface border border-ds-border rounded-terminal shadow-lg shadow-black/40"
         >
           {connected && publicKey ? (
             <>

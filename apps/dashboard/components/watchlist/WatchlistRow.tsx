@@ -10,6 +10,7 @@ interface WatchlistRowProps {
   active: boolean;
   onSelect: () => void;
   onRemove?: () => void;
+  mobile?: boolean;
 }
 
 const WatchlistRow = memo(function WatchlistRow({
@@ -17,6 +18,7 @@ const WatchlistRow = memo(function WatchlistRow({
   active,
   onSelect,
   onRemove,
+  mobile = false,
 }: WatchlistRowProps) {
   const chgClass =
     row.changePct > 0
@@ -27,7 +29,9 @@ const WatchlistRow = memo(function WatchlistRow({
 
   return (
     <div
-      className={`group relative w-full grid grid-cols-[3.5rem_1fr_3rem_2.5rem] gap-1 px-2 h-7 items-center text-[12px] font-mono tabular-nums border-b border-ds-border transition-colors ${
+      className={`group relative w-full grid grid-cols-[3.5rem_1fr_3rem_2.5rem] gap-1 px-2 items-center font-mono tabular-nums border-b border-ds-border transition-colors ${
+        mobile ? 'h-11 text-[13px]' : 'h-7 text-[12px]'
+      } ${
         active
           ? 'bg-ds-elevated border-l-2 border-l-ds-blue'
           : 'hover:bg-ds-elevated border-l-2 border-l-transparent'
@@ -53,7 +57,9 @@ const WatchlistRow = memo(function WatchlistRow({
             e.stopPropagation();
             onRemove();
           }}
-          className="absolute right-0.5 top-1/2 -translate-y-1/2 hidden group-hover:block text-[10px] text-ds-text-muted hover:text-ds-red px-1"
+          className={`absolute right-1 top-1/2 -translate-y-1/2 text-[11px] text-ds-text-muted hover:text-ds-red px-2 ${
+            mobile ? 'block touch-target' : 'hidden group-hover:block'
+          }`}
           aria-label={`Remove ${row.symbol}`}
         >
           ✕

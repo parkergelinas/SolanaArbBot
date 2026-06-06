@@ -7,7 +7,7 @@ import { useDexScreenerContext } from '@/components/terminal/DexScreenerProvider
 import { tokenSymbol } from '@/lib/terminal/tokens';
 import { useUiStore } from '@/stores/uiStore';
 
-export default function DexScreenerChart() {
+export default function DexScreenerChart({ compact = false }: { compact?: boolean }) {
   const selectedMint = useUiStore((s) => s.selectedMint);
   const symbol = selectedMint ? tokenSymbol(selectedMint) : '—';
   const { snapshot, loading, error } = useDexScreenerContext();
@@ -25,7 +25,11 @@ export default function DexScreenerChart() {
 
   return (
     <section className="flex flex-col h-full min-h-0 bg-ds-base">
-      <div className="flex items-center justify-between px-3 h-8 border-b border-ds-border shrink-0 gap-2">
+      <div
+        className={`flex items-center justify-between px-3 h-8 border-b border-ds-border shrink-0 gap-2 ${
+          compact ? 'hidden' : ''
+        }`}
+      >
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-[11px] font-medium uppercase tracking-[0.1em] text-ds-text-secondary shrink-0">
             Chart
