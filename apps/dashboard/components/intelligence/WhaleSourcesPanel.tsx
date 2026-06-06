@@ -28,7 +28,7 @@ function SourceStatus({ live, label }: { live: boolean; label: string }) {
   );
 }
 
-export default function WhaleSourcesPanel() {
+export default function WhaleSourcesPanel({ compact = false }: { compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const intelConnected = useIntelConnected();
   const { connected: controlConnected } = useWsContext();
@@ -46,22 +46,28 @@ export default function WhaleSourcesPanel() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-ds-elevated/40 transition-colors"
+        className={`w-full flex items-center justify-between text-left hover:bg-ds-elevated/40 transition-colors ${
+          compact ? 'px-3 py-1.5 gap-2' : 'px-4 py-2.5'
+        }`}
       >
-        <div>
+        <div className="min-w-0">
           <span className="text-[10px] uppercase tracking-[0.14em] text-ds-text-muted font-semibold">
-            Whale Tracking · Sources &amp; Methods
+            {compact ? 'Whale Sources' : 'Whale Tracking · Sources & Methods'}
           </span>
-          <p className="text-[11px] text-ds-text-secondary mt-0.5">
-            {WHALE_THRESHOLD_SOL} SOL threshold · Yellowstone → enrich → detect → WS
+          <p className={`text-ds-text-secondary truncate ${compact ? 'text-[10px] mt-0' : 'text-[11px] mt-0.5'}`}>
+            {WHALE_THRESHOLD_SOL} SOL · Yellowstone → WS
           </p>
         </div>
-        <span className="text-ds-text-muted text-xs">{open ? '▾' : '▸'}</span>
+        <span className="text-ds-text-muted text-xs shrink-0">{open ? '▾' : '▸'}</span>
       </button>
 
       {open && (
-        <div className="border-t border-ds-border px-4 py-3 space-y-4 text-[11px]">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div
+          className={`border-t border-ds-border space-y-3 text-[11px] ${
+            compact ? 'px-3 py-2 max-h-[min(24rem,50vh)] overflow-y-auto terminal-scroll' : 'px-4 py-3 space-y-4'
+          }`}
+        >
+          <div className={`grid gap-2 ${compact ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2 gap-3'}`}>
             {WHALE_DATA_SOURCES.map((src) => (
               <div
                 key={src.id}

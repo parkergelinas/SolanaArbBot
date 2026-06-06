@@ -36,11 +36,20 @@ impl RuntimeController {
 }
 
 pub async fn start_runtime(state: &AppState) -> Result<(), String> {
-    let mut cfg: SystemConfig = state.config.read().await.clone();
-    let tuned = autonomous::tuned_config();
-    cfg.scalper = tuned.scalper;
-    cfg.signal_engine = tuned.signal_engine;
-    cfg.execution = tuned.execution;
+    let user_cfg = state.config.read().await.clone();
+    let mut cfg = autonomous::tuned_config();
+    cfg.strategy = user_cfg.strategy.clone();
+    cfg.features.dry_run = true;
+    cfg.features.enable_live_trading = false;
+    cfg.scalper.take_profit_pct = user_cfg.scalper.take_profit_pct;
+    cfg.scalper.stop_loss_pct = user_cfg.scalper.stop_loss_pct;
+    cfg.execution.min_profit_threshold_usd = user_cfg.execution.min_profit_threshold_usd;
+    cfg.execution.max_loss_per_trade_usd = user_cfg.execution.max_loss_per_trade_usd;
+    cfg.signal_engine.whale_threshold_usd = user_cfg.signal_engine.whale_threshold_usd;
+    cfg.signal_engine.signal_min_confidence = user_cfg.signal_engine.signal_min_confidence;
+    cfg.signal_engine.signal_min_strength = user_cfg.signal_engine.signal_min_strength;
+
+    *state.config.write().await = cfg.clone();
 
     {
         let mut strategy = state.strategy.write().await;

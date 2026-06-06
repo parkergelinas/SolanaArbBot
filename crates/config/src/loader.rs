@@ -302,6 +302,33 @@ pub(crate) fn apply_env_overrides(config: &mut SystemConfig) {
         config.execution.min_liquidity,
         f64
     );
+    env_scalar!(
+        "SOLANA_ARB_EXECUTION__MAX_LOSS_PER_TRADE_USD",
+        config.execution.max_loss_per_trade_usd,
+        f64
+    );
+
+    // ── [scalper] ─────────────────────────────────────────────────────────
+    env_scalar!(
+        "SOLANA_ARB_SCALPER__TAKE_PROFIT_PCT",
+        config.scalper.take_profit_pct,
+        f64
+    );
+    env_scalar!(
+        "SOLANA_ARB_SCALPER__STOP_LOSS_PCT",
+        config.scalper.stop_loss_pct,
+        f64
+    );
+    env_scalar!(
+        "SOLANA_ARB_SCALPER__MIN_EDGE_BPS",
+        config.scalper.min_edge_bps,
+        f64
+    );
+    env_scalar!(
+        "SOLANA_ARB_SCALPER__TRADE_COOLDOWN_SECS",
+        config.scalper.trade_cooldown_secs,
+        u64
+    );
 
     // ── [risk] ────────────────────────────────────────────────────────────
     env_scalar!(

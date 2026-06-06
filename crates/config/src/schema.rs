@@ -170,6 +170,7 @@ impl SystemConfig {
         self.arbitrage.validate()?;
         self.sniper.validate()?;
         self.liquidation.validate()?;
+        self.features.validate()?;
 
         if (self.risk.min_liquidity_usd - self.pipeline.routing_min_liquidity).abs()
             > f64::EPSILON
@@ -421,6 +422,9 @@ pub struct ExecutionConfig {
     /// Hard cap on a single trade's notional size in USD.
     /// The execution gate rejects any request exceeding this value.
     pub max_trade_size_usd: f64,
+
+    /// Maximum acceptable net loss per arb trade in USD (downside cap).
+    pub max_loss_per_trade_usd: f64,
 }
 
 impl Default for ExecutionConfig {
@@ -434,6 +438,7 @@ impl Default for ExecutionConfig {
             clmm_slippage_multiplier: 0.35,
             min_liquidity: 1.0,
             max_trade_size_usd: 50.0,
+            max_loss_per_trade_usd: 2.0,
         }
     }
 }
@@ -452,6 +457,9 @@ impl ExecutionConfig {
         }
         if self.min_liquidity < 0.0 {
             return Err("execution.min_liquidity must be >= 0".to_owned());
+        }
+        if self.max_loss_per_trade_usd <= 0.0 {
+            return Err("execution.max_loss_per_trade_usd must be positive".to_owned());
         }
         Ok(())
     }
@@ -611,6 +619,27 @@ impl Default for FeatureFlags {
             enable_raydium: true,
             verbose_pipeline_log: false,
         }
+    }
+}
+
+impl FeatureFlags {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.enable_live_trading && self.dry_run {
+            return Err(
+                "features.enable_live_trading requires features.dry_run=false".to_owned(),
+            );
+        }
+        if self.enable_live_trading && !crate::live_trading_confirm_env_set() {
+            return Err(
+                "features.enable_live_trading requires SOLANA_ARB_CONFIRM_LIVE_TRADING=1".to_owned(),
+            );
+        }
+        if !self.dry_run && !crate::live_trading_confirm_env_set() {
+            return Err(
+                "features.dry_run=false requires SOLANA_ARB_CONFIRM_LIVE_TRADING=1".to_owned(),
+            );
+        }
+        Ok(())
     }
 }
 
@@ -824,7 +853,7 @@ impl Default for DataSourcesConfig {
     fn default() -> Self {
         Self {
             helius_api_key: String::new(),
-            jupiter_price: "https://price.jup.ag/v2/price".to_owned(),
+            jupiter_price: "https://api.jup.ag/price/v3".to_owned(),
             dexscreener_base: "https://api.dexscreener.com/latest/dex".to_owned(),
             rugcheck_base: "https://api.rugcheck.xyz/v1".to_owned(),
             birdeye_base: "https://public-api.birdeye.so".to_owned(),
@@ -1410,6 +1439,12 @@ pub struct ScalerConfig {
     pub base_fee_bps: u16,
     /// Priority fee in lamports used in the priority-cost attribution model.
     pub priority_fee_lamports: u64,
+
+    /// Target take-profit as a fraction of notional (e.g. `0.012` = 1.2 %).
+    pub take_profit_pct: f64,
+
+    /// Stop-loss as a fraction of notional (e.g. `0.006` = 0.6 %).
+    pub stop_loss_pct: f64,
 }
 
 impl Default for ScalerConfig {
@@ -1432,6 +1467,8 @@ impl Default for ScalerConfig {
             signal_max_age_secs: 30,
             base_fee_bps: 25,
             priority_fee_lamports: 100_000,
+            take_profit_pct: 0.012,
+            stop_loss_pct: 0.006,
         }
     }
 }
@@ -1459,6 +1496,12 @@ impl ScalerConfig {
         }
         if self.signal_max_age_secs == 0 {
             return Err("scalper.signal_max_age_secs must be > 0".to_owned());
+        }
+        if self.take_profit_pct <= 0.0 || self.take_profit_pct > 1.0 {
+            return Err("scalper.take_profit_pct must be in (0.0, 1.0]".to_owned());
+        }
+        if self.stop_loss_pct <= 0.0 || self.stop_loss_pct >= 1.0 {
+            return Err("scalper.stop_loss_pct must be in (0.0, 1.0)".to_owned());
         }
         Ok(())
     }

@@ -6,7 +6,10 @@
 
 pub mod jupiter;
 
-pub use jupiter::{spawn_jupiter_poller, MintWatchlist};
+pub use jupiter::{
+    extract_jupiter_prices, normalize_jupiter_price_url, spawn_jupiter_poller,
+    JUPITER_PRICE_V3_URL, MintWatchlist,
+};
 
 pub mod engine {
     //! Price state update and query responsibilities.

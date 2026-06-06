@@ -58,6 +58,18 @@ pub use schema::{
 use std::path::PathBuf;
 use thiserror::Error;
 
+/// Returns true when the operator has explicitly confirmed live trading via env.
+pub fn live_trading_confirm_env_set() -> bool {
+    std::env::var("SOLANA_ARB_CONFIRM_LIVE_TRADING")
+        .map(|v| {
+            matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Error type
 // ─────────────────────────────────────────────────────────────────────────────

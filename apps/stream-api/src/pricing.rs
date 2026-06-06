@@ -1,9 +1,10 @@
-//! Jupiter Price API v2 poller — sub-second USD quotes for watchlist mints.
+//! Jupiter Price API poller â€” emits `token_price` WS messages for watchlist mints.
 
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crossbeam_channel::Sender;
+use pricing::{extract_jupiter_prices, normalize_jupiter_price_url, JUPITER_PRICE_V3_URL};
 use tracing::{debug, warn};
 
 use crate::contracts::{TokenPrice, WSMessage, SCHEMA_VERSION};
@@ -40,8 +41,20 @@ fn watchlist_mints() -> Vec<String> {
 }
 
 fn jupiter_price_url() -> String {
-    std::env::var("STREAM_JUPITER_PRICE_URL")
-        .unwrap_or_else(|_| "https://price.jup.ag/v2/price".to_string())
+    let configured = std::env::var("STREAM_JUPITER_PRICE_URL")
+        .unwrap_or_else(|_| JUPITER_PRICE_V3_URL.to_string());
+    normalize_jupiter_price_url(&configured)
+}
+
+fn jupiter_get(client: &reqwest::Client, url: &str) -> reqwest::RequestBuilder {
+    let mut req = client.get(url);
+    if let Ok(key) = std::env::var("JUPITER_API_KEY") {
+        let key = key.trim();
+        if !key.is_empty() {
+            req = req.header("x-api-key", key);
+        }
+    }
+    req
 }
 
 /// Poll Jupiter and emit `token_price` WS messages (500 ms default cadence).
@@ -61,39 +74,56 @@ pub fn spawn_jupiter_price_poller(ws_tx: Sender<WSMessage>) {
     }
 
     tokio::spawn(async move {
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
         let mints = watchlist_mints();
         let base_url = jupiter_price_url();
         let mut cache: HashMap<String, f64> = HashMap::new();
+        let mut fail_streak: u32 = 0;
 
-        debug!(poll_ms, mint_count = mints.len(), "jupiter price poller online");
+        debug!(poll_ms, mint_count = mints.len(), base_url = %base_url, "jupiter price poller online");
 
         loop {
             if !mints.is_empty() {
-                let url = format!(
-                    "{}?ids={}",
-                    base_url.trim_end_matches('/'),
-                    mints.join(",")
-                );
+                let url = format!("{}?ids={}", base_url, mints.join(","));
 
-                match client.get(&url).send().await {
+                match jupiter_get(&client, &url).send().await {
                     Ok(resp) if resp.status().is_success() => {
+                        fail_streak = 0;
                         if let Ok(body) = resp.json::<serde_json::Value>().await {
                             publish_jupiter_prices(&ws_tx, &mut cache, &body);
                         }
                     }
                     Ok(resp) if resp.status().as_u16() == 429 => {
-                        warn!("jupiter price rate limited — backing off");
+                        fail_streak += 1;
+                        warn!("jupiter price rate limited â€” backing off");
                         tokio::time::sleep(Duration::from_secs(2)).await;
                     }
                     Ok(resp) => {
-                        warn!(status = %resp.status(), "jupiter price poll failed");
+                        fail_streak += 1;
+                        warn!(status = %resp.status(), url = %base_url, "jupiter price poll failed");
                     }
-                    Err(e) => warn!(error = %e, "jupiter price request error"),
+                    Err(e) => {
+                        fail_streak += 1;
+                        if fail_streak == 1 || fail_streak % 20 == 0 {
+                            warn!(
+                                error = %e,
+                                url = %base_url,
+                                "jupiter price request error (check api.jup.ag/price/v3; price.jup.ag is retired)"
+                            );
+                        }
+                    }
                 }
             }
 
-            tokio::time::sleep(Duration::from_millis(poll_ms)).await;
+            let backoff_ms = if fail_streak > 3 {
+                poll_ms.saturating_mul(fail_streak.min(10) as u64)
+            } else {
+                poll_ms
+            };
+            tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
         }
     });
 }
@@ -103,20 +133,9 @@ fn publish_jupiter_prices(
     cache: &mut HashMap<String, f64>,
     body: &serde_json::Value,
 ) {
-    let Some(data) = body.get("data").and_then(|d| d.as_object()) else {
-        return;
-    };
-
     let ts = now_ms();
-    for (mint, entry) in data {
-        let Some(price) = entry.get("price").and_then(|p| p.as_f64()) else {
-            continue;
-        };
-        if !price.is_finite() || price <= 0.0 {
-            continue;
-        }
-
-        let prev = cache.get(mint).copied().unwrap_or(price);
+    for (mint, price) in extract_jupiter_prices(body) {
+        let prev = cache.get(&mint).copied().unwrap_or(price);
         let delta_pct = ((price - prev) / prev.max(1e-12)).abs() * 100.0;
         cache.insert(mint.clone(), price);
 
@@ -141,7 +160,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_jupiter_price_body() {
+    fn parses_jupiter_v3_body() {
+        let body = serde_json::json!({
+            "So11111111111111111111111111111111111111112": { "usdPrice": 63.42 }
+        });
+        let (tx, rx) = crossbeam_channel::unbounded();
+        let mut cache = HashMap::new();
+        publish_jupiter_prices(&tx, &mut cache, &body);
+        let msg = rx.recv().expect("price emitted");
+        match msg {
+            WSMessage::TokenPrice(p) => assert!((p.price_usd - 63.42).abs() < f64::EPSILON),
+            _ => panic!("expected token_price"),
+        }
+    }
+
+    #[test]
+    fn parses_jupiter_v2_body() {
         let body = serde_json::json!({
             "data": {
                 "So11111111111111111111111111111111111111112": { "price": 145.5 }
@@ -157,3 +191,4 @@ mod tests {
         }
     }
 }
+
