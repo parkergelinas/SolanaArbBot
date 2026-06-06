@@ -35,6 +35,32 @@ export interface BotEnv {
   enablePumpEdge: boolean;
   /** Helius API key for pump launch monitoring. */
   heliusApiKey?: string;
+
+  // ── Execution hardening ──────────────────────────────────────────────────
+  /** Enable Jito bundle submission for MEV protection. */
+  jitoEnabled: boolean;
+  /** Jito tip in lamports added to arb bundles. */
+  jitoTipLamports: number;
+  /** Minimum net profit in lamports required to execute a trade. */
+  minProfitLamports: number;
+
+  // ── Monitoring ───────────────────────────────────────────────────────────
+  /** Port for the Express monitoring dashboard. */
+  monitorPort: number;
+  /** Pino log level (trace | debug | info | warn | error). */
+  logLevel: string;
+  /** Path to the SQLite trade log database. */
+  sqlitePath: string;
+
+  // ── Alerts ───────────────────────────────────────────────────────────────
+  /** PnL drop in SOL that triggers a Telegram/Discord alert (negative, e.g. -0.1). */
+  alertPnlThresholdSol: number;
+
+  // ── Orca Whirlpool ───────────────────────────────────────────────────────
+  /** Comma-separated Orca Whirlpool pool addresses to monitor. */
+  orcaPoolAddresses: string[];
+  /** Spread in bps that triggers an arb opportunity event. Default 80 (0.8%). */
+  spreadThresholdBps: number;
 }
 
 const LEGACY_LITE_HOST = 'lite-api.jup.ag';
@@ -87,6 +113,22 @@ export function loadEnv(): BotEnv {
     heliusApiKey:
       process.env.HELIUS_API_KEY?.trim() ||
       process.env.SOLANA_ARB_DATA_SOURCES__HELIUS_API_KEY?.trim(),
+
+    jitoEnabled: env('JITO_ENABLED', '0') === '1',
+    jitoTipLamports: Number(env('JITO_TIP_LAMPORTS', '10000')),
+    minProfitLamports: Number(env('MIN_PROFIT_LAMPORTS', '0')),
+
+    monitorPort: Number(env('MONITOR_PORT', '3333')),
+    logLevel: env('LOG_LEVEL', 'info'),
+    sqlitePath: env('SQLITE_PATH', './trades.db'),
+
+    alertPnlThresholdSol: Number(env('ALERT_PNL_THRESHOLD_SOL', '-0.1')),
+
+    orcaPoolAddresses: (process.env.ORCA_POOL_ADDRESSES ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+    spreadThresholdBps: Number(env('SPREAD_THRESHOLD_BPS', '80')),
   };
 }
 

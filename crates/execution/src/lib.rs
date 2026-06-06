@@ -292,8 +292,9 @@ pub use hotpath::{
     Venue,
 };
 pub use jito::{
-    BuiltBundle, BundleRequest, BundleSubmitResult, JitoSubmitter, COMPUTE_UNITS_LIMIT,
-    JITO_COMMITMENT, JITO_ENDPOINTS,
+    build_bundle_signed, build_tip_tx_message, fetch_blockhash_blocking,
+    submit_bundle_blocking_raw, wrap_signed_tx, BuiltBundle, BundleRequest,
+    BundleSubmitResult, JitoSubmitter, COMPUTE_UNITS_LIMIT, JITO_COMMITMENT, JITO_ENDPOINTS,
 };
 pub use simulator::{ExecutionConfig, ExecutionResult, ExecutionSimulator, SimulationModel};
 pub use jupiter_swap::{

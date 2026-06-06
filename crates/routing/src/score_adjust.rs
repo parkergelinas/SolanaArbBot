@@ -65,17 +65,15 @@ pub fn apply_whale_boosts(
         return base_score;
     }
 
-    let mut score = base_score;
-    if buy_count >= 1 {
-        score *= 2.0;
-        info!(mint, buy_count, "Whale boost applied");
-    }
-    if buy_count >= 2 {
-        score *= 3.0;
+    let multiplier = if buy_count >= 2 {
         info!(mint, buy_count, "Multi-whale boost applied");
-    }
+        3.0_f64
+    } else {
+        info!(mint, buy_count, "Whale boost applied");
+        2.0_f64
+    };
 
-    score
+    base_score * multiplier
 }
 
 #[cfg(test)]
@@ -136,9 +134,9 @@ mod tests {
     }
 
     #[test]
-    fn two_whales_triple_after_double() {
+    fn two_whales_give_three_x() {
         let store = whale_store_with_buys("TokenZ", 2);
         let score = apply_whale_boosts(10.0, "TokenZ", &store, 60);
-        assert!((score - 60.0).abs() < f64::EPSILON);
+        assert!((score - 30.0).abs() < f64::EPSILON);
     }
 }

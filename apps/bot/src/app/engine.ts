@@ -1,4 +1,9 @@
 import { loadEnv, SOL_MINT, USDC_MINT } from '../config/env.js';
+import { logger } from '../logger.js';
+import { getTotalPnlUsd } from '../db/sqlite.js';
+import { HardenedExecutor } from '../execution/hardened-executor.js';
+import { startMonitoringServer } from '../monitoring/server.js';
+import { alertHalt, checkPnlAlert } from '../monitoring/alerts.js';
 
 import { createMarketStack } from '../market-data/index.js';
 import { pairRegistryFromEnv } from '../market/pair-registry.js';
@@ -49,6 +54,9 @@ export class BotEngine {
   private readonly stack = createMarketStack(this.env);
   private readonly pairRegistry = pairRegistryFromEnv(this.stack.client, this.env);
   private readonly executor: LiveExecutor;
+  private readonly hardenedExecutor: HardenedExecutor;
+  private stopMonitor: (() => void) | null = null;
+  private inFlightCount = 0;
   private readonly scannable: ScannableStrategy[] = [];
   private pumpStrategy: PumpEdgeStrategy | null = null;
 
@@ -110,6 +118,19 @@ export class BotEngine {
     }
 
     this.executor = new LiveExecutor(this.env, this.stack.client, this.journal);
+
+    this.hardenedExecutor = new HardenedExecutor(this.env, this.stack.client, this.journal, {
+      jitoEnabled: this.env.jitoEnabled,
+      jitoTipLamports: this.env.jitoTipLamports,
+      minProfitLamports: this.env.minProfitLamports,
+    });
+
+    // Propagate dead-man's-switch halt to the engine loop
+    this.hardenedExecutor.deadManSwitch.on('halt', async (evt) => {
+      logger.error(evt, 'engine: dead-man-switch triggered halt');
+      await alertHalt(evt.reason).catch(() => undefined);
+      this.stop();
+    });
   }
 
   getStats(): EngineStats {
@@ -143,8 +164,9 @@ export class BotEngine {
       }
     }
 
-    console.log(
-      `[bot] loaded ${pairs.length} scan pairs (source=${this.env.pairSource}, batch=${this.env.pairsPerScan})`,
+    logger.info(
+      { pairs: pairs.length, source: this.env.pairSource, batch: this.env.pairsPerScan },
+      'bot: pair universe loaded',
     );
     this.initialized = true;
   }
@@ -210,7 +232,13 @@ export class BotEngine {
       maxAmountUi: 10,
     });
 
-    const result = await this.executor.execute(decision);
+    // Use hardened executor in live mode, paper executor otherwise
+    this.inFlightCount += 1;
+    const result = this.env.paperMode
+      ? await this.executor.execute(decision)
+      : await this.hardenedExecutor.execute(decision);
+    this.inFlightCount -= 1;
+
     this.riskState = recordExecutionOutcome(
       this.riskState,
       decision,
@@ -220,9 +248,16 @@ export class BotEngine {
 
     if (result.success) {
       this.stats.executed += 1;
+      logger.info(
+        { pair: decision.pairLabel, profit: result.realizedProfitUsd, sig: result.signature },
+        'bot: trade executed',
+      );
+      // Alert if session PnL drops below threshold
+      await checkPnlAlert(getTotalPnlUsd(), state.solPriceUsd).catch(() => undefined);
     } else {
       this.stats.rejected += 1;
       this.failureRate = Math.min(1, this.failureRate + 0.05);
+      logger.warn({ pair: decision.pairLabel, error: result.error }, 'bot: trade failed');
     }
   }
 
@@ -254,18 +289,64 @@ export class BotEngine {
 
   async runLoop(maxIterations?: number): Promise<void> {
     this.running = true;
+
+    // Start Express monitoring dashboard
+    this.stopMonitor = startMonitoringServer({
+      port: this.env.monitorPort,
+      rpcUrl: this.env.rpcUrl,
+      walletPublicKey: this.env.walletPublicKey,
+      isHealthy: () => this.running && !this.hardenedExecutor.deadManSwitch.isHalted(),
+    });
+
+    logger.info(
+      {
+        paperMode: this.env.paperMode,
+        jito: this.env.jitoEnabled,
+        monitor: this.env.monitorPort,
+        scanInterval: this.env.scanIntervalMs,
+      },
+      'bot: run loop started',
+    );
+
     let i = 0;
     while (this.running) {
-      await this.scanOnce();
+      await this.scanOnce().catch((err) => {
+        logger.error({ err }, 'bot: scanOnce error');
+      });
       i += 1;
       if (maxIterations && i >= maxIterations) break;
       await new Promise((r) => setTimeout(r, this.env.scanIntervalMs));
     }
+
     this.pumpStrategy?.stop();
+    this.stopMonitor?.();
+    logger.info(this.getStats(), 'bot: run loop stopped');
+  }
+
+  /**
+   * Graceful shutdown — waits for in-flight trades to complete before stopping.
+   * Called by SIGTERM/SIGINT handlers in index.ts.
+   */
+  async gracefulStop(timeoutMs = 10_000): Promise<void> {
+    logger.info('bot: graceful stop requested');
+    this.running = false;
+
+    const deadline = Date.now() + timeoutMs;
+    while (this.inFlightCount > 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
+    if (this.inFlightCount > 0) {
+      logger.warn({ inFlight: this.inFlightCount }, 'bot: timed out waiting for in-flight trades');
+    }
+
+    this.pumpStrategy?.stop();
+    this.stopMonitor?.();
   }
 
   stop(): void {
     this.running = false;
     this.pumpStrategy?.stop();
+    this.stopMonitor?.();
   }
 }

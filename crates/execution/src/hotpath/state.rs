@@ -98,6 +98,8 @@ pub struct HotState {
     pub current_slot: u64,
     pub trading_enabled: bool,
     pub open_exposure_x100: u64,
+    /// Slot of the most recently queued intent across all pools (global rate limiter).
+    pub last_any_intent_slot: u64,
 }
 
 impl Default for HotState {
@@ -108,6 +110,7 @@ impl Default for HotState {
             current_slot: 0,
             trading_enabled: false,
             open_exposure_x100: 0,
+            last_any_intent_slot: 0,
         }
     }
 }

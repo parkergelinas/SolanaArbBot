@@ -3,7 +3,10 @@
 //! Network I/O lives exclusively in the cold-path thread.  The hot loop only
 //! produces `ExecutionIntent` values and pushes them to an SPSC queue.
 
+use std::sync::Arc;
+
 use crossbeam_channel::{Receiver, Sender, TrySendError};
+use wallet::WalletKeypair;
 
 use super::precompute::PrecomputeTable;
 use super::types::ExecutionIntent;
@@ -81,12 +84,30 @@ impl ExecutionQueue {
 pub struct ColdPathExecutor {
     router: ExecutionRouter,
     rx: Receiver<ExecutionIntent>,
+    /// Returns the notional exposure (USD ×100) to the hot path after each submission (item 3).
+    exposure_release_tx: crossbeam_channel::Sender<u64>,
+    /// Solana RPC endpoint for blockhash fetch and direct-RPC sendTransaction.
+    rpc_endpoint: String,
+    /// Live signing keypair; `None` in paper mode.
+    wallet: Option<Arc<WalletKeypair>>,
 }
 
 impl ColdPathExecutor {
     #[must_use]
-    pub fn new(router: ExecutionRouter, rx: Receiver<ExecutionIntent>) -> Self {
-        Self { router, rx }
+    pub fn new(
+        router: ExecutionRouter,
+        rx: Receiver<ExecutionIntent>,
+        exposure_release_tx: crossbeam_channel::Sender<u64>,
+        rpc_endpoint: String,
+        wallet: Option<Arc<WalletKeypair>>,
+    ) -> Self {
+        Self {
+            router,
+            rx,
+            exposure_release_tx,
+            rpc_endpoint,
+            wallet,
+        }
     }
 
     /// Blocking receive loop — call from a non-hot thread only.
@@ -95,38 +116,95 @@ impl ColdPathExecutor {
             let choice = self.router.choose(&intent);
             match choice {
                 RouteChoice::JitoBundle => {
-                    Self::submit_jito(&intent);
+                    self.submit_jito(&intent);
                 }
                 RouteChoice::DirectRpc => {
-                    Self::submit_rpc(&intent);
+                    self.submit_rpc(&intent);
                 }
                 RouteChoice::PaperSimulated => {
-                    // Paper fill — no network, no logging in production hot path.
-                    let _ = intent;
+                    // Paper fill — release exposure immediately so the counter stays accurate.
+                    let _ = self.exposure_release_tx.send(intent.size_lamports);
                 }
             }
         }
     }
 
-    fn submit_jito(intent: &ExecutionIntent) {
-        use crate::jito::{BundleRequest, JitoSubmitter};
+    fn submit_jito(&self, intent: &ExecutionIntent) {
+        use crate::jito::{BundleRequest, JitoSubmitter, build_bundle_signed};
         use config::ArbitrageConfig;
 
-        let submitter = JitoSubmitter::new(&ArbitrageConfig::default());
-        let req = BundleRequest {
-            opportunity_id: format!("hotpath-{}-{}", intent.pool_idx, intent.slot),
-            tip_lamports: intent.tip_lamports,
-            priority_fee_lamports: 100_000,
-            amount_in_lamports: intent.size_lamports,
-            route_hops: 2,
-        };
-        let _ = crate::jito::submit_bundle_blocking(&submitter, req);
-        let _ = intent;
+        let cfg = ArbitrageConfig::default();
+        let submitter = JitoSubmitter::new(&cfg);
+
+        match &self.wallet {
+            Some(wallet) => {
+                let req = BundleRequest {
+                    opportunity_id: format!("hotpath-{}-{}", intent.pool_idx, intent.slot),
+                    tip_lamports: intent.tip_lamports,
+                    priority_fee_lamports: 100_000,
+                    amount_in_lamports: intent.size_lamports,
+                    route_hops: 2,
+                };
+                // Fetch recent blockhash, build and sign the tip tx, then submit.
+                match crate::jito::fetch_blockhash_blocking(&self.rpc_endpoint) {
+                    Ok(blockhash) => {
+                        let payer = wallet.pubkey();
+                        let bundle = build_bundle_signed(
+                            &submitter,
+                            &req,
+                            payer.as_bytes(),
+                            &blockhash,
+                            |msg| {
+                                wallet.sign_message(msg).unwrap_or([0u8; 64])
+                            },
+                        );
+                        let _ = crate::jito::submit_bundle_blocking_raw(&submitter, bundle, &req.opportunity_id);
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            pool_idx = intent.pool_idx,
+                            slot = intent.slot,
+                            error = %e,
+                            "failed to fetch blockhash for Jito bundle; intent dropped"
+                        );
+                    }
+                }
+            }
+            None => {
+                tracing::error!(
+                    pool_idx = intent.pool_idx,
+                    slot = intent.slot,
+                    "Jito submission attempted without a loaded wallet keypair; intent dropped. \
+                     Ensure features.dry_run=false and a live keypair is configured."
+                );
+            }
+        }
+
+        // Always release exposure so the hot-path counter does not permanently lock (item 3).
+        let _ = self.exposure_release_tx.send(
+            intent.size_lamports.saturating_mul(100) / 1_000_000, // rough USD×100 estimate
+        );
     }
 
-    fn submit_rpc(intent: &ExecutionIntent) {
-        // Placeholder: direct RPC sendTransaction with pre-built tx bytes.
-        let _ = intent;
+    /// Direct RPC submission is not yet implemented.
+    ///
+    /// This path requires building a fully signed Solana transaction and calling
+    /// `sendTransaction` on the configured RPC endpoint.  Until that is wired,
+    /// all intents routed here are logged and dropped so they do not silently
+    /// vanish (item 2).
+    fn submit_rpc(&self, intent: &ExecutionIntent) {
+        tracing::error!(
+            pool_idx = intent.pool_idx,
+            slot = intent.slot,
+            size_lamports = intent.size_lamports,
+            rpc_endpoint = %self.rpc_endpoint,
+            "direct RPC execution path is not implemented — intent dropped. \
+             Implement wallet signing + sendTransaction to enable this path."
+        );
+        // Release exposure so the hot-path counter does not permanently lock (item 3).
+        let _ = self.exposure_release_tx.send(
+            intent.size_lamports.saturating_mul(100) / 1_000_000,
+        );
     }
 }
 
@@ -140,9 +218,10 @@ pub fn build_intent(
     let route = table.route(signal.route_idx);
     let trade_size = table.thresholds.default_trade_lamports;
     let impact = pool.estimate_impact_bps(trade_size);
-    let min_out = trade_size.saturating_sub(
-        (trade_size as u128 * (impact + route.round_trip_fee_bps()) as u128 / 10_000) as u64,
-    );
+    // Ceiling division: round the cost UP so min_out is never weakened by truncation.
+    let cost_bps = (impact.saturating_add(route.round_trip_fee_bps())) as u128;
+    let cost = (trade_size as u128 * cost_bps + 9_999) / 10_000;
+    let min_out = trade_size.saturating_sub(cost as u64);
 
     ExecutionIntent {
         pool_idx: signal.pool_idx,
