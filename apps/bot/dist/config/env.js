@@ -28,6 +28,10 @@ export function loadEnv() {
         scanIntervalMs: Number(env('BOT_SCAN_INTERVAL_MS', '2000')),
         paperMode: env('BOT_PAPER_MODE', '1') !== '0',
         walletPublicKey: process.env.BOT_WALLET_PUBKEY?.trim(),
+        primaryStrategy: env('BOT_PRIMARY_STRATEGY', 'route_divergence_arb'),
+        enableMeanReversion: env('BOT_ENABLE_MEAN_REVERSION', '0') === '1',
+        enableTriggerApi: env('BOT_ENABLE_TRIGGER_API', '0') === '1',
+        enableRecurringApi: env('BOT_ENABLE_RECURRING_API', '0') === '1',
     };
 }
 /** Well-known mints used by default scanners. */

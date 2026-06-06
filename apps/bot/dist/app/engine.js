@@ -1,19 +1,25 @@
 import { loadEnv, SOL_MINT, USDC_MINT } from '../config/env.js';
-import { createMarketStack } from '../market/data-layer.js';
+import { createMarketStack } from '../market-data/index.js';
 import { computeDynamicSize } from '../sizing/dynamic.js';
-import { checkStrategyRisk, DEFAULT_RISK_LIMITS, recordExecutionOutcome, } from '../risk/limits.js';
-import { StrategyRegistry } from '../strategy/registry.js';
-import { RoundTripQuoteArbStrategy } from '../strategy/round-trip-arb.js';
+import { checkStrategyRisk, DEFAULT_RISK_LIMITS, recordExecutionOutcome, } from '../risk/index.js';
+import { DEFAULT_MEAN_REVERSION_CONFIG, MeanReversionStrategy, RouteDivergenceArbStrategy, RoundTripQuoteArbStrategy, StrategyRegistry, } from '../signals/index.js';
 import { TradeJournal } from '../state/journal.js';
 import { computeAnalytics } from '../analytics/metrics.js';
-import { LiveExecutor } from '../execution/live-executor.js';
-/** Main scan loop — market data → strategy → risk → sizing → execution. */
+import { LiveExecutor } from '../execution/index.js';
+/**
+
+ * Main orchestrator — 4-layer pipeline:
+
+ * MarketData → Signal → Risk → Execution
+
+ */
 export class BotEngine {
     env = loadEnv();
     journal = new TradeJournal();
     registry = new StrategyRegistry();
     stack = createMarketStack(this.env);
     executor;
+    scannable = [];
     riskState = {
         sessionLossUsd: 0,
         consecutiveQuoteFailures: 0,
@@ -24,12 +30,19 @@ export class BotEngine {
     stats = { scans: 0, actionable: 0, executed: 0, rejected: 0 };
     failureRate = 0;
     running = false;
-    quoteArb;
     tradeAmountUi;
     constructor() {
         this.tradeAmountUi = this.env.tradeAmountUi;
-        this.quoteArb = new RoundTripQuoteArbStrategy(this.stack.client, this.tradeAmountUi);
-        this.registry.register(this.quoteArb);
+        const routeDiv = new RouteDivergenceArbStrategy(this.stack.client, this.tradeAmountUi);
+        const roundTrip = new RoundTripQuoteArbStrategy(this.stack.client, this.tradeAmountUi);
+        const meanRev = new MeanReversionStrategy({
+            ...DEFAULT_MEAN_REVERSION_CONFIG,
+            enabled: this.env.enableMeanReversion,
+        });
+        this.scannable.push(routeDiv, roundTrip);
+        this.registry.register(routeDiv);
+        this.registry.register(roundTrip);
+        this.registry.register(meanRev);
         this.executor = new LiveExecutor(this.env, this.stack.client, this.journal);
     }
     getStats() {
@@ -41,6 +54,9 @@ export class BotEngine {
     getAnalytics() {
         return computeAnalytics(this.journal.all());
     }
+    getStrategies() {
+        return this.registry.list();
+    }
     async scanOnce() {
         this.stats.scans += 1;
         this.journal.append({ type: 'scan', pairLabel: 'SOL/USDC' });
@@ -48,12 +64,10 @@ export class BotEngine {
             alwaysInclude: [SOL_MINT, USDC_MINT],
             tokenLimit: 100,
         });
-        const strat = this.quoteArb;
-        state = await strat.scan(state);
-        const decision = this.registry.best(state, {
-            minProfitUsd: this.env.minProfitUsd,
-            slippageBps: this.env.slippageBps,
-        });
+        for (const strat of this.scannable) {
+            state = await strat.scan(state);
+        }
+        const decision = this.pickDecision(state);
         if (!decision)
             return;
         this.journal.append({
@@ -66,6 +80,7 @@ export class BotEngine {
                 grossSpreadBps: decision.grossSpreadBps,
                 routeQuality: decision.routeQualityScore,
                 freshness: decision.freshnessScore,
+                ...decision.metadata,
             },
         });
         const risk = checkStrategyRisk(decision, this.riskState, DEFAULT_RISK_LIMITS);
@@ -98,6 +113,22 @@ export class BotEngine {
             this.stats.rejected += 1;
             this.failureRate = Math.min(1, this.failureRate + 0.05);
         }
+    }
+    pickDecision(state) {
+        const ctx = {
+            minProfitUsd: this.env.minProfitUsd,
+            slippageBps: this.env.slippageBps,
+        };
+        if (this.env.primaryStrategy === 'round_trip_quote_arb') {
+            const rt = this.registry
+                .evaluateAll(state, ctx)
+                .find((d) => d.strategyId === 'round_trip_quote_arb');
+            return rt ?? this.registry.best(state, ctx);
+        }
+        const routeDiv = this.registry
+            .evaluateAll(state, ctx)
+            .find((d) => d.strategyId === 'route_divergence_arb');
+        return routeDiv ?? this.registry.best(state, ctx);
     }
     async runLoop(maxIterations) {
         this.running = true;

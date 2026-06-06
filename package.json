@@ -4,8 +4,10 @@
   "description": "Monorepo root — Next.js app lives in apps/dashboard",
   "scripts": {
     "build": "npm run build --prefix apps/dashboard",
+    "build:bot": "npm run build --prefix apps/bot",
     "dev": "npm run dev --prefix apps/dashboard",
-    "start": "npm run start --prefix apps/dashboard"
+    "start": "npm run start --prefix apps/dashboard",
+    "test:bot": "npm test --prefix apps/bot"
   },
   "dependencies": {
     "next": "14.2.29"

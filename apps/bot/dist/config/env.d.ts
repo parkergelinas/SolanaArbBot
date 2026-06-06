@@ -11,6 +11,13 @@ export interface BotEnv {
     scanIntervalMs: number;
     paperMode: boolean;
     walletPublicKey?: string;
+    /** Primary strategy id — `route_divergence_arb` | `round_trip_quote_arb` */
+    primaryStrategy: string;
+    enableMeanReversion: boolean;
+    /** Stub only — Jupiter Trigger API (TP/SL/breakout). */
+    enableTriggerApi: boolean;
+    /** Stub only — Jupiter Recurring API (DCA/treasury). */
+    enableRecurringApi: boolean;
 }
 export declare function loadEnv(): BotEnv;
 /** Well-known mints used by default scanners. */
