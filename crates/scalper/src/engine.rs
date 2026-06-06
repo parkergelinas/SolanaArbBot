@@ -98,7 +98,7 @@ impl ScalpEngine {
 
         // ── Position sizing ───────────────────────────────────────────────
         let trade_size_usd =
-            sizing::compute_size(&signal, self.config.risk.capital_usd, sc);
+            sizing::compute_size(&signal, self.config.portfolio.capital_usd, sc);
 
         // ── Cost estimation ───────────────────────────────────────────────
         let one_way_slippage_bps =

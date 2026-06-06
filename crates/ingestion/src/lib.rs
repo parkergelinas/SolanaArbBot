@@ -10,7 +10,9 @@
 #![forbid(unsafe_code)]
 
 pub mod engine;
+pub mod helius;
 pub mod rpc;
 
 pub use engine::{IngestionConfig, IngestionEngine, DEFAULT_PLACEHOLDER_EVENT_LIMIT};
+pub use helius::spawn_helius_stream;
 pub use rpc::{MockRpcClient, RpcClient, RpcClientInterface};

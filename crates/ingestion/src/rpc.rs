@@ -1,8 +1,9 @@
 //! Transport-agnostic Solana RPC interface.
 //!
 //! Canonical home for the RPC client trait and development mock.
-//! Concrete Solana JSON-RPC or Yellowstone gRPC clients implement
-//! [`RpcClient`] without changing downstream crate APIs.
+//! Live Helius streams use [`crate::helius::spawn_helius_stream`] with
+//! `wss://mainnet.helius-rpc.com/?api-key={cfg.data_sources.helius_api_key}`.
+//! Yellowstone gRPC can be added as an optional feature later.
 
 use common::{Error, Pubkey, Result};
 use tracing::trace;

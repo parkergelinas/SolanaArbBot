@@ -12,3 +12,4 @@ serde = { version = "1.0.228", features = ["derive"] }
 # transitive dependency that requires Rust edition 2024.
 toml = { version = "0.5", default-features = false, features = ["indexmap"] }
 thiserror = { workspace = true }
+tracing = { workspace = true }

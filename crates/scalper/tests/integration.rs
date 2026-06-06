@@ -229,10 +229,10 @@ fn test_slippage_filter_rejects_large_trade() {
     };
     let system_cfg = SystemConfig {
         scalper: cfg,
-        risk: {
-            let mut r = config::RiskConfig::default();
-            r.capital_usd = 250_000.0; // large capital → large trade size
-            r
+        portfolio: {
+            let mut p = config::PortfolioConfig::default();
+            p.capital_usd = 250_000.0; // large capital → large trade size
+            p
         },
         ..SystemConfig::default()
     };

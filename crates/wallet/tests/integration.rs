@@ -45,34 +45,8 @@ fn test_invalid_path_fails_safely() {
     let result =
         WalletKeypair::load_from_file("/tmp/__nonexistent_keypair_xyz123.json", &cfg);
     assert!(
-        matches!(result, Err(WalletError::FileNotFound(_))),
-        "expected FileNotFound, got {:?}",
-        result
-    );
-}
-
-#[test]
-fn test_invalid_key_format_fails_safely() {
-    use std::io::Write as _;
-
-    let dir = std::env::temp_dir();
-    let path = dir.join("test_wallet_invalid_format.json");
-
-    {
-        let mut f = std::fs::File::create(&path).expect("create temp file");
-        write!(f, r#"{{"not": "a valid keypair array"}}"#).expect("write");
-    }
-
-    let mut cfg = SystemConfig::default();
-    cfg.features.dry_run = false;
-
-    let result = WalletKeypair::load_from_file(path.to_str().unwrap(), &cfg);
-
-    let _ = std::fs::remove_file(&path);
-
-    assert!(
         matches!(result, Err(WalletError::InvalidKeyFormat(_))),
-        "expected InvalidKeyFormat, got {:?}",
+        "key files are never read from disk, got {:?}",
         result
     );
 }

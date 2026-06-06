@@ -1,0 +1,70 @@
+openapi: 3.0.3
+info:
+  title: SolanaArbBot Control API
+  version: "0.1.0"
+  description: Control and monitoring HTTP API for SolanaArbBot
+servers:
+  - url: http://localhost:3001
+paths:
+  /api/health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+  /api/config:
+    get:
+      summary: Get current runtime configuration
+      responses:
+        '200':
+          description: JSON configuration
+    patch:
+      summary: Patch runtime configuration
+      requestBody:
+        required: true
+        content:
+          application/json: {}
+      responses:
+        '200':
+          description: Updated configuration
+  /api/signals:
+    get:
+      summary: List historic signals
+      responses: { '200': { description: OK } }
+  /api/live-signals:
+    get:
+      summary: Query recent live signals
+      responses: { '200': { description: OK } }
+  /api/portfolio:
+    get:
+      summary: Get portfolio DTO
+      responses: { '200': { description: OK } }
+  /api/risk:
+    get:
+      summary: Get current risk summary
+      responses: { '200': { description: OK } }
+  /api/bot/status:
+    get:
+      summary: Get bot status
+      responses: { '200': { description: OK } }
+  /api/system/status:
+    get:
+      summary: Get system status
+      responses: { '200': { description: OK } }
+  /api/system/start:
+    post:
+      summary: Start system / enable services
+      responses: { '200': { description: Started } }
+  /api/system/stop:
+    post:
+      summary: Stop system / disable services
+      responses: { '200': { description: Stopped } }
+  /api/system/reset-portfolio:
+    post:
+      summary: Reset portfolio state
+      responses: { '200': { description: Reset } }
+  /ws:
+    get:
+      summary: WebSocket endpoint for control events (upgrade to WS)
+      description: Use WebSocket client to connect and receive live control events and notifications.
+      responses: { '101': { description: Switching Protocols (WebSocket) } }

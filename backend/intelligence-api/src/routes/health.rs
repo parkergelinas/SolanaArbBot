@@ -12,6 +12,6 @@ pub async fn health() -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok",
         service: "intelligence-api",
-        schema_version: crate::contracts::SCHEMA_VERSION,
+        schema_version: intelligence_api::contracts::SCHEMA_VERSION,
     })
 }

@@ -158,6 +158,7 @@ pub(crate) fn market_event_pool(event: &MarketEvent) -> Option<Pubkey> {
         MarketEvent::PoolUpdate(PoolUpdate { pool, .. }) => *pool,
         MarketEvent::SwapEvent(SwapEvent { pool, .. }) => Some(*pool),
         MarketEvent::TickUpdate(TickUpdate { pool, .. }) => Some(*pool),
+        MarketEvent::PriceUpdate(_) => None,
     }
 }
 

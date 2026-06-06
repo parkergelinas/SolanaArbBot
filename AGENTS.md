@@ -1,44 +1,62 @@
 # AGENTS.md
 
-Guidance for AI agents working in this repository.
+Guidance for AI agents working in **SolanaArbBot**.
 
-## Cursor Cloud specific instructions
+## Repository overview
 
-### Repository status
+Rust workspace monorepo: arbitrage detection, signal pipeline, paper/live execution controls, and a Next.js dashboard.
 
-This repository is currently a **stub**: it contains only `README.md` (title: SolanaArbBot) and `.gitattributes`. There is no application source, dependency manifests (`package.json`, `Cargo.toml`, etc.), Docker/devcontainer config, or documented lint/test/run commands yet.
+| Area | Path | Role |
+|------|------|------|
+| Config | `crates/config` | `SystemConfig` — single source of truth (TOML + env) |
+| Pipeline | `apps/worker` | Paper/backtest runtime orchestrator |
+| Control plane | `apps/control-api` | REST + WebSocket hub, bot control, signal buffer |
+| Stream | `apps/stream-api` | Trade/signal stream (mirrors control-api via `SIGNAL_HUB_URL`) |
+| Intelligence | `backend/intelligence-api` | Whale / smart-money WebSocket |
+| Data layer | `backend/data-layer` | Chain ingestion (mock / RPC WS / Geyser) |
+| Signal bus | `crates/signal-bus` | Normalized `LiveSignal` buffer + dedup |
+| Dashboard | `apps/dashboard` | Next.js UI (Vercel); proxies `/api/*` to control-api |
+| Wallet | `crates/wallet` | Key loading (env only), signing, balance guards |
+| Domain | `crates/{engine,routing,pricing,risk,...}` | Arb graph, execution, risk |
 
-Until implementation lands on `main`, there are **no services to start** and no end-to-end product flow to exercise in the cloud VM.
+## Local development
 
-### VM toolchain (preinstalled)
+```powershell
+.\scripts\dev-services.ps1          # control-api :3001, stream-api :8080, intelligence :8090
+cd apps\dashboard; npm run dev      # :3000
+```
 
-The Cursor Cloud VM already provides common tooling useful for a future Solana arbitrage bot:
+Set `SOLANA_ARB_RPC__ENDPOINTS` for live chain swaps in data-layer.
 
-| Tool | Notes |
-|------|--------|
-| Node.js | v22 via nvm (`node`, `npm`, `pnpm`, `yarn`) |
-| Rust | `rustc` / `cargo` (1.83) |
-| Python | 3.12 (`python3`) |
+## Safety defaults
 
-`docker` and `solana` CLI are **not** assumed to be installed unless added to the repo or documented in README.
+- `features.enable_live_trading` defaults to **false**
+- Live trading requires `SOLANA_ARB_LIVE_CONFIRM=I_UNDERSTAND_REAL_FUNDS`
+- Private keys: `SOLANA_ARB_WALLET_KEY` env var only — never key files
+- Emergency halt: `touch /tmp/solana_arb_halt` or `SIGUSR1` to worker
 
-### Lint / test / build / run
+## Commands
 
-No project scripts exist yet. When manifests are added, prefer commands defined in:
+```bash
+cargo build --workspace
+cargo test --workspace
+cargo test -p integration-tests
+cd apps/dashboard && npm test
+```
 
-- `package.json` scripts (Node/TypeScript)
-- `Makefile` targets
-- `cargo test` / `cargo run` (Rust)
-- `README.md` setup section
+## Config
 
-Do not invent ports or service topology until compose/config files exist in the tree.
+Copy `config.example.toml` → `config.toml`. Capital is defined once in `[portfolio].capital_usd`. `routing_min_liquidity` must equal `risk.min_liquidity_usd`.
 
-### Startup update script
+## Deploy notes
 
-On each cloud agent session, the VM runs a guarded dependency refresh (see SetupVmEnvironment `update_script`). It no-ops safely on the current stub and will install/fetch when lockfiles appear.
+- Dashboard: Vercel (`apps/dashboard`)
+- Rust services: Railway/Fly/VPS — see `docs/deploy-control-api.md`
+- Env: `CONTROL_API_URL`, `NEXT_PUBLIC_WS_URL`, `SIGNAL_HUB_URL`
 
-### When code is added
+## When changing code
 
-1. Re-read `README.md` and any new `AGENTS.md` / `CONTRIBUTING.md` sections.
-2. Run the documented install command once if the update script is insufficient.
-3. Start only the services required for the change (RPC, local validator, databases, etc.) as documented in the repo—do not guess from the project name alone.
+1. Match existing crate boundaries — config flows through `SystemConfig`, signals through `signal-bus`.
+2. Run `cargo test -p <affected-crate>` before finishing.
+3. Do not log key material; wallet `Debug` shows pubkey only.
+4. Do not enable live trading in example config.

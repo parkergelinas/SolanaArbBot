@@ -1,0 +1,42 @@
+# cargo-deny v2 schema (requires cargo-deny >= 0.14 with version = 2)
+# CI installs cargo-deny 0.19.8 on stable Rust.
+
+[advisories]
+version = 2
+ignore = [
+    # Add RUSTSEC IDs here only after explicit review, e.g.:
+    # "RUSTSEC-2024-0001",
+]
+
+[licenses]
+version = 2
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "ISC",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "MPL-2.0",
+    "CC0-1.0",
+    "Zlib",
+    "0BSD",
+    "OpenSSL",
+    "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.8
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+workspace-default-features = "allow"
+external-default-features = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "warn"

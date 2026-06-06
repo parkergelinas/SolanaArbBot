@@ -32,7 +32,7 @@ use serde::{Deserialize, Serialize};
 /// Default strategy config tuned for $0.10–$0.50/trade micro-profit targets.
 pub fn strategy_config() -> SystemConfig {
     let mut cfg = SystemConfig::default();
-    cfg.risk.capital_usd = 10_000.0;
+    cfg.portfolio.capital_usd = 10_000.0;
     cfg.scalper.min_edge_bps = 30.0;
     cfg.scalper.trade_cooldown_secs = 20;
     cfg.scalper.min_position_usd = 200.0;

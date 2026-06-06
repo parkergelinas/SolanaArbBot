@@ -13,6 +13,8 @@
 //!
 //! Set `RUST_LOG=debug` to override the `monitoring.log_level` from config.
 
+mod halt;
+
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -276,10 +278,35 @@ async fn main() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async fn wait_for_shutdown() {
-    tokio::signal::ctrl_c()
-        .await
-        .expect("failed to install Ctrl+C handler");
-    tracing::info!("shutdown signal received");
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+
+        let mut sigterm =
+            signal(SignalKind::terminate()).expect("failed to install SIGTERM handler");
+        let mut sigusr1 =
+            signal(SignalKind::user_defined1()).expect("failed to install SIGUSR1 handler");
+
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                tracing::info!("shutdown signal received (Ctrl+C)");
+            }
+            _ = sigterm.recv() => {
+                halt::trigger_emergency_halt();
+            }
+            _ = sigusr1.recv() => {
+                halt::trigger_emergency_halt();
+            }
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+        tracing::info!("shutdown signal received");
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -359,6 +386,11 @@ async fn run_synthetic_ingestion(
     let mut seq: u64 = 0;
 
     loop {
+        if halt::should_halt() || halt::check_halt_file() {
+            info!(subsystem = "ingestion", "halt — ingestion stopping");
+            std::process::exit(0);
+        }
+
         tokio::select! {
             _ = shutdown.cancelled() => {
                 info!(subsystem = "ingestion", "ingestion task shutting down");
@@ -415,6 +447,11 @@ async fn run_signal_processing(
     info!(subsystem = "signal_processing", "signal processing task started");
 
     loop {
+        if halt::should_halt() || halt::check_halt_file() {
+            info!(subsystem = "signal_processing", "halt — signal processing stopping");
+            std::process::exit(0);
+        }
+
         // Drain all immediately-available events before yielding to the runtime.
         loop {
             match subscriber.try_recv() {
@@ -452,6 +489,11 @@ async fn run_scalper(
     info!(subsystem = "scalper", "scalper task started");
 
     loop {
+        if halt::should_halt() || halt::check_halt_file() {
+            info!(subsystem = "scalper", "halt — scalper stopping");
+            std::process::exit(0);
+        }
+
         // Drain all available signals in a tight inner loop.
         loop {
             match signal_rx.try_recv() {

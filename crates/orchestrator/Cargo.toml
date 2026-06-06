@@ -9,8 +9,8 @@ config            = { path = "../config" }
 common            = { path = "../common" }
 signals           = { path = "../signals" }
 crossbeam-channel = "0.5"
-tokio             = { version = "1", features = ["full"] }
-tracing           = "0.1"
+tokio             = { workspace = true }
+tracing           = { workspace = true }
 thiserror         = { workspace = true }
 serde             = { workspace = true }
-serde_json        = "1"
+serde_json        = { workspace = true }

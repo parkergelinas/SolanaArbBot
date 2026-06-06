@@ -3,7 +3,7 @@
 use super::pubkey::Pubkey;
 
 /// Expandable market event emitted by ingestion and decoding stages.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum MarketEvent {
     /// Pool state changed.
     PoolUpdate(PoolUpdate),
@@ -11,6 +11,8 @@ pub enum MarketEvent {
     SwapEvent(SwapEvent),
     /// Concentrated-liquidity tick state changed.
     TickUpdate(TickUpdate),
+    /// External price feed update (e.g. Jupiter Price API v2).
+    PriceUpdate(PriceUpdate),
 }
 
 /// Generic pool state update shared across DEX decoders.
@@ -32,6 +34,14 @@ pub struct SwapEvent {
     pub output_mint: Pubkey,
     pub amount_in: u128,
     pub amount_out: u128,
+}
+
+/// USD price update from an external aggregator.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PriceUpdate {
+    pub mint: Pubkey,
+    pub price_usd: f64,
+    pub source: String,
 }
 
 /// Generic tick update shared by concentrated-liquidity decoders.

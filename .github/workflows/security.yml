@@ -1,0 +1,25 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install security tools
+        run: |
+          cargo install cargo-audit --locked --version 0.22.2
+          cargo install cargo-deny --locked --version 0.19.8
+
+      - name: cargo audit
+        run: cargo audit
+
+      - name: cargo deny
+        run: cargo deny check advisories licenses bans sources

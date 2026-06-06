@@ -1,0 +1,21 @@
+openapi: 3.0.3
+info:
+  title: SolanaArbBot Stream API
+  version: "0.1.0"
+  description: Streaming API for market events and live signals
+servers:
+  - url: http://localhost:8080
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses: { '200': { description: OK } }
+  /api/live-signals:
+    get:
+      summary: Query recent live signals
+      responses: { '200': { description: OK } }
+  /stream:
+    get:
+      summary: WebSocket stream endpoint
+      description: Upgrade to WebSocket to receive live market events and signals.
+      responses: { '101': { description: Switching Protocols (WebSocket) } }

@@ -9,7 +9,7 @@ pub mod error;
 pub mod types;
 
 pub use error::{Error, Result};
-pub use types::market_event::{MarketEvent, PoolUpdate, SwapEvent, TickUpdate};
+pub use types::market_event::{MarketEvent, PoolUpdate, PriceUpdate, SwapEvent, TickUpdate};
 pub use types::pubkey::{Pubkey, PUBKEY_BYTES};
 pub use types::token::Token;
 

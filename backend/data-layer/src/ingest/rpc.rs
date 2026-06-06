@@ -19,9 +19,11 @@ pub struct RpcAdapter {
 
 impl RpcAdapter {
     pub fn from_env() -> Option<Self> {
-        let ws = std::env::var("SOLANA_RPC_WS")
+        let ws = std::env::var("SOLANA_ARB_DATA_SOURCES__HELIUS_API_KEY")
             .ok()
-            .filter(|s| !s.is_empty())
+            .filter(|k| !k.is_empty())
+            .map(|key| format!("wss://mainnet.helius-rpc.com/?api-key={key}"))
+            .or_else(|| std::env::var("SOLANA_RPC_WS").ok().filter(|s| !s.is_empty()))
             .or_else(|| {
                 std::env::var("SOLANA_ARB_WEBSOCKET__ENDPOINTS")
                     .ok()

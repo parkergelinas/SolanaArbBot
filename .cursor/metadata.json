@@ -1,0 +1,43 @@
+﻿cargo :  Downloading crates ...
+At C:\Users\parke\AppData\Local\Temp\ps-script-876085e1-34d6-49ed-881a-ab374a6949e7.ps1:104 char:73
++ ... og-lite\SolanaArbBot"; cargo metadata --format-version=1 2>&1 | Out-F ...
++                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ( Downloading crates ...:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  Downloaded foreign-types-shared v0.1.1
+  Downloaded errno v0.3.14
+  Downloaded wasm-bindgen-futures v0.4.72
+  Downloaded system-configuration-sys v0.5.0
+  Downloaded wasm-bindgen-shared v0.2.122
+  Downloaded system-configuration v0.5.1
+  Downloaded openssl-probe v0.2.1
+  Downloaded wasm-bindgen-macro v0.2.122
+  Downloaded openssl-macros v0.1.1
+  Downloaded foreign-types v0.3.2
+  Downloaded core-foundation v0.10.1
+  Downloaded signal-hook-registry v1.4.8
+  Downloaded wasi v0.11.1+wasi-snapshot-preview1
+  Downloaded security-framework-sys v2.17.0
+  Downloaded core-foundation v0.9.4
+  Downloaded redox_syscall v0.5.18
+  Downloaded bitflags v1.3.2
+  Downloaded pkg-config v0.3.33
+  Downloaded valuable v0.1.1
+  Downloaded core-foundation-sys v0.8.7
+  Downloaded wasm-bindgen v0.2.122
+  Downloaded wasm-bindgen-macro-support v0.2.122
+  Downloaded zerocopy-derive v0.8.50
+  Downloaded openssl-sys v0.9.116
+  Downloaded security-framework v3.7.0
+error: failed to parse manifest at 
+`C:\Users\parke\.cargo\registry\src\index.crates.io-6f17d22bba15001f\security-framework-3.7.0\Cargo.toml`
+
+Caused by:
+  feature `edition2024` is required
+
+  The package requires the Cargo feature called `edition2024`, but that feature is not stabilized in this version of 
+Cargo (1.83.0 (5ffbef321 2024-10-29)).
+  Consider trying a newer version of Cargo (this may require the nightly release).
+  See https://doc.rust-lang.org/nightly/cargo/reference/unstable.html#edition-2024 for more information about the 
+status of this feature.

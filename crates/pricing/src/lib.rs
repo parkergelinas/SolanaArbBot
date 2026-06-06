@@ -4,6 +4,10 @@
 
 #![forbid(unsafe_code)]
 
+pub mod jupiter;
+
+pub use jupiter::{spawn_jupiter_poller, MintWatchlist};
+
 pub mod engine {
     //! Price state update and query responsibilities.
 

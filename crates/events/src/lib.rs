@@ -14,7 +14,7 @@
 pub mod bus;
 
 // Re-export market event types so consumers can import from a single place.
-pub use common::{MarketEvent, PoolUpdate, SwapEvent, TickUpdate};
+pub use common::{MarketEvent, PoolUpdate, PriceUpdate, SwapEvent, TickUpdate};
 
 pub use bus::{
     BackpressureStrategy, EventBus, EventBusConfig, EventSubscriber, PublishReport,

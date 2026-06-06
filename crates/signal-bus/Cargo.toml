@@ -8,9 +8,9 @@ description = "Shared live signal buffer — single source of truth for control-
 [dependencies]
 data-layer = { path = "../../backend/data-layer" }
 serde      = { workspace = true }
-serde_json = "1"
-tokio      = { version = "1", features = ["fs", "io-util", "sync"] }
-tracing    = "0.1"
+serde_json = { workspace = true }
+tokio      = { workspace = true, features = ["fs", "io-util", "sync"] }
+tracing    = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

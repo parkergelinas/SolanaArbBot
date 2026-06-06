@@ -20,6 +20,51 @@ use tokio::sync::broadcast;
 use tracing::info;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
+// Optional OpenTelemetry tracing initialization.
+#[allow(dead_code)]
+fn try_init_otlp() -> bool {
+    // Only attempt to initialize when collector endpoint is set.
+    let configured = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok()
+        || std::env::var("OTEL_COLLECTOR_URL").is_ok();
+    if !configured {
+        return false;
+    }
+
+    // If crate built with `otel` feature, enable the full OTLP pipeline.
+    #[cfg(feature = "otel")]
+    {
+        use opentelemetry::sdk::trace as sdktrace;
+
+        let tracer = match opentelemetry_otlp::new_pipeline()
+            .tracing()
+            .with_exporter(opentelemetry_otlp::new_exporter().http())
+            .with_trace_config(sdktrace::config().with_sampler(sdktrace::Sampler::AlwaysOn))
+            .install_batch(opentelemetry::runtime::Tokio)
+        {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("failed to init opentelemetry: {e}");
+                return false;
+            }
+        };
+
+        let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+        tracing_subscriber::registry()
+            .with(fmt::layer())
+            .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+            .with(telemetry)
+            .init();
+
+        return true;
+    }
+
+    #[cfg(not(feature = "otel"))]
+    {
+        eprintln!("OTEL configured but crate built without 'otel' feature; enable feature \"otel\" to export traces");
+        return false;
+    }
+}
+
 use crate::bridge::spawn_data_layer_bridge;
 use crate::contracts::WSBatchFrame;
 use crate::hub_client::{spawn_hub_mirror, spawn_signal_bus_fanout};
@@ -35,10 +80,13 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::registry()
-        .with(fmt::layer())
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
-        .init();
+    // Initialize OTLP tracing if configured, otherwise set a default subscriber.
+    if !try_init_otlp() {
+        tracing_subscriber::registry()
+            .with(fmt::layer())
+            .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+            .init();
+    }
 
     let (swap_tx, swap_rx) = unbounded();
     let (ws_tx, ws_rx) = unbounded();

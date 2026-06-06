@@ -10,6 +10,7 @@
 #   3. SOLANA_ARB_<SECTION>__<FIELD> environment variables
 #
 # Environment variable examples:
+#   SOLANA_ARB_DATA_SOURCES__HELIUS_API_KEY=your_free_key_from_helius_dev
 #   SOLANA_ARB_RISK__CAPITAL_USD=50000
 #   SOLANA_ARB_FEATURES__DRY_RUN=false
 #   SOLANA_ARB_EXECUTION__MAX_SLIPPAGE_BPS=30
@@ -17,14 +18,24 @@
 #   SOLANA_ARB_RPC__ENDPOINTS='["https://my-rpc.example.com"]'
 
 # ─────────────────────────────────────────────────────────────────────────────
+# [data_sources] — Free / cheap live market data APIs
+# ─────────────────────────────────────────────────────────────────────────────
+[data_sources]
+helius_api_key   = ""  # helius.dev free tier — set via env SOLANA_ARB_DATA_SOURCES__HELIUS_API_KEY
+jupiter_price    = "https://price.jup.ag/v2/price"
+dexscreener_base = "https://api.dexscreener.com/latest/dex"
+rugcheck_base    = "https://api.rugcheck.xyz/v1"
+birdeye_base     = "https://public-api.birdeye.so"
+
+# ─────────────────────────────────────────────────────────────────────────────
 # [rpc] — Solana JSON-RPC connection
 # ─────────────────────────────────────────────────────────────────────────────
 [rpc]
-# Ordered list of RPC endpoints.  First reachable endpoint is used;
-# the rest are fallbacks.
+# Prefer Helius when [data_sources].helius_api_key is set:
+#   https://mainnet.helius-rpc.com/?api-key={HELIUS_KEY}
+# Public endpoints below are fallback only.
 endpoints = [
     "https://api.mainnet-beta.solana.com",
-    "https://solana-api.projectserum.com",
 ]
 
 # Per-request HTTP timeout in milliseconds.
@@ -92,7 +103,7 @@ max_slippage_bps = 50
 priority_fee_lamports = 5_000
 
 # Minimum net profit in USD for a route to be considered viable.
-min_profit_threshold_usd = 0.01
+min_profit_threshold_usd = 0.25
 
 # Notional USD amount used as the input for every route simulation.
 simulation_initial_amount_usd = 10.0
@@ -107,13 +118,15 @@ clmm_slippage_multiplier = 0.35
 # Minimum per-edge pool liquidity required to proceed with simulation.
 min_liquidity = 1.0
 
+# Hard cap on a single trade's notional size in USD.
+max_trade_size_usd = 50.0
+
 # ─────────────────────────────────────────────────────────────────────────────
 # [risk] — Risk limits (route-level + portfolio-level)
 # ─────────────────────────────────────────────────────────────────────────────
 [risk]
 # ── Portfolio risk ────────────────────────────────────────────────────────
-# Total capital under management in USD.
-capital_usd = 1_000.0
+# Capital is defined once in [portfolio].capital_usd (not duplicated here).
 
 # Maximum single-position size in USD.
 max_position_size_usd = 50.0
@@ -208,8 +221,8 @@ event_timeout_ms = 100
 # Maximum route depth for the DFS cycle detector. Must be 2–5.
 routing_max_depth = 3
 
-# Minimum edge liquidity for candidate routes.
-routing_min_liquidity = 0.0
+# Minimum edge liquidity for candidate routes (must equal risk.min_liquidity_usd).
+routing_min_liquidity = 1_000.0
 
 # Per-hop depth penalty in basis points applied to route scoring.
 routing_depth_penalty_bps = 50
