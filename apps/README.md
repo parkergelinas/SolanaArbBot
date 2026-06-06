@@ -5,6 +5,7 @@ This directory contains runnable services and applications used for development 
 
 Subfolders:
 - `backtester/` — backtesting runner (Rust)
+- `bot/` — TypeScript Jupiter quote-arb bot (`api.jup.ag` Swap v1)
 - `control-api/` — HTTP control API for runtime operations (Rust)
 - `dashboard/` — Next.js dashboard frontend (React/TypeScript)
 - `hotpath/` — low-latency hotpath service (Rust)

@@ -4,7 +4,7 @@
   "title": "SolanaStreamContractV1",
   "description": "Versioned streaming schema for low-latency terminal",
   "$defs": {
-    "Dex": { "type": "string", "enum": ["raydium", "orca", "jupiter"] },
+    "Dex": { "type": "string", "enum": ["raydium", "orca", "jupiter", "pump"] },
     "CandleInterval": { "type": "string", "enum": ["1s", "5s", "1m"] },
     "SignalKind": {
       "type": "string",

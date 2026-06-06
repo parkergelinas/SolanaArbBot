@@ -30,6 +30,11 @@ export async function proxyToControlApi(
   const contentType = req.headers.get('content-type');
   if (contentType) headers.set('content-type', contentType);
 
+  const apiKey = process.env.CONTROL_API_KEY?.trim();
+  if (apiKey) {
+    headers.set('x-api-key', apiKey);
+  }
+
   const init: RequestInit = {
     method: req.method,
     headers,

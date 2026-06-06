@@ -94,7 +94,7 @@ mod tests {
             default_slippage_bps: 50,
             token_cooldown_secs: 30,
             request_timeout_ms: 800,
-            jupiter_base_url: "https://quote-api.jup.ag".into(),
+            jupiter_base_url: "https://api.jup.ag/swap/v1".into(),
             audit_path: None,
             wallet_pubkey: "test".into(),
             quote_cache_ttl_ms: 200,

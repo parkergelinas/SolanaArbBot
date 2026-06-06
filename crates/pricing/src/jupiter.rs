@@ -1,4 +1,4 @@
-//! Jupiter Price API v2 poller — free, no auth.
+//! Jupiter Price API poller — v3 (`api.jup.ag/price/v3`), v2 legacy parse supported.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -10,7 +10,11 @@ use events::EventBus;
 use ratelimit::{ApiSource, RateLimiter};
 use tracing::{debug, warn};
 
+use crate::jupiter_api::{extract_jupiter_prices, jupiter_get, normalize_jupiter_price_url};
+
 const MIN_DELTA_PCT: f64 = 0.05;
+
+pub use crate::jupiter_api::JUPITER_PRICE_V3_URL as PRICE_V3;
 
 /// Shared mint list to poll (base58 strings).
 pub type MintWatchlist = Arc<Vec<String>>;
@@ -39,13 +43,10 @@ pub fn spawn_jupiter_poller(
                 continue;
             }
 
-            let url = format!(
-                "{}?ids={}",
-                data_sources.jupiter_price.trim_end_matches('/'),
-                batch.join(",")
-            );
+            let base = normalize_jupiter_price_url(&data_sources.jupiter_price);
+            let url = format!("{}?ids={}", base, batch.join(","));
 
-            match client.get(&url).send().await {
+            match jupiter_get(&client, &url).send().await {
                 Ok(resp) if resp.status().is_success() => {
                     if let Ok(body) = resp.json::<serde_json::Value>().await {
                         publish_prices(&bus, &cache, &body);
@@ -71,16 +72,9 @@ fn publish_prices(
     cache: &Mutex<HashMap<String, f64>>,
     body: &serde_json::Value,
 ) {
-    let Some(data) = body.get("data").and_then(|d| d.as_object()) else {
-        return;
-    };
-
     let mut guard = cache.lock().expect("price cache");
-    for (mint, entry) in data {
-        let Some(price) = entry.get("price").and_then(|p| p.as_f64()) else {
-            continue;
-        };
-        let prev = guard.get(mint).copied().unwrap_or(price);
+    for (mint, price) in extract_jupiter_prices(body) {
+        let prev = guard.get(&mint).copied().unwrap_or(price);
         let delta_pct = ((price - prev) / prev.max(1e-12)).abs() * 100.0;
         guard.insert(mint.clone(), price);
 
@@ -88,7 +82,7 @@ fn publish_prices(
             continue;
         }
 
-        let mint_bytes = bs58::decode(mint).into_vec().unwrap_or_default();
+        let mint_bytes = bs58::decode(&mint).into_vec().unwrap_or_default();
         if mint_bytes.len() != 32 {
             continue;
         }
@@ -100,5 +94,31 @@ fn publish_prices(
             price_usd: price,
             source: "jupiter".to_owned(),
         }));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::jupiter_api::JUPITER_PRICE_V3_URL;
+
+    #[test]
+    fn parses_v3_response() {
+        let body = serde_json::json!({
+            "So11111111111111111111111111111111111111112": {
+                "usdPrice": 63.42
+            }
+        });
+        let prices = extract_jupiter_prices(&body);
+        assert_eq!(prices.len(), 1);
+        assert!((prices[0].1 - 63.42).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn migrates_legacy_host() {
+        assert_eq!(
+            normalize_jupiter_price_url("https://price.jup.ag/v2/price"),
+            JUPITER_PRICE_V3_URL
+        );
     }
 }

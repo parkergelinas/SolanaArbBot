@@ -9,6 +9,21 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        ds: {
+          base: 'var(--bg-base)',
+          surface: 'var(--bg-surface)',
+          elevated: 'var(--bg-elevated)',
+          border: 'var(--bg-border)',
+          'text-primary': 'var(--text-primary)',
+          'text-secondary': 'var(--text-secondary)',
+          'text-muted': 'var(--text-muted)',
+          green: 'var(--green)',
+          red: 'var(--red)',
+          amber: 'var(--amber)',
+          blue: 'var(--blue)',
+          'green-dim': 'var(--green-dim)',
+          'red-dim': 'var(--red-dim)',
+        },
         platform: {
           bg: '#0b0e14',
           surface: '#131720',
@@ -23,26 +38,18 @@ const config: Config = {
           amber: '#fbbf24',
         },
         brand: {
-          50:  '#f0fdf4',
+          50: '#f0fdf4',
           400: '#4ade80',
           500: '#22c55e',
           600: '#16a34a',
         },
-        terminal: {
-          bg: '#060d18',
-          panel: '#0a1628',
-          border: '#1e3a4a',
-          hover: '#0f2035',
-          live: '#22d3ee',
-          muted: '#64748b',
-        },
-        flow: {
-          buy: '#22c55e',
-          sell: '#ef4444',
-        },
       },
       fontFamily: {
-        mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'],
+        mono: ['var(--font-mono)'],
+        ui: ['var(--font-ui)'],
+      },
+      borderRadius: {
+        terminal: '2px',
       },
     },
   },

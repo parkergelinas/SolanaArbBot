@@ -7,7 +7,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use common::{MarketEvent, Pubkey};
 use config::SystemConfig;
 use decoder::{DexDecoder, DexType, PoolState};
-use execution::ExecutionSimulator;
+use execution::{ExecutionSimulator, JupiterSwapConfig, JupiterSwapExecutor};
 use graph::{Edge, MarketGraph};
 use orchestrator::{
     ExecutionApprovalRequest, Orchestrator,
@@ -19,10 +19,13 @@ use risk_engine::{evaluate_limits, RiskAction, RiskConfig as EnforcerConfig, Ris
 use routing::{Route, Router};
 use scalper::ScalpEngine;
 use signals::{Direction, SignalEngine, SignalEvent, SignalInput, SignalType, WhaleEvent};
+use signals::whale_watcher::{SOL_MINT, USDC_MINT};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
+use wallet::RpcClientWrapper;
+use wallet::WalletKeypair;
 
 use crate::ingestion::{default_pools, tick_events, ExternalIngestionBuffer};
 use crate::snapshot::RuntimeSnapshot;
@@ -32,6 +35,121 @@ use crate::trade_emit::{new_trade_id, TradeEmit, TradeStage};
 const TICK_MS: u64 = 500;
 const NETWORK_COST_USD: f64 = 0.05;
 const SLIPPAGE_HAIRCUT: f64 = 0.20;
+const DEFAULT_SOL_PRICE_USD: f64 = 150.0;
+
+/// Wallet + RPC context for on-chain Jupiter swap execution.
+pub struct LiveExecutionContext {
+    pub wallet: Arc<WalletKeypair>,
+    pub rpc: Arc<RpcClientWrapper>,
+    pub swap_base: String,
+    pub slippage_bps: u32,
+}
+
+impl LiveExecutionContext {
+    pub fn wallet_id(&self) -> String {
+        bs58::encode(self.wallet.pubkey().as_bytes()).into_string()
+    }
+
+    fn executor(&self) -> JupiterSwapExecutor {
+        JupiterSwapExecutor::new(
+            Arc::clone(&self.wallet),
+            Arc::clone(&self.rpc),
+            JupiterSwapConfig {
+                swap_base: self.swap_base.clone(),
+                slippage_bps: self.slippage_bps,
+                simulate_before_send: true,
+                wrap_and_unwrap_sol: true,
+            },
+        )
+    }
+
+    async fn swap_usd_to_mint(
+        &self,
+        input_mint: &str,
+        output_mint: &str,
+        size_usd: f64,
+        input_decimals: u8,
+    ) -> Result<String, String> {
+        let sol_price = std::env::var("SOLANA_ARB_SOL_PRICE_USD")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_SOL_PRICE_USD);
+        let input_price = if input_mint == SOL_MINT {
+            sol_price
+        } else if input_mint == USDC_MINT {
+            1.0
+        } else {
+            sol_price
+        };
+        let ui_amount = size_usd / input_price;
+        let amount_raw = (ui_amount * 10f64.powi(input_decimals as i32)).round() as u64;
+        if amount_raw == 0 {
+            return Err("swap amount rounds to zero".to_owned());
+        }
+        self.executor()
+            .execute_swap(input_mint, output_mint, amount_raw)
+            .await
+            .map(|r| r.tx_signature)
+    }
+}
+
+fn live_trading_enabled(cfg: &SystemConfig, live: Option<&LiveExecutionContext>) -> bool {
+    cfg.features.enable_live_trading
+        && !cfg.features.dry_run
+        && live.is_some()
+}
+
+fn trade_emit<'a>(
+    live: Option<&'a LiveExecutionContext>,
+    cfg: &SystemConfig,
+    trade_id: &str,
+    strategy: &str,
+    pair: &str,
+    side: &str,
+    size_usd: f64,
+    expected_pnl_usd: f64,
+    timestamp_us: u64,
+    stage: TradeStage,
+    signal_id: Option<u64>,
+) -> TradeEmit {
+    if live_trading_enabled(cfg, live) {
+        TradeEmit::live(
+            trade_id,
+            &live.expect("live context checked").wallet_id(),
+            strategy,
+            pair,
+            side,
+            size_usd,
+            expected_pnl_usd,
+            timestamp_us,
+            stage,
+            signal_id,
+        )
+    } else {
+        TradeEmit::paper(
+            trade_id,
+            strategy,
+            pair,
+            side,
+            size_usd,
+            expected_pnl_usd,
+            timestamp_us,
+            stage,
+            signal_id,
+        )
+    }
+}
+
+async fn submit_live_swap(
+    live: &LiveExecutionContext,
+    input_mint: &str,
+    output_mint: &str,
+    size_usd: f64,
+    input_decimals: u8,
+) -> Result<String, String> {
+    live.swap_usd_to_mint(input_mint, output_mint, size_usd, input_decimals)
+        .await
+}
 
 pub struct AutonomousCallbacks {
     pub on_signal: Option<Arc<dyn Fn(SignalEvent) + Send + Sync>>,
@@ -101,11 +219,22 @@ pub fn spawn_autonomous_runtime(
     strategy: Arc<RwLock<StrategyController>>,
     external: Arc<RwLock<ExternalIngestionBuffer>>,
     snapshot: Arc<RwLock<RuntimeSnapshot>>,
+    live: Option<Arc<LiveExecutionContext>>,
     cancel: CancellationToken,
     callbacks: AutonomousCallbacks,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
-        if let Err(e) = run_loop(config, strategy, external, snapshot, cancel, callbacks).await {
+        if let Err(e) = run_loop(
+            config,
+            strategy,
+            external,
+            snapshot,
+            live,
+            cancel,
+            callbacks,
+        )
+        .await
+        {
             warn!(error = %e, "autonomous runtime exited with error");
         }
     })
@@ -133,6 +262,7 @@ async fn run_loop(
     strategy: Arc<RwLock<StrategyController>>,
     external: Arc<RwLock<ExternalIngestionBuffer>>,
     snapshot: Arc<RwLock<RuntimeSnapshot>>,
+    live: Option<Arc<LiveExecutionContext>>,
     cancel: CancellationToken,
     callbacks: AutonomousCallbacks,
 ) -> Result<(), String> {
@@ -152,6 +282,7 @@ async fn run_loop(
     let arb_cooldown_us = cfg_snapshot.scalper.trade_cooldown_secs * 1_000_000;
     let trade_size = cfg_snapshot.execution.simulation_initial_amount_usd;
     let min_profit = cfg_snapshot.execution.min_profit_threshold_usd;
+    let max_loss = cfg_snapshot.execution.max_loss_per_trade_usd;
     let capital_usd = cfg_snapshot.portfolio.capital_usd;
 
     let mut enforcer_state = EnforcerState::new(capital_usd);
@@ -215,6 +346,7 @@ async fn run_loop(
             let plan = strategy.read().await.plan_cycle(&cfg);
             (plan, cfg)
         };
+        let live_ctx = live.as_deref();
 
         {
             let mut snap = snapshot.write().await;
@@ -377,7 +509,9 @@ async fn run_loop(
                         } else {
                             emit_trade(
                                 &callbacks,
-                                TradeEmit::paper(
+                                trade_emit(
+                                    live_ctx,
+                                    &cfg,
                                     &trade_id,
                                     "scalp",
                                     &pair,
@@ -395,23 +529,75 @@ async fn run_loop(
                             let fee_usd = result.candidate.trade_size_usd
                                 * (result.fee_paid_bps * 2.0 / 10_000.0);
                             let net = pnl_usd - fee_usd;
-                            let paper_sig = format!("paper_scalp_{trade_id}");
 
-                            emit_trade(
-                                &callbacks,
-                                TradeEmit::paper(
-                                    &trade_id,
-                                    "scalp",
-                                    &pair,
-                                    side,
+                            if live_trading_enabled(&cfg, live_ctx) {
+                                match submit_live_swap(
+                                    live_ctx.expect("live ctx"),
+                                    SOL_MINT,
+                                    USDC_MINT,
                                     result.candidate.trade_size_usd,
-                                    net,
-                                    result.executed_at_micros,
-                                    TradeStage::Filled,
-                                    Some(result.candidate.signal.signal_id),
+                                    9,
                                 )
-                                .with_tx(paper_sig),
-                            );
+                                .await
+                                {
+                                    Ok(sig) => {
+                                        emit_trade(
+                                            &callbacks,
+                                            trade_emit(
+                                                live_ctx,
+                                                &cfg,
+                                                &trade_id,
+                                                "scalp",
+                                                &pair,
+                                                side,
+                                                result.candidate.trade_size_usd,
+                                                net,
+                                                result.executed_at_micros,
+                                                TradeStage::Filled,
+                                                Some(result.candidate.signal.signal_id),
+                                            )
+                                            .with_tx(sig),
+                                        );
+                                    }
+                                    Err(reason) => {
+                                        emit_trade(
+                                            &callbacks,
+                                            trade_emit(
+                                                live_ctx,
+                                                &cfg,
+                                                &trade_id,
+                                                "scalp",
+                                                &pair,
+                                                side,
+                                                result.candidate.trade_size_usd,
+                                                0.0,
+                                                evt_ts,
+                                                TradeStage::Failed,
+                                                Some(result.candidate.signal.signal_id),
+                                            )
+                                            .with_reject(reason),
+                                        );
+                                        continue;
+                                    }
+                                }
+                            } else {
+                                let paper_sig = format!("paper_scalp_{trade_id}");
+                                emit_trade(
+                                    &callbacks,
+                                    TradeEmit::paper(
+                                        &trade_id,
+                                        "scalp",
+                                        &pair,
+                                        side,
+                                        result.candidate.trade_size_usd,
+                                        net,
+                                        result.executed_at_micros,
+                                        TradeStage::Filled,
+                                        Some(result.candidate.signal.signal_id),
+                                    )
+                                    .with_tx(paper_sig),
+                                );
+                            }
 
                             let mut snap = snapshot.write().await;
                             snap.scalp_trades += 1;
@@ -580,6 +766,24 @@ async fn run_loop(
                         let net = gross_edge * (1.0 - SLIPPAGE_HAIRCUT)
                             - trade_size * 0.005
                             - NETWORK_COST_USD;
+                        if net < -max_loss {
+                            emit_trade(
+                                &callbacks,
+                                TradeEmit::paper(
+                                    &trade_id,
+                                    "arb",
+                                    &pair,
+                                    "buy",
+                                    trade_size,
+                                    net,
+                                    evt_ts,
+                                    TradeStage::Rejected,
+                                    Some(step),
+                                )
+                                .with_reject("arb net loss exceeds max_loss_per_trade_usd"),
+                            );
+                            continue;
+                        }
                         if net < min_profit {
                             emit_trade(
                                 &callbacks,
@@ -601,7 +805,9 @@ async fn run_loop(
 
                         emit_trade(
                             &callbacks,
-                            TradeEmit::paper(
+                            trade_emit(
+                                live_ctx,
+                                &cfg,
                                 &trade_id,
                                 "arb",
                                 &pair,
@@ -614,22 +820,74 @@ async fn run_loop(
                             ),
                         );
 
-                        let paper_sig = format!("paper_arb_{trade_id}");
-                        emit_trade(
-                            &callbacks,
-                            TradeEmit::paper(
-                                &trade_id,
-                                "arb",
-                                &pair,
-                                "buy",
+                        if live_trading_enabled(&cfg, live_ctx) {
+                            match submit_live_swap(
+                                live_ctx.expect("live ctx"),
+                                SOL_MINT,
+                                USDC_MINT,
                                 trade_size,
-                                net,
-                                evt_ts,
-                                TradeStage::Filled,
-                                Some(step),
+                                9,
                             )
-                            .with_tx(paper_sig),
-                        );
+                            .await
+                            {
+                                Ok(sig) => {
+                                    emit_trade(
+                                        &callbacks,
+                                        trade_emit(
+                                            live_ctx,
+                                            &cfg,
+                                            &trade_id,
+                                            "arb",
+                                            &pair,
+                                            "buy",
+                                            trade_size,
+                                            net,
+                                            evt_ts,
+                                            TradeStage::Filled,
+                                            Some(step),
+                                        )
+                                        .with_tx(sig),
+                                    );
+                                }
+                                Err(reason) => {
+                                    emit_trade(
+                                        &callbacks,
+                                        trade_emit(
+                                            live_ctx,
+                                            &cfg,
+                                            &trade_id,
+                                            "arb",
+                                            &pair,
+                                            "buy",
+                                            trade_size,
+                                            0.0,
+                                            evt_ts,
+                                            TradeStage::Failed,
+                                            Some(step),
+                                        )
+                                        .with_reject(reason),
+                                    );
+                                    continue;
+                                }
+                            }
+                        } else {
+                            let paper_sig = format!("paper_arb_{trade_id}");
+                            emit_trade(
+                                &callbacks,
+                                TradeEmit::paper(
+                                    &trade_id,
+                                    "arb",
+                                    &pair,
+                                    "buy",
+                                    trade_size,
+                                    net,
+                                    evt_ts,
+                                    TradeStage::Filled,
+                                    Some(step),
+                                )
+                                .with_tx(paper_sig),
+                            );
+                        }
 
                         last_arb_ts = evt_ts;
                         let mut snap = snapshot.write().await;

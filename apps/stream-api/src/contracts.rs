@@ -10,6 +10,7 @@ pub enum Dex {
     Raydium,
     Orca,
     Jupiter,
+    Pump,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]

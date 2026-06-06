@@ -9,13 +9,13 @@ interface SignalCardProps {
 function StrengthBar({ value, color }: { value: number; color: string }) {
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+      <div className="flex-1 h-1 bg-ds-elevated rounded-full overflow-hidden">
         <div
           className="h-full rounded-full transition-all"
           style={{ width: `${(value * 100).toFixed(0)}%`, backgroundColor: color }}
         />
       </div>
-      <span className="text-xs mono text-slate-400 w-10 text-right">
+      <span className="text-[10px] font-mono text-ds-text-muted w-10 text-right tabular-nums">
         {formatPct(value)}
       </span>
     </div>
@@ -28,64 +28,62 @@ export default function SignalCard({ signal, expanded = false }: SignalCardProps
   const ts = tsToDate(signal.timestamp_micros);
 
   return (
-    <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 space-y-3">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+    <div className="bg-ds-surface border border-ds-border rounded-terminal p-3 space-y-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <span
-            className="px-2 py-0.5 rounded text-xs font-medium"
-            style={{ backgroundColor: color + '22', color }}
+            className="px-1.5 py-px rounded-terminal border text-[10px] font-medium uppercase tracking-wider"
+            style={{ backgroundColor: color + '18', color, borderColor: color + '40' }}
           >
             {signal.signal_type}
           </span>
           <span
-            className="px-2 py-0.5 rounded text-xs font-medium"
-            style={{ backgroundColor: dirColor + '22', color: dirColor }}
+            className="px-1.5 py-px rounded-terminal border text-[10px] font-medium uppercase tracking-wider"
+            style={{ backgroundColor: dirColor + '18', color: dirColor, borderColor: dirColor + '40' }}
           >
             {signal.direction}
           </span>
         </div>
-        <span className="text-xs text-slate-500">{ts.toLocaleTimeString()}</span>
+        <span className="text-[10px] font-mono text-ds-text-muted shrink-0">{ts.toLocaleTimeString()}</span>
       </div>
 
-      {/* Pool address */}
-      <p className="mono text-xs text-slate-400 truncate">
+      <p className="font-mono text-[10px] text-ds-text-secondary truncate">
         Pool: {signal.pool_address.slice(0, 16)}…{signal.pool_address.slice(-8)}
       </p>
 
-      {/* Strength & confidence bars */}
-      <div className="space-y-1.5">
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <span className="w-20">Strength</span>
-          <div className="flex-1">
+      <div className="space-y-1">
+        <div className="flex items-center gap-2 text-[10px] text-ds-text-muted">
+          <span className="w-16 shrink-0 uppercase tracking-wider">Strength</span>
+          <div className="flex-1 min-w-0">
             <StrengthBar value={signal.strength} color={color} />
           </div>
         </div>
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <span className="w-20">Confidence</span>
-          <div className="flex-1">
-            <StrengthBar value={signal.confidence} color="#94a3b8" />
+        <div className="flex items-center gap-2 text-[10px] text-ds-text-muted">
+          <span className="w-16 shrink-0 uppercase tracking-wider">Confidence</span>
+          <div className="flex-1 min-w-0">
+            <StrengthBar value={signal.confidence} color="var(--text-secondary)" />
           </div>
         </div>
       </div>
 
-      {/* Explanation */}
       {expanded && (
         <>
-          <p className="text-xs text-slate-300 bg-slate-900/50 rounded p-2 leading-relaxed">
+          <p className="text-[11px] text-ds-text-secondary bg-ds-elevated/50 rounded-terminal border border-ds-border/50 p-2 leading-relaxed">
             {signal.explanation}
           </p>
 
-          {/* Feature vector */}
-          <details className="text-xs">
-            <summary className="cursor-pointer text-slate-500 hover:text-slate-300">
+          <details className="text-[10px]">
+            <summary className="cursor-pointer text-ds-text-muted hover:text-ds-text-primary">
               Feature vector
             </summary>
-            <div className="mt-2 grid grid-cols-2 gap-1 text-slate-400 mono">
+            <div className="mt-2 grid grid-cols-2 gap-1 text-ds-text-secondary font-mono">
               {Object.entries(signal.feature_vector).map(([k, v]) => (
-                <div key={k} className="flex justify-between gap-2 bg-slate-900/40 px-2 py-1 rounded">
+                <div
+                  key={k}
+                  className="flex justify-between gap-2 bg-ds-elevated/40 border border-ds-border/40 px-2 py-1 rounded-terminal"
+                >
                   <span className="truncate">{k}</span>
-                  <span className="text-slate-200">
+                  <span className="text-ds-text-primary tabular-nums">
                     {typeof v === 'number' ? v.toFixed(4) : String(v)}
                   </span>
                 </div>

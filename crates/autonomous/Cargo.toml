@@ -17,6 +17,8 @@ risk_engine  = { path = "../risk_engine" }
 routing      = { path = "../routing" }
 scalper      = { path = "../scalper" }
 signals      = { path = "../signals" }
+wallet       = { path = "../wallet" }
+bs58         = "0.5"
 
 serde = { workspace = true }
 tokio = { version = "1", features = ["sync"] }

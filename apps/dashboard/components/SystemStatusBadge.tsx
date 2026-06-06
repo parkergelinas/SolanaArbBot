@@ -9,23 +9,31 @@ export default function SystemStatusBadge() {
   const status = useStreamLatest<SystemStatus>('status');
 
   const running = status?.running ?? false;
-  const mode    = status?.mode    ?? 'paper';
+  const mode = status?.mode ?? 'paper';
 
   return (
-    <div className="flex items-center gap-3">
-      {/* WS connection */}
-      <div className="flex items-center gap-1.5">
-        <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400 live-pulse' : 'bg-red-500'}`} />
-        <span className="text-xs text-slate-400">{connected ? 'WS live' : 'WS offline'}</span>
-      </div>
+    <div className="flex items-center gap-2 flex-wrap">
+      <span
+        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-terminal border text-[10px] font-mono uppercase ${
+          connected
+            ? 'border-ds-green/30 text-ds-green bg-ds-green/5'
+            : 'border-ds-red/30 text-ds-red bg-ds-red/5'
+        }`}
+      >
+        <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-ds-green live-pulse' : 'bg-ds-red'}`} />
+        {connected ? 'WS live' : 'WS off'}
+      </span>
 
-      {/* Engine state */}
-      <div className="flex items-center gap-1.5">
-        <span className={`w-2 h-2 rounded-full ${running ? 'bg-green-400' : 'bg-slate-500'}`} />
-        <span className="text-xs text-slate-400 capitalize">
-          {running ? `Running (${mode})` : 'Stopped'}
-        </span>
-      </div>
+      <span
+        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-terminal border text-[10px] font-mono uppercase ${
+          running
+            ? 'border-ds-green/30 text-ds-green bg-ds-green/5'
+            : 'border-ds-border text-ds-text-muted bg-ds-elevated/30'
+        }`}
+      >
+        <span className={`w-1.5 h-1.5 rounded-full ${running ? 'bg-ds-green' : 'bg-ds-text-muted'}`} />
+        {running ? `${mode}` : 'Stopped'}
+      </span>
     </div>
   );
 }

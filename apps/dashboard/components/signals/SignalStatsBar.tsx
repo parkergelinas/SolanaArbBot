@@ -8,51 +8,51 @@ interface SignalStatsBarProps {
   connected: boolean;
 }
 
-function StatPill({
+function StatCell({
   label,
   value,
-  accent,
+  className = '',
 }: {
   label: string;
   value: string | number;
-  accent?: string;
+  className?: string;
 }) {
   return (
-    <div className="surface-card px-4 py-3 min-w-[7rem]">
-      <p className="text-[10px] uppercase tracking-widest text-platform-muted mb-1">{label}</p>
-      <p className="text-lg font-semibold mono tabular-nums" style={{ color: accent ?? '#f1f5f9' }}>
+    <div className="flex flex-col justify-center px-3 py-1.5 border-r border-ds-border last:border-r-0 min-w-[4.5rem]">
+      <span className="text-[8px] uppercase tracking-[0.14em] text-ds-text-muted leading-none">
+        {label}
+      </span>
+      <span className={`text-[13px] font-mono font-medium tabular-nums leading-tight mt-0.5 ${className}`}>
         {value}
-      </p>
+      </span>
     </div>
   );
 }
 
 export default function SignalStatsBar({ stats, connected }: SignalStatsBarProps) {
   return (
-    <div className="flex flex-wrap items-stretch gap-3">
-      <StatPill
-        label="Live stream"
+    <div className="flex items-stretch shrink-0 bg-ds-surface border border-ds-border rounded-terminal overflow-x-auto terminal-scroll">
+      <StatCell
+        label="Live"
         value={connected ? stats.liveCount : '—'}
-        accent={connected ? '#00dfa8' : '#8b95a8'}
+        className={connected ? 'text-ds-green' : 'text-ds-text-muted'}
       />
-      <StatPill label="Total" value={stats.total} />
-      <StatPill label="Whale" value={stats.whale} accent="#4da3ff" />
-      <StatPill label="Smart $" value={stats.smartMoney} accent="#a78bfa" />
-      <StatPill label="Momentum" value={stats.momentum} accent="#00dfa8" />
-      <StatPill label="Avg strength" value={formatPct(stats.avgStrength)} />
-      <StatPill label="Avg confidence" value={formatPct(stats.avgConfidence)} />
-      <div className="surface-card px-4 py-3 flex items-center gap-3 ml-auto">
+      <StatCell label="Total" value={stats.total} className="text-ds-text-primary" />
+      <StatCell label="Whale" value={stats.whale} className="text-ds-blue" />
+      <StatCell label="Smart $" value={stats.smartMoney} className="text-purple-400" />
+      <StatCell label="Mom" value={stats.momentum} className="text-ds-green" />
+      <StatCell label="Arb" value={stats.arb} className="text-ds-amber" />
+      <StatCell label="Avg str" value={formatPct(stats.avgStrength)} className="text-ds-text-secondary" />
+      <StatCell label="Avg conf" value={formatPct(stats.avgConfidence)} className="text-ds-text-secondary" />
+      <div className="flex items-center gap-2 px-3 py-1.5 ml-auto shrink-0 border-l border-ds-border">
         <span
-          className={`w-2 h-2 rounded-full shrink-0 ${
-            connected ? 'bg-platform-accent live-pulse' : 'bg-red-500'
+          className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+            connected ? 'bg-ds-green live-pulse' : 'bg-ds-red'
           }`}
         />
-        <div>
-          <p className="text-[10px] uppercase tracking-widest text-platform-muted">Feed</p>
-          <p className={`text-sm font-medium ${connected ? 'text-platform-accent' : 'text-red-400'}`}>
-            {connected ? 'Connected' : 'Disconnected'}
-          </p>
-        </div>
+        <span className={`text-[10px] font-mono uppercase tracking-wider ${connected ? 'text-ds-green' : 'text-ds-red'}`}>
+          {connected ? 'Feed live' : 'Offline'}
+        </span>
       </div>
     </div>
   );

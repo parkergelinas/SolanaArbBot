@@ -56,6 +56,16 @@ fn main() {
         write_report(path, &report);
         info!(path = %path.display(), "results written");
 
+        let dashboard_public = PathBuf::from("apps/dashboard/public/data/backtest_results.json");
+        if dashboard_public.parent().is_some() {
+            if let Some(parent) = dashboard_public.parent() {
+                fs::create_dir_all(parent).ok();
+            }
+            if fs::copy(path, &dashboard_public).is_ok() {
+                info!(path = %dashboard_public.display(), "dashboard copy written");
+            }
+        }
+
         let cfg_path = path
             .parent()
             .map(|p| p.join("optimized_config.toml"))

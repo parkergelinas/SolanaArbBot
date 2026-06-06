@@ -11,6 +11,12 @@ path = "src/main.rs"
 [dependencies]
 data-layer  = { path = "../../backend/data-layer" }
 signal-bus  = { path = "../../crates/signal-bus" }
+config      = { path = "../../crates/config" }
+signals     = { path = "../../crates/signals" }
+ingestion   = { path = "../../crates/ingestion" }
+ratelimit   = { path = "../../crates/ratelimit" }
+events      = { path = "../../crates/events" }
+pricing     = { path = "../../crates/pricing" }
 axum        = { version = "0.7", features = ["ws", "macros"] }
 tower-http  = { version = "0.5", features = ["cors", "trace"] }
 tokio       = { version = "1", features = ["full"] }
@@ -23,13 +29,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 anyhow = "1"
 reqwest = { workspace = true }
 
-# OpenTelemetry / OTLP tracing (optional via env)
-opentelemetry = "0.20"
-tracing-opentelemetry = "0.21"
-opentelemetry-otlp = "0.10"
+# OpenTelemetry / OTLP tracing (optional — enable with `--features otel`)
+opentelemetry = { version = "0.20", optional = true }
+tracing-opentelemetry = { version = "0.21", optional = true }
+opentelemetry-otlp = { version = "0.10", optional = true }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 
 [features]
-otel = []
+otel = ["dep:opentelemetry", "dep:tracing-opentelemetry", "dep:opentelemetry-otlp"]

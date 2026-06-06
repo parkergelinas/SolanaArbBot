@@ -9,10 +9,13 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use config::{ConfigHandle, HotPathConfig};
+use config::{ConfigHandle, HotPathConfig, SystemConfig};
 use crossbeam_channel::{bounded, Sender};
 use execution::hotpath::{ColdPathExecutor, HotPathEngine, MarketTick};
+use tokio::sync::Mutex;
 use tracing::info;
+
+use crate::arbitrage::{ArbitrageEngine, DexVenue, PoolQuote};
 
 /// Inbound market tick channel capacity.
 const TICK_CHANNEL_CAPACITY: usize = 4096;
@@ -131,6 +134,76 @@ pub fn spawn_synthetic_ingestion(tx: Sender<MarketTick>, pool_count: u16) {
             }
         })
         .expect("spawn ingestion");
+}
+
+/// Spawns the cross-DEX arbitrage detection loop (async, outside hot path).
+///
+/// Respects `features.dry_run` and `strategy.arb` — logs opportunities in paper
+/// mode without submitting Jito bundles.
+pub fn spawn_arb_engine(config: Arc<SystemConfig>) -> tokio::task::JoinHandle<()> {
+    let sol_price_usd: f64 = std::env::var("SOLANA_ARB_SOL_PRICE_USD")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(150.0);
+
+    let engine = ArbitrageEngine::new(
+        config.arbitrage.clone(),
+        config.execution.clone(),
+        config.features.clone(),
+        sol_price_usd,
+    );
+
+    // Seed demo pools for paper/dry-run detection.
+    let mut engine = engine;
+    engine.upsert_pool(
+        "ray-sol-usdc",
+        PoolQuote {
+            venue: DexVenue::RaydiumAmmV4,
+            token_a: "SOL".into(),
+            token_b: "USDC".into(),
+            mid_price: 150.0,
+            reserve_a: 50_000.0,
+            reserve_b: 7_500_000.0,
+            liquidity_usd: 80_000.0,
+            fee_bps: 25,
+        },
+    );
+    engine.upsert_pool(
+        "orca-sol-usdc",
+        PoolQuote {
+            venue: DexVenue::OrcaWhirlpool,
+            token_a: "SOL".into(),
+            token_b: "USDC".into(),
+            mid_price: 151.5,
+            reserve_a: 50_000.0,
+            reserve_b: 7_575_000.0,
+            liquidity_usd: 80_000.0,
+            fee_bps: 20,
+        },
+    );
+
+    let shared = Arc::new(Mutex::new(engine));
+
+    tokio::spawn(async move {
+        let interval = std::time::Duration::from_millis(100);
+        loop {
+            let report = {
+                let mut eng = shared.lock().await;
+                eng.run_detection_cycle().await
+            };
+            if report.opportunities_emitted > 0 {
+                info!(
+                    found = report.opportunities_found,
+                    emitted = report.opportunities_emitted,
+                    submitted = report.bundles_submitted,
+                    latency_us = report.cycle_latency_us,
+                    dry_run = config.features.dry_run,
+                    "arb engine cycle"
+                );
+            }
+            tokio::time::sleep(interval).await;
+        }
+    })
 }
 
 /// Monitor thread — logs stats every 5 s (outside hot loop).

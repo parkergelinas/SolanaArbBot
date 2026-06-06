@@ -13,6 +13,8 @@ pub mod combined;
 pub mod dataset;
 pub mod metrics;
 pub mod optimize;
+pub mod quote_arb;
+pub mod rankings;
 pub mod scalp;
 pub mod simulate;
 pub mod verify;
@@ -21,6 +23,8 @@ pub use combined::{run_combined_backtest, CombinedBacktestResult, StrategyKind};
 pub use dataset::{generate_dataset, ReplayDataset, ReplayEvent};
 pub use metrics::{BacktestMetrics, StrategyMetrics};
 pub use optimize::{optimize_params, OptimizedParams, OptimizationResult};
+pub use quote_arb::run_quote_arb_backtest;
+pub use rankings::{build_strategy_rankings, StrategyRanking};
 pub use simulate::{run_forward_simulation, SimulationResult};
 pub use verify::{verify_metrics, VerificationReport, VerificationThresholds};
 
@@ -60,12 +64,15 @@ pub fn strategy_config() -> SystemConfig {
 /// Full backtest pipeline output written to disk and consumed by the dashboard.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipelineReport {
+    pub generated_at: String,
     pub baseline: CombinedBacktestResult,
     pub baseline_verification: VerificationReport,
     pub optimization: OptimizationResult,
     pub retest: CombinedBacktestResult,
     pub retest_verification: VerificationReport,
     pub simulation: SimulationResult,
+    pub quote_arb_holdout: StrategyMetrics,
+    pub strategy_rankings: Vec<StrategyRanking>,
     pub recommended_config: SystemConfig,
 }
 
@@ -99,13 +106,37 @@ pub fn run_pipeline(
     );
     let simulation = run_forward_simulation(optimized_cfg.clone(), &sim_window);
 
+    let quote_arb_holdout = run_quote_arb_backtest(Arc::clone(&optimized_cfg), &holdout);
+    let strategy_rankings = build_strategy_rankings(
+        &retest.metrics.scalp,
+        &retest.metrics.arb,
+        &quote_arb_holdout,
+        retest.metrics.combined_net_pnl_usd,
+        retest.metrics.combined_trades_per_day,
+        &retest_verification,
+    );
+
+    let generated_at = chrono_lite_timestamp();
+
     PipelineReport {
+        generated_at,
         baseline,
         baseline_verification,
         optimization,
         retest,
         retest_verification,
         simulation,
+        quote_arb_holdout,
+        strategy_rankings,
         recommended_config: Arc::try_unwrap(optimized_cfg).unwrap_or_else(|arc| (*arc).clone()),
     }
+}
+
+fn chrono_lite_timestamp() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    format!("{secs}")
 }
