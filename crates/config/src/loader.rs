@@ -663,12 +663,13 @@ mod tests {
     fn from_toml_str_fills_missing_sections_with_defaults() {
         let toml = r#"
             [features]
-            dry_run = false
+            enable_metrics = true
         "#;
 
         let handle = ConfigHandle::from_toml_str(toml).expect("load");
-        assert!(!handle.features.dry_run);
+        assert!(handle.features.dry_run);
         assert!(!handle.features.enable_live_trading);
+        assert!(handle.features.enable_metrics);
         assert_eq!(handle.rpc.timeout_ms, 10_000);
     }
 
@@ -760,7 +761,7 @@ mod tests {
             enable_live_trading = false
             enable_risk_engine = true
             enable_metrics = true
-            dry_run = false
+            dry_run = true
             enable_jito = false
             enable_clmm = true
             enable_raydium = true
@@ -798,7 +799,7 @@ mod tests {
         assert_eq!(handle.portfolio.capital_usd, 10_000.0);
         assert_eq!(handle.capital_usd(), 10_000.0);
         assert!(handle.features.enable_metrics);
-        assert!(!handle.features.dry_run);
+        assert!(handle.features.dry_run);
         assert_eq!(handle.monitoring.metrics_port, 9191);
         assert!(handle.monitoring.json_logs);
         assert!(handle.websocket.ping_interval().is_none());
@@ -808,11 +809,10 @@ mod tests {
     fn env_overrides_applied_correctly() {
         let mut cfg = SystemConfig::default();
         cfg.portfolio.capital_usd = 99_999.0;
-        cfg.features.dry_run = false;
         cfg.monitoring.log_level = "warn".to_owned();
 
         assert_eq!(cfg.portfolio.capital_usd, 99_999.0);
-        assert!(!cfg.features.dry_run);
+        assert!(cfg.features.dry_run);
         assert_eq!(cfg.monitoring.log_level, "warn");
         cfg.validate().expect("mutated config is valid");
     }

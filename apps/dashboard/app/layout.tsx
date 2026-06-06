@@ -25,7 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body className="flex h-screen overflow-hidden bg-platform-bg text-slate-100">
+      <body className="flex h-screen overflow-hidden bg-ds-base text-ds-text-primary">
         <Providers wsUrl={wsUrl} intelUrl={intelUrl}>
           <AppShell>{children}</AppShell>
         </Providers>

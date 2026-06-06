@@ -28,14 +28,14 @@ export default function NetworkSwitcher({ compact = false }: { compact?: boolean
       onClick={toggle}
       disabled={switching}
       title={`Switch to ${isDevnet ? 'mainnet' : 'devnet'}`}
-      className={`flex items-center gap-1.5 rounded-lg border font-medium mono transition-colors disabled:opacity-50 ${
+      className={`flex items-center gap-1.5 rounded-terminal border font-medium font-mono transition-colors disabled:opacity-50 ${
         compact
           ? 'px-2 py-1 text-[9px]'
           : 'px-2.5 py-1.5 text-[10px]'
       } ${
         isDevnet
-          ? 'border-amber-500/40 text-amber-400 bg-amber-500/10 hover:bg-amber-500/15'
-          : 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/15'
+          ? 'border-ds-amber/40 text-ds-amber bg-ds-amber/8 hover:bg-ds-amber/12'
+          : 'border-ds-green/40 text-ds-green bg-ds-green/8 hover:bg-ds-green/12'
       }`}
     >
       <span

@@ -94,7 +94,7 @@ function ConfigSectionEditor({
   );
 }
 
-const EDITABLE_SECTIONS = ['signal_engine', 'features', 'risk', 'execution'];
+const EDITABLE_SECTIONS = ['signal_engine', 'features', 'risk', 'execution', 'scalper', 'strategy'];
 
 export default function ConfigPage() {
   const { data: config, loading, refetch } = useFetch(

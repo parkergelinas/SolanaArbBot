@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 
 import NetworkSwitcher from '@/components/wallet/NetworkSwitcher';
-import WalletConnectButton from '@/components/wallet/WalletConnectButton';
 import { tokenMeta, tokenSymbol } from '@/lib/terminal/tokens';
 import { useMarketStore } from '@/stores/marketStore';
 import { type ConnectionMode, useStreamStore } from '@/stores/streamStore';
@@ -114,7 +113,6 @@ export default function TerminalHeader() {
 
       <div className="flex items-center gap-3 text-right text-[10px] mono">
         <NetworkSwitcher compact />
-        <WalletConnectButton />
         <div>
           <div className="text-slate-300 tabular-nums">{now}</div>
           <div className="text-terminal-muted truncate max-w-[10rem] mt-0.5" title={url}>

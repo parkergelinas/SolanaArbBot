@@ -1826,6 +1826,14 @@ mod tests {
     }
 
     #[test]
+    fn feature_flags_reject_live_without_confirm_env() {
+        let mut cfg = SystemConfig::default();
+        cfg.features.dry_run = false;
+        std::env::remove_var("SOLANA_ARB_CONFIRM_LIVE_TRADING");
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
     fn feature_flags_default_to_safe_values() {
         let flags = FeatureFlags::default();
         assert!(!flags.enable_live_trading, "live trading must default to off");
