@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     # ── Core library crates ────────────────────────────────────────────────
     "crates/common",
+    "crates/ratelimit",
 
     # ── New architecture crates ────────────────────────────────────────────
     "crates/config",

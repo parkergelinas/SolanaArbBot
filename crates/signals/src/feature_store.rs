@@ -181,6 +181,7 @@ impl FeatureStore {
             }
             // PoolUpdate with no pool address — nothing to key on.
             MarketEvent::PoolUpdate(_) => {}
+            MarketEvent::PriceUpdate(_) => {}
         }
     }
 

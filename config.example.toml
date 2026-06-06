@@ -10,6 +10,7 @@
 #   3. SOLANA_ARB_<SECTION>__<FIELD> environment variables
 #
 # Environment variable examples:
+#   SOLANA_ARB_DATA_SOURCES__HELIUS_API_KEY=your_free_key_from_helius_dev
 #   SOLANA_ARB_RISK__CAPITAL_USD=50000
 #   SOLANA_ARB_FEATURES__DRY_RUN=false
 #   SOLANA_ARB_EXECUTION__MAX_SLIPPAGE_BPS=30
@@ -17,14 +18,24 @@
 #   SOLANA_ARB_RPC__ENDPOINTS='["https://my-rpc.example.com"]'
 
 # ─────────────────────────────────────────────────────────────────────────────
+# [data_sources] — Free / cheap live market data APIs
+# ─────────────────────────────────────────────────────────────────────────────
+[data_sources]
+helius_api_key   = ""  # helius.dev free tier — set via env SOLANA_ARB_DATA_SOURCES__HELIUS_API_KEY
+jupiter_price    = "https://price.jup.ag/v2/price"
+dexscreener_base = "https://api.dexscreener.com/latest/dex"
+rugcheck_base    = "https://api.rugcheck.xyz/v1"
+birdeye_base     = "https://public-api.birdeye.so"
+
+# ─────────────────────────────────────────────────────────────────────────────
 # [rpc] — Solana JSON-RPC connection
 # ─────────────────────────────────────────────────────────────────────────────
 [rpc]
-# Ordered list of RPC endpoints.  First reachable endpoint is used;
-# the rest are fallbacks.
+# Prefer Helius when [data_sources].helius_api_key is set:
+#   https://mainnet.helius-rpc.com/?api-key={HELIUS_KEY}
+# Public endpoints below are fallback only.
 endpoints = [
     "https://api.mainnet-beta.solana.com",
-    "https://solana-api.projectserum.com",
 ]
 
 # Per-request HTTP timeout in milliseconds.

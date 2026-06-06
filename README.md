@@ -52,6 +52,7 @@ pnpm test
 
 Configuration and running
 - Copy `config.example.toml` to a working config and edit as needed.
+- Free live data: set `SOLANA_ARB_DATA_SOURCES__HELIUS_API_KEY` (from [helius.dev](https://helius.dev) free tier).
 - Capital is defined once in `[portfolio].capital_usd`. `risk.min_liquidity_usd` must equal `pipeline.routing_min_liquidity`.
 - Each service in `apps/` or `backend/` contains its own README or run instructions — consult the crate or package folder for details.
 

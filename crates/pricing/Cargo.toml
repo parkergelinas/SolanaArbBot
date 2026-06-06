@@ -6,4 +6,12 @@ license.workspace = true
 
 [dependencies]
 common = { path = "../common" }
+config = { path = "../config" }
 decoder = { path = "../decoder" }
+events = { path = "../events" }
+ratelimit = { path = "../ratelimit" }
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+bs58 = "0.5"

@@ -534,6 +534,28 @@ pub(crate) fn apply_env_overrides(config: &mut SystemConfig) {
     env_string!("SOLANA_ARB_MONITORING__LOG_LEVEL", config.monitoring.log_level);
     env_bool!("SOLANA_ARB_MONITORING__JSON_LOGS", config.monitoring.json_logs);
 
+    // ── [data_sources] ────────────────────────────────────────────────────
+    env_string!(
+        "SOLANA_ARB_DATA_SOURCES__HELIUS_API_KEY",
+        config.data_sources.helius_api_key
+    );
+    env_string!(
+        "SOLANA_ARB_DATA_SOURCES__JUPITER_PRICE",
+        config.data_sources.jupiter_price
+    );
+    env_string!(
+        "SOLANA_ARB_DATA_SOURCES__DEXSCREENER_BASE",
+        config.data_sources.dexscreener_base
+    );
+    env_string!(
+        "SOLANA_ARB_DATA_SOURCES__RUGCHECK_BASE",
+        config.data_sources.rugcheck_base
+    );
+    env_string!(
+        "SOLANA_ARB_DATA_SOURCES__BIRDEYE_BASE",
+        config.data_sources.birdeye_base
+    );
+
     // ── [wallet] ──────────────────────────────────────────────────────────
     if let Ok(raw) = std::env::var("SOLANA_ARB_WALLET__KEYPAIR_PATH") {
         let trimmed = raw.trim().to_owned();

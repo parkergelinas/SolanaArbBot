@@ -84,6 +84,10 @@ pub struct SystemConfig {
     /// Active trading strategy toggles (UI / control-api).
     #[serde(default)]
     pub strategy: StrategyConfig,
+
+    /// Free / cheap external data API endpoints (Helius, Jupiter, DexScreener, etc.).
+    #[serde(default)]
+    pub data_sources: DataSourcesConfig,
 }
 
 impl Default for SystemConfig {
@@ -105,6 +109,7 @@ impl Default for SystemConfig {
             orchestrator: OrchestratorConfig::default(),
             hotpath: HotPathConfig::default(),
             strategy: StrategyConfig::default(),
+            data_sources: DataSourcesConfig::default(),
         }
     }
 }
@@ -128,6 +133,7 @@ impl SystemConfig {
         // config is permitted in dry_run mode and by alternative loaders.
         self.wallet.validate_warn();
         self.hotpath.validate()?;
+        self.data_sources.validate()?;
 
         if (self.risk.min_liquidity_usd - self.pipeline.routing_min_liquidity).abs()
             > f64::EPSILON
@@ -737,6 +743,75 @@ impl PortfolioConfig {
             );
         }
         Ok(())
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Data sources (free / cheap live APIs)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// External market-data API configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataSourcesConfig {
+    /// Helius free-tier API key — set via `SOLANA_ARB_DATA_SOURCES__HELIUS_API_KEY`.
+    pub helius_api_key: String,
+    /// Jupiter Price API v2 base URL.
+    pub jupiter_price: String,
+    /// DexScreener REST base URL.
+    pub dexscreener_base: String,
+    /// Rugcheck token report API base URL.
+    pub rugcheck_base: String,
+    /// Birdeye public API base URL (free tier, no key).
+    pub birdeye_base: String,
+}
+
+impl Default for DataSourcesConfig {
+    fn default() -> Self {
+        Self {
+            helius_api_key: String::new(),
+            jupiter_price: "https://price.jup.ag/v2/price".to_owned(),
+            dexscreener_base: "https://api.dexscreener.com/latest/dex".to_owned(),
+            rugcheck_base: "https://api.rugcheck.xyz/v1".to_owned(),
+            birdeye_base: "https://public-api.birdeye.so".to_owned(),
+        }
+    }
+}
+
+impl DataSourcesConfig {
+    fn validate(&self) -> Result<(), String> {
+        for (name, url) in [
+            ("jupiter_price", &self.jupiter_price),
+            ("dexscreener_base", &self.dexscreener_base),
+            ("rugcheck_base", &self.rugcheck_base),
+            ("birdeye_base", &self.birdeye_base),
+        ] {
+            if url.is_empty() {
+                return Err(format!("data_sources.{name} must not be empty"));
+            }
+        }
+        Ok(())
+    }
+
+    /// Helius mainnet WebSocket URL when API key is set.
+    pub fn helius_ws_url(&self) -> Option<String> {
+        if self.helius_api_key.is_empty() {
+            return None;
+        }
+        Some(format!(
+            "wss://mainnet.helius-rpc.com/?api-key={}",
+            self.helius_api_key
+        ))
+    }
+
+    /// Helius mainnet HTTPS RPC URL when API key is set.
+    pub fn helius_rpc_url(&self) -> Option<String> {
+        if self.helius_api_key.is_empty() {
+            return None;
+        }
+        Some(format!(
+            "https://mainnet.helius-rpc.com/?api-key={}",
+            self.helius_api_key
+        ))
     }
 }
 

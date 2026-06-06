@@ -49,9 +49,13 @@
 #![forbid(unsafe_code)]
 
 pub mod aggregator;
+pub mod birdeye;
 pub mod bus;
+pub mod dexscreener;
 pub mod engine;
+pub mod external_store;
 pub mod feature_store;
+pub mod live;
 pub mod processor;
 pub mod processors;
 pub mod types;
@@ -61,8 +65,15 @@ pub mod types;
 // ─────────────────────────────────────────────────────────────────────────────
 
 pub use aggregator::SignalAggregator;
+pub use birdeye::{
+    load_jupiter_verified, spawn_birdeye_top_movers_poller, spawn_birdeye_whale_poller,
+    DEFAULT_WHALE_WALLETS,
+};
 pub use bus::{SignalReceiver, SignalSender, signal_channel};
+pub use dexscreener::{rugcheck_passes, spawn_dexscreener_poller, spawn_volume_spike_poller};
 pub use engine::SignalEngine;
+pub use external_store::{ExternalSignalStore, NewTokenSignal, WhaleActivitySignal};
+pub use live::spawn_live_data_pollers;
 pub use feature_store::{ComputedFeatures, FeatureStore};
 pub use processor::SignalProcessor;
 pub use processors::{MomentumProcessor, SmartMoneyProcessor, WhaleFlowProcessor};

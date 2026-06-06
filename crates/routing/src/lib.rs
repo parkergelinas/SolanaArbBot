@@ -4,13 +4,18 @@
 
 #![forbid(unsafe_code)]
 
+pub mod score_adjust;
+
 pub mod router {
     //! Route search and scoring responsibilities.
 
     use common::{Error, Result, Token};
     use graph::{Edge, MarketGraph};
     use pricing::PricingEngine;
+    use signals::ExternalSignalStore;
     use tracing::{debug, trace};
+
+    use crate::score_adjust::apply_score_multipliers;
 
     const DEFAULT_MAX_DEPTH: usize = 3;
     const DEFAULT_DEPTH_PENALTY_BPS: u64 = 50;
@@ -86,6 +91,7 @@ pub mod router {
         graph: MarketGraph,
         pricing: PricingEngine,
         config: RoutingConfig,
+        external: Option<ExternalSignalStore>,
     }
 
     impl Router {
@@ -106,7 +112,15 @@ pub mod router {
                 graph,
                 pricing,
                 config,
+                external: None,
             }
+        }
+
+        /// Attach external signal context for route score multipliers.
+        #[must_use]
+        pub fn with_external_signals(mut self, store: ExternalSignalStore) -> Self {
+            self.external = Some(store);
+            self
         }
 
         /// Finds arbitrage-cycle candidates up to the configured depth.
@@ -152,7 +166,15 @@ pub mod router {
                 if &edge.to == start {
                     if next_depth >= 2 {
                         path.push(edge.clone());
-                        let score = score_path(path, self.config.depth_penalty_bps());
+                        let mut score = score_path(path, self.config.depth_penalty_bps());
+                        if let Some(store) = &self.external {
+                            let mint = mint_str(&start);
+                            score = apply_score_multipliers(score, &mint, store);
+                        }
+                        if score <= 0.0 {
+                            path.pop();
+                            continue;
+                        }
                         trace!(depth = next_depth, score, "found arbitrage cycle candidate");
                         routes.push(Route {
                             path: path.clone(),
@@ -196,6 +218,10 @@ pub mod router {
         }
     }
 
+    fn mint_str(token: &Token) -> String {
+        bs58::encode(token.mint().as_bytes()).into_string()
+    }
+
     fn score_path(path: &[Edge], depth_penalty_bps: u64) -> f64 {
         if path.is_empty() {
             return 0.0;
@@ -217,6 +243,7 @@ pub mod router {
 }
 
 pub use router::{Route, Router, RoutingConfig};
+pub use score_adjust::apply_score_multipliers;
 
 #[cfg(test)]
 mod tests {
