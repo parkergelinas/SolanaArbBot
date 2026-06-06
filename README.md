@@ -1,6 +1,8 @@
 
 # SolanaArbBot
 
+[![CI](https://github.com/parkergelinas/SolanaArbBot/actions/workflows/ci.yml/badge.svg)](https://github.com/parkergelinas/SolanaArbBot/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 SolanaArbBot is a mono-repository for high-performance arbitrage detection and execution across Solana markets. The repo contains Rust engines, services, and auxiliary frontend and tooling used for development, backtesting, and monitoring.
 
 Core goals:

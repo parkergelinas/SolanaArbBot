@@ -28,9 +28,8 @@ zeroize = { version = "1", features = ["derive"] }
 # Encoding
 bs58 = "0.5"
 
-# Async HTTP JSON-RPC.  reqwest 0.11 (hyper 0.14 / h2 0.3) is used
-# intentionally; the newer 0.12 pulls in an edition2024-incompatible dep tree.
-reqwest = { version = "0.11", features = ["json"] }
+# Async HTTP JSON-RPC (rustls — avoids openssl in the wallet crate).
+reqwest = { workspace = true }
 
 tokio = { version = "1", features = ["full"] }
 

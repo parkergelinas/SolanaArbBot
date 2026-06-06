@@ -34,7 +34,7 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 dashmap = "6.2.1"
 anyhow     = { workspace = true }
 tokio-util        = { version = "0.7" }
-tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 futures-util      = "0.3"
 crossbeam-channel = "0.5"
 

@@ -1,0 +1,27 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "SolanaArbBot Overview",
+    "panels": [
+      {
+        "type": "timeseries",
+        "title": "Requests / sec",
+        "datasource": "Prometheus",
+        "targets": [
+          { "expr": "sum(rate(http_requests_total[1m]))", "refId": "A" }
+        ],
+        "gridPos": { "x": 0, "y": 0, "w": 12, "h": 6 }
+      },
+      {
+        "type": "timeseries",
+        "title": "Error Rate",
+        "datasource": "Prometheus",
+        "targets": [
+          { "expr": "sum(rate(http_requests_total{status=~\"5..\"}[1m]))", "refId": "A" }
+        ],
+        "gridPos": { "x": 12, "y": 0, "w": 12, "h": 6 }
+      }
+    ]
+  },
+  "overwrite": false
+}

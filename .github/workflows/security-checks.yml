@@ -1,72 +1,26 @@
 name: Security Checks
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
   workflow_dispatch: {}
   schedule:
-    - cron: '0 3 * * 0' # weekly
+    - cron: '0 3 * * 0'
 
 jobs:
-  cargo-audit:
-    name: cargo-audit
+  security:
+    name: weekly-security-scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-      - name: Install cargo-audit
-        run: |
-          cargo install cargo-audit --locked
-      - name: Install jq
-        run: |
-          sudo apt-get update && sudo apt-get install -y jq
-      - name: Run cargo audit (fail on issues)
-        id: cargo_audit
-        run: |
-          echo "Running cargo audit..."
-          cargo audit --json > audit.json || true
-          cat audit.json
-          # Fail the job if any vulnerabilities with advisory severity >= RUSTSEC-LOW are found
-          jq -e '.vulnerabilities.list | length == 0' audit.json || (echo "Vulnerabilities found" && exit 1)
-      - name: Upload cargo-audit report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cargo-audit-report
-          path: audit.json
 
-  cargo-deny:
-    name: cargo-deny
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-      - name: Install cargo-deny
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install security tools
         run: |
-          cargo install cargo-deny --locked
-      - name: Install jq
-        run: |
-          sudo apt-get update && sudo apt-get install -y jq
-      - name: Run cargo-deny checks (fail on policy violations)
-        id: cargo_deny
-        run: |
-          echo "Running cargo deny..."
-          cargo deny check -v --json > deny.json || true
-          cat deny.json
-          # Fail if there are any diagnostics reported
-          jq -e '.diagnostics | length == 0' deny.json || (echo "cargo-deny reported issues" && exit 1)
-      - name: Upload cargo-deny report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cargo-deny-report
-          path: deny.json
+          cargo install cargo-audit --locked --version 0.22.2
+          cargo install cargo-deny --locked --version 0.19.8
+
+      - name: cargo audit
+        run: cargo audit
+
+      - name: cargo deny
+        run: cargo deny check advisories licenses bans sources
