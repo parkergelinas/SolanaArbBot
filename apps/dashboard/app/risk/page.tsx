@@ -1,23 +1,27 @@
 'use client';
 
 import { useCallback } from 'react';
-import MetricCard from '@/components/MetricCard';
+
+import { CompactPageHeader, DsPanel, DsStatPill, PageShell } from '@/components/layout/PageShell';
+import DsBadge from '@/components/ui/DsBadge';
 import { useFetch } from '@/lib/hooks';
 import { api } from '@/lib/api';
 import { formatUsd } from '@/lib/types';
 
-function GaugeBar({ value, max, label, color }: { value: number; max: number; label: string; color: string }) {
-  const pct = Math.min((value / max) * 100, 100);
+function GaugeBar({ value, max, label }: { value: number; max: number; label: string }) {
+  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
+  const barColor = pct > 80 ? 'var(--red)' : pct > 60 ? 'var(--amber)' : 'var(--blue)';
+
   return (
     <div className="space-y-1.5">
-      <div className="flex justify-between text-xs text-slate-400">
+      <div className="flex justify-between text-[10px] text-ds-text-muted uppercase tracking-wider">
         <span>{label}</span>
-        <span className="mono">{pct.toFixed(1)}%</span>
+        <span className="font-mono tabular-nums">{pct.toFixed(1)}%</span>
       </div>
-      <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+      <div className="h-1.5 bg-ds-elevated rounded-full overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-500"
-          style={{ width: `${pct}%`, backgroundColor: pct > 80 ? '#ef4444' : pct > 60 ? '#eab308' : color }}
+          style={{ width: `${pct}%`, backgroundColor: barColor }}
         />
       </div>
     </div>
@@ -25,99 +29,87 @@ function GaugeBar({ value, max, label, color }: { value: number; max: number; la
 }
 
 export default function RiskPage() {
-  const { data: risk }      = useFetch(useCallback(() => api.risk(),      []), 5_000);
+  const { data: risk } = useFetch(useCallback(() => api.risk(), []), 5_000);
   const { data: portfolio } = useFetch(useCallback(() => api.portfolio(), []), 5_000);
 
   const riskStatus = risk?.risk_status ?? 'unknown';
-  const statusColor = riskStatus === 'healthy' ? 'text-green-400' : riskStatus === 'warning' ? 'text-yellow-400' : 'text-red-400';
+  const statusTone =
+    riskStatus === 'healthy' ? 'green' : riskStatus === 'warning' ? 'amber' : 'red';
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-100">Risk Panel</h1>
-          <p className="text-slate-400 text-sm mt-0.5">Current exposure vs configured limits</p>
-        </div>
-        <div className={`px-4 py-2 rounded-lg border text-sm font-medium capitalize ${
-          riskStatus === 'healthy' ? 'bg-green-500/10 border-green-500/30 text-green-400' :
-          riskStatus === 'warning' ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400' :
-          'bg-red-500/10 border-red-500/30 text-red-400'
-        }`}>
-          {riskStatus}
-        </div>
-      </div>
+    <PageShell desk>
+      <CompactPageHeader
+        title="Risk"
+        subtitle="Current exposure vs configured limits"
+        actions={<DsBadge tone={statusTone}>{riskStatus}</DsBadge>}
+      />
 
-      {/* Limits grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <MetricCard
-          label="Capital"
-          value={risk ? formatUsd(risk.capital_usd) : '–'}
-        />
-        <MetricCard
-          label="Max Drawdown"
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
+        <DsStatPill label="Capital" value={risk ? formatUsd(risk.capital_usd) : '–'} />
+        <DsStatPill
+          label="Max drawdown"
           value={risk ? `${risk.max_drawdown_pct.toFixed(1)}%` : '–'}
-          accent="yellow"
+          accent="var(--amber)"
         />
-        <MetricCard
-          label="Max Position"
+        <DsStatPill
+          label="Max position"
           value={risk ? `${risk.max_position_pct.toFixed(1)}%` : '–'}
-          accent="blue"
+          accent="var(--blue)"
         />
-        <MetricCard
-          label="Daily Loss"
+        <DsStatPill
+          label="Daily loss"
           value={risk ? formatUsd(risk.daily_loss_usd) : '–'}
-          accent={risk && risk.daily_loss_usd > 0 ? 'red' : 'default'}
+          accent={risk && risk.daily_loss_usd > 0 ? 'var(--red)' : undefined}
         />
       </div>
 
-      {/* Gauge bars */}
-      <div className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-5">
-        <h2 className="text-sm font-medium text-slate-300">Exposure Gauges</h2>
-        {risk ? (
-          <>
-            <GaugeBar
-              label="Current Exposure"
-              value={risk.current_exposure_pct}
-              max={100}
-              color="#3b82f6"
-            />
-            <GaugeBar
-              label="Drawdown Used"
-              value={risk.daily_loss_usd}
-              max={risk.capital_usd * (risk.max_drawdown_pct / 100)}
-              color="#22c55e"
-            />
-          </>
-        ) : (
-          <p className="text-slate-500 text-sm text-center py-4">No data — is the control API running?</p>
-        )}
-      </div>
-
-      {/* Portfolio summary */}
-      <div className="bg-slate-800 border border-slate-700 rounded-xl p-5">
-        <h2 className="text-sm font-medium text-slate-300 mb-4">Portfolio Summary</h2>
-        <div className="grid grid-cols-3 gap-4 text-center">
-          {[
-            { label: 'Open Positions', value: String(portfolio?.open_positions ?? '–') },
-            { label: 'Realised PnL',   value: portfolio ? formatUsd(portfolio.realised_pnl) : '–' },
-            { label: 'Win Rate',        value: portfolio ? `${(portfolio.win_rate * 100).toFixed(1)}%` : '–' },
-          ].map(({ label, value }) => (
-            <div key={label} className="bg-slate-900/50 rounded-lg p-3">
-              <p className="text-slate-500 text-xs">{label}</p>
-              <p className="text-slate-200 font-medium mono text-sm mt-1">{value}</p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 flex-1 min-h-0">
+        <DsPanel compact title="Exposure gauges">
+          {risk ? (
+            <div className="space-y-4">
+              <GaugeBar label="Current exposure" value={risk.current_exposure_pct} max={100} />
+              <GaugeBar
+                label="Drawdown used"
+                value={risk.daily_loss_usd}
+                max={risk.capital_usd * (risk.max_drawdown_pct / 100)}
+              />
             </div>
-          ))}
-        </div>
+          ) : (
+            <p className="text-ds-text-muted text-[11px] text-center py-6">
+              No data — is the control API running?
+            </p>
+          )}
+        </DsPanel>
+
+        <DsPanel compact title="Portfolio summary">
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: 'Open positions', value: String(portfolio?.open_positions ?? '–') },
+              { label: 'Realised PnL', value: portfolio ? formatUsd(portfolio.realised_pnl) : '–' },
+              { label: 'Win rate', value: portfolio ? `${(portfolio.win_rate * 100).toFixed(1)}%` : '–' },
+            ].map(({ label, value }) => (
+              <div
+                key={label}
+                className="bg-ds-elevated/40 border border-ds-border rounded-terminal px-2 py-2 text-center"
+              >
+                <p className="text-ds-text-muted text-[9px] uppercase tracking-wider">{label}</p>
+                <p className="text-ds-text-primary font-medium font-mono text-[12px] mt-1 tabular-nums">
+                  {value}
+                </p>
+              </div>
+            ))}
+          </div>
+        </DsPanel>
       </div>
 
-      {/* Safety rules notice */}
-      <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 text-xs text-slate-500 space-y-1">
-        <p className="text-slate-400 font-medium mb-2">Safety Rules (enforced server-side)</p>
-        <p>✓ Live trading disabled — paper mode only</p>
-        <p>✓ All config changes validated before application</p>
-        <p>✓ No direct execution access from the UI</p>
-        <p>✓ Portfolio reset is restricted to paper mode</p>
-      </div>
-    </div>
+      <DsPanel compact title="Safety rules">
+        <ul className="text-[11px] text-ds-text-muted space-y-1 font-mono">
+          <li className="text-ds-text-secondary">Live trading disabled — paper mode only</li>
+          <li>All config changes validated before application</li>
+          <li>No direct execution access from the UI</li>
+          <li>Portfolio reset restricted to paper mode</li>
+        </ul>
+      </DsPanel>
+    </PageShell>
   );
 }

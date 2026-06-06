@@ -1,33 +1,46 @@
 /**
  * Client-side market simulator — seeds the terminal when stream-api is offline.
- * TradingView-style: always show data; live stream overrides when connected.
+ * Prices anchor to DexScreener bootstrap, not hardcoded refPrice.
  */
 
-import type { Candle, CandleInterval, Dex, Signal, SwapEvent, WSMessage } from '@/lib/stream/types';
+import { getAnchorPrice, setAnchorPrices as setCacheAnchors } from '@/lib/pricing/anchorCache';
+import type { Dex, Signal, SwapEvent, WSMessage } from '@/lib/stream/types';
 import { SCHEMA_VERSION } from '@/lib/stream/types';
 
-import { SOL_MINT, USDC_MINT, WATCHLIST, type WatchToken } from './tokens';
+import { SOL_MINT, USDC_MINT, USDT_MINT, WATCHLIST, type WatchToken } from './tokens';
 
 const DEXES: Dex[] = ['raydium', 'orca', 'jupiter'];
-const INTERVALS: CandleInterval[] = ['1s', '5s', '1m'];
-const INTERVAL_MS: Record<CandleInterval, number> = { '1s': 1000, '5s': 5000, '1m': 60_000 };
 
-/** Random walk price per mint (demo state). */
 const livePrices = new Map<string, number>();
 let seq = 0;
 let slot = 280_412_000;
 
+export function setDemoPriceAnchors(map: Record<string, number>): void {
+  setCacheAnchors(map);
+  for (const [mint, price] of Object.entries(map)) {
+    if (price > 0) livePrices.set(mint, price);
+  }
+}
+
+function anchorFor(mint: string, token: WatchToken): number {
+  const cached = getAnchorPrice(mint);
+  if (cached && cached > 0) return cached;
+  if (token.refPrice > 0) return token.refPrice;
+  if (mint === USDC_MINT || mint === USDT_MINT) return 1;
+  return 1;
+}
+
 function initPrices() {
   for (const t of WATCHLIST) {
-    if (!livePrices.has(t.mint)) livePrices.set(t.mint, t.refPrice);
+    if (!livePrices.has(t.mint)) livePrices.set(t.mint, anchorFor(t.mint, t));
   }
 }
 
 function bumpPrice(mint: string): number {
   const meta = WATCHLIST.find((t) => t.mint === mint);
-  const ref = meta?.refPrice ?? 1;
+  const ref = meta ? anchorFor(mint, meta) : 1;
   const prev = livePrices.get(mint) ?? ref;
-  const vol = mint === SOL_MINT ? 0.0018 : mint === USDC_MINT ? 0.0002 : 0.004;
+  const vol = mint === SOL_MINT ? 0.0018 : 0.004;
   const next = Math.max(ref * 0.85, Math.min(ref * 1.15, prev * (1 + (Math.random() - 0.48) * vol)));
   livePrices.set(mint, next);
   return next;
@@ -37,57 +50,16 @@ function rawAmount(token: WatchToken, human: number): string {
   return Math.round(human * 10 ** token.decimals).toString();
 }
 
-function buildCandle(
-  mint: string,
-  interval: CandleInterval,
-  open: number,
-  close: number,
-  volume: number,
-  tsOpen: number,
-): Candle {
-  const spread = Math.abs(close - open) * 0.6 + open * 0.0008;
-  return {
-    v: SCHEMA_VERSION,
-    mint,
-    interval,
-    open,
-    high: Math.max(open, close) + spread * Math.random(),
-    low: Math.min(open, close) - spread * Math.random(),
-    close,
-    volume,
-    ts_open_ms: tsOpen,
-  };
-}
-
-/** Seed ~90 candles per interval for each watchlist token. */
-export function seedHistoricalCandles(): WSMessage[] {
+/** Seed watchlist token prices from Dex anchors (±2% jitter). */
+export function seedDemoPrices(): WSMessage[] {
   initPrices();
   const now = Date.now();
-  const out: WSMessage[] = [];
-
-  for (const token of WATCHLIST) {
-    let price = token.refPrice * (0.97 + Math.random() * 0.06);
-
-    for (const interval of INTERVALS) {
-      const step = INTERVAL_MS[interval];
-      const count = interval === '1m' ? 60 : 90;
-      const start = now - count * step;
-
-      for (let i = 0; i < count; i++) {
-        const open = price;
-        const close = open * (1 + (Math.random() - 0.5) * (interval === '1m' ? 0.012 : 0.004));
-        price = close;
-        livePrices.set(token.mint, close);
-        const vol = (Math.random() * 800 + 50) * (token.mint === SOL_MINT ? 12 : 1);
-        out.push({
-          type: 'candle',
-          payload: buildCandle(token.mint, interval, open, close, vol, start + i * step),
-        });
-      }
-    }
-
-    out.push({
-      type: 'token_price',
+  return WATCHLIST.map((token) => {
+    const anchor = anchorFor(token.mint, token);
+    const price = anchor * (0.98 + Math.random() * 0.04);
+    livePrices.set(token.mint, price);
+    return {
+      type: 'token_price' as const,
       payload: {
         v: SCHEMA_VERSION,
         mint: token.mint,
@@ -95,10 +67,8 @@ export function seedHistoricalCandles(): WSMessage[] {
         slot,
         timestamp_ms: now,
       },
-    });
-  }
-
-  return out;
+    };
+  });
 }
 
 function randomSwap(): WSMessage[] {
@@ -151,29 +121,6 @@ function randomSwap(): WSMessage[] {
     },
   ];
 
-  const notionalUsd = humanIn * priceIn;
-  const volOut = Math.max(10, notionalUsd * (0.15 + Math.random() * 0.25));
-
-  for (const interval of INTERVALS) {
-    const step = INTERVAL_MS[interval];
-    const tsOpen = Math.floor(ts / step) * step;
-    const prev = livePrices.get(tokenOut.mint) ?? priceOut;
-    const open = prev * (1 + (Math.random() - 0.5) * 0.001);
-    msgs.push({
-      type: 'candle',
-      payload: buildCandle(tokenOut.mint, interval, open, priceOut, volOut, tsOpen),
-    });
-    if (tokenIn.mint === SOL_MINT || tokenOut.mint === SOL_MINT) {
-      const solPx = livePrices.get(SOL_MINT) ?? 145;
-      const solOpen = solPx * (1 + (Math.random() - 0.5) * 0.0008);
-      const solVol = tokenIn.mint === SOL_MINT ? humanIn * priceIn : humanOut * priceOut;
-      msgs.push({
-        type: 'candle',
-        payload: buildCandle(SOL_MINT, interval, solOpen, solPx, Math.max(50, solVol), tsOpen),
-      });
-    }
-  }
-
   if (seq % 7 === 0) {
     const kinds: Signal['kind'][] = ['momentum', 'whale_flow', 'smart_money', 'imbalance'];
     msgs.push({
@@ -197,19 +144,18 @@ function randomSwap(): WSMessage[] {
 
 export type DemoEngineHandle = { stop: () => void };
 
-/** Run demo ticks until `stop()`; intervalMs default 120. */
 export function startDemoEngine(
   onBatch: (messages: WSMessage[], meta: { seq: number; ts_ms: number }) => void,
   options?: { intervalMs?: number; seed?: boolean },
 ): DemoEngineHandle {
-  const intervalMs = options?.intervalMs ?? 120;
+  const intervalMs = options?.intervalMs ?? 150;
   let batchSeq = 0;
   let timer: ReturnType<typeof setInterval> | null = null;
 
   initPrices();
 
   if (options?.seed !== false) {
-    const seed = seedHistoricalCandles();
+    const seed = seedDemoPrices();
     batchSeq++;
     onBatch(seed, { seq: batchSeq, ts_ms: Date.now() });
   }

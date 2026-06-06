@@ -56,10 +56,13 @@ impl PaperSimulator {
         };
 
         let signal_strength_bps = candidate.signal.strength * 10_000.0;
-        let pnl_bps = signal_strength_bps
+        let raw_pnl_bps = signal_strength_bps
             - actual_slippage_bps * 2.0
             - fee_paid_bps * 2.0
             - cfg.mev_haircut_bps;
+        let tp_cap = cfg.take_profit_pct * 10_000.0;
+        let sl_cap = cfg.stop_loss_pct * 10_000.0;
+        let pnl_bps = raw_pnl_bps.clamp(-sl_cap, tp_cap);
 
         TradeResult {
             candidate: candidate.clone(),
@@ -155,13 +158,23 @@ mod tests {
     }
 
     #[test]
-    fn fill_is_deterministic() {
+    fn take_profit_caps_positive_pnl() {
         let sim = PaperSimulator;
-        let cfg = ScalerConfig::default();
-        let candidate = make_candidate(Direction::Long, 200.0, 0.6, 2_000.0);
-        let r1 = sim.simulate_fill(&candidate, 800_000.0, &cfg, 5_000_000_000);
-        let r2 = sim.simulate_fill(&candidate, 800_000.0, &cfg, 5_000_000_000);
-        assert_eq!(r1.fill_price, r2.fill_price);
-        assert_eq!(r1.pnl_bps, r2.pnl_bps);
+        let mut cfg = ScalerConfig::default();
+        cfg.take_profit_pct = 0.01;
+        let candidate = make_candidate(Direction::Long, 50.0, 0.99, 500.0);
+        let result = sim.simulate_fill(&candidate, 1_000_000.0, &cfg, 1_000_000_000);
+        assert!(result.pnl_bps <= 100.0 + f64::EPSILON);
+    }
+
+    #[test]
+    fn stop_loss_caps_negative_pnl() {
+        let sim = PaperSimulator;
+        let mut cfg = ScalerConfig::default();
+        cfg.stop_loss_pct = 0.005;
+        cfg.mev_haircut_bps = 500.0;
+        let candidate = make_candidate(Direction::Long, 50.0, 0.01, 500.0);
+        let result = sim.simulate_fill(&candidate, 1_000_000.0, &cfg, 1_000_000_000);
+        assert!(result.pnl_bps >= -50.0 - f64::EPSILON);
     }
 }

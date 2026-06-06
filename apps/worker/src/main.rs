@@ -23,7 +23,7 @@ use config::{ConfigHandle, SystemConfig};
 use events::{EventBus, EventSubscriber, MarketEvent, PoolUpdate, SwapEvent};
 use common::Pubkey;
 use scalper::ScalpEngine;
-use signals::{ComputedFeatures, SignalEngine, SignalInput, SignalReceiver};
+use signals::{ComputedFeatures, SignalEngine, SignalInput, SignalReceiver, LiveDataHandles};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
@@ -191,6 +191,129 @@ async fn main() {
     let event_bus = EventBus::new();
     info!(subsystem = "event_bus", "initialized");
 
+    let paper_mode = args.mode == RunMode::Paper;
+
+    // ── 6a. Master strategy dispatcher (shared bus + global risk gate) ─────────
+    let dispatcher = engine::StrategyDispatcher::new(Arc::clone(&config));
+    let pub_handles = dispatcher.start(paper_mode, shutdown.clone());
+    let strategy_copy_tx = pub_handles.copy_tx.clone();
+    let mut task_handles: Vec<(&'static str, tokio::task::JoinHandle<()>)> =
+        pub_handles.tasks;
+    info!(
+        subsystem = "strategy_dispatcher",
+        paper_mode,
+        arb = paper_mode || config.strategy.arb,
+        quote_arb = (paper_mode || config.strategy.quote_arb) && config.quote_arb.enabled,
+        sniper = config.strategy.sniper && config.sniper.enabled,
+        copy = config.strategy.whale_copy && config.copy_trading.enabled,
+        liquidation = config.strategy.liquidation && config.liquidation.enabled,
+        momentum = config.strategy.momentum && config.momentum.enabled,
+        "strategy dispatcher started"
+    );
+
+    // ── 6b. Whale tracker + copy trading + liquidation + external pollers ───
+    let live_pollers_enabled = config.whale_tracker.enabled
+        || config.copy_trading.enabled
+        || (config.liquidation.enabled && !config.strategy.liquidation)
+        || (config.momentum.enabled && !config.strategy.momentum)
+        || (config.quote_arb.enabled && !config.strategy.quote_arb);
+    let _live_data: Option<LiveDataHandles> = if live_pollers_enabled {
+        let data_sources = Arc::new(config.data_sources.clone());
+        let whale_cfg = if config.whale_tracker.enabled {
+            Some(Arc::new(config.whale_tracker.clone()))
+        } else {
+            None
+        };
+        let copy_cfg = if config.copy_trading.enabled {
+            Some(Arc::new(config.copy_trading.clone()))
+        } else {
+            None
+        };
+        let liquidation_cfg = if config.liquidation.enabled && !config.strategy.liquidation {
+            Some(Arc::new(config.liquidation.clone()))
+        } else {
+            None
+        };
+        let momentum_cfg = if config.momentum.enabled && !config.strategy.momentum {
+            Some(Arc::new(config.momentum.clone()))
+        } else {
+            None
+        };
+        let quote_arb_cfg = if config.quote_arb.enabled && !config.strategy.quote_arb {
+            Some(Arc::new(config.quote_arb.clone()))
+        } else {
+            None
+        };
+        let features = Arc::new(config.features.clone());
+        let mints = Arc::new(vec![
+            signals::whale_watcher::SOL_MINT.to_owned(),
+            signals::whale_watcher::USDC_MINT.to_owned(),
+        ]);
+        info!(
+            subsystem = "live_pollers",
+            whale_tracker = config.whale_tracker.enabled,
+            copy_trading = config.copy_trading.enabled,
+            liquidation = config.liquidation.enabled,
+            momentum = config.momentum.enabled,
+            dry_run = config.features.dry_run,
+            min_trade_usd = config.whale_tracker.min_trade_usd,
+            min_whale_copy_usd = config.copy_trading.min_whale_trade_usd,
+            "starting live data pollers"
+        );
+        Some(
+            signals::spawn_live_data_pollers(
+                event_bus.clone(),
+                data_sources,
+                mints,
+                whale_cfg,
+                copy_cfg,
+                liquidation_cfg,
+                momentum_cfg,
+                quote_arb_cfg,
+                Some(features),
+                strategy_copy_tx,
+            )
+            .await,
+        )
+    } else {
+        info!(subsystem = "live_pollers", "all live pollers disabled in config");
+        None
+    };
+
+    // ── 6c. New-token sniper executor (gated by strategy.sniper) ──────────────
+    if config.strategy.sniper && config.sniper.enabled {
+        let data_sources = Arc::new(config.data_sources.clone());
+        let features = Arc::new(config.features.clone());
+        let store = if let Some(ref live) = _live_data {
+            live.external.clone()
+        } else {
+            let store = signals::ExternalSignalStore::new();
+            signals::load_jupiter_verified(&store).await;
+            store
+        };
+        let rpc_url = config
+            .data_sources
+            .helius_rpc_url()
+            .or_else(|| config.rpc.endpoints.first().cloned())
+            .unwrap_or_else(|| "https://api.mainnet-beta.solana.com".to_owned());
+        info!(
+            subsystem = "sniper",
+            dry_run = config.features.dry_run,
+            base_position_sol = config.sniper.base_position_sol,
+            min_liquidity_sol = config.sniper.min_liquidity_sol,
+            "starting new-token sniper"
+        );
+        signals::spawn_sniper_strategy(
+            Arc::new(config.sniper.clone()),
+            features,
+            data_sources,
+            store,
+            rpc_url,
+        );
+    } else {
+        info!(subsystem = "sniper", "disabled in config");
+    }
+
     // Subscribe *before* spawning producers so no events are lost.
     let signal_subscriber = event_bus.subscribe();
 
@@ -213,8 +336,6 @@ async fn main() {
     let signals_counter  = Arc::new(AtomicU64::new(0));
     let trades_evaluated = Arc::new(AtomicU64::new(0));
     let trades_rejected  = Arc::new(AtomicU64::new(0));
-
-    let mut task_handles: Vec<(&'static str, tokio::task::JoinHandle<()>)> = Vec::new();
 
     // ── 9. Spawn monitoring task ──────────────────────────────────────────────
     task_handles.push(("monitor", tokio::spawn(run_monitoring(

@@ -11,7 +11,7 @@ Core goals:
 - Provide tools for backtesting, monitoring, and analysis
 
 Repository layout (top-level)
-- `apps/` — runnable services and apps (backtester, control-api, dashboard, hotpath, stream-api, worker)
+- `apps/` — runnable services and apps (backtester, **bot**, control-api, dashboard, hotpath, stream-api, worker)
 - `backend/` — larger backend engines and services (alpha-engine, arb-engine, execution-engine, etc.)
 - `crates/` — reusable Rust crates used across the workspace (accounts, common, pricing, routing, rpc_client, etc.)
 - `frontend/` & `dashboard/` — Next.js frontend apps and UI components
@@ -50,6 +50,15 @@ cd frontend
 pnpm install
 pnpm build
 pnpm test
+```
+
+- TypeScript Jupiter bot (`apps/bot/` — uses `api.jup.ag`, not deprecated `lite-api.jup.ag`):
+
+```bash
+cd apps/bot
+npm install
+npm test
+BOT_PAPER_MODE=1 BOT_MAX_ITERATIONS=3 npm run dev
 ```
 
 Configuration and running

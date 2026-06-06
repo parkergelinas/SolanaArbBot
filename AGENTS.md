@@ -60,3 +60,31 @@ Copy `config.example.toml` → `config.toml`. Capital is defined once in `[portf
 2. Run `cargo test -p <affected-crate>` before finishing.
 3. Do not log key material; wallet `Debug` shows pubkey only.
 4. Do not enable live trading in example config.
+
+## Project stage
+
+| Layer | Status |
+|-------|--------|
+| Worker | **Paper only** — `--mode live` is always rejected at startup |
+| Execution | **dry_run default** — `PAPER_MODE=true`, `EXECUTION_LIVE` unset |
+| Dashboard | Terminal + overview wired to stream-api, DexScreener, signal hub |
+| Live data | Three tiers: **mock/sim** (offline demo) → **data-layer + Jupiter** (degraded) → **full stack** (stream-api + control-api + intel) |
+
+**Live data maturity**
+
+- **Mock / sim**: `DemoBootstrap` fills watchlist, swaps, candles when stream-api is down.
+- **Data-layer + Jupiter**: Real quotes via data-layer RPC; stream-api may run in degraded mode.
+- **Full stack**: stream-api WS, control-api `/api/live-signals`, DexScreener polls, intelligence-api whales.
+
+**Not implemented yet**: pump.fun ingestion, Yellowstone Geyser, on-chain live trading submission.
+
+## Master wiring validation
+
+1. `cargo build --workspace` — all crates compile with strategy dispatcher.
+2. `cargo test --workspace` — unit tests pass (engine dispatcher risk gate, liquidation math).
+3. `cargo run --bin worker -- --mode paper` — arb publisher always on; sniper/copy/liquidation/momentum gated by `[strategy]` + section `enabled`.
+4. Touch `/tmp/solana_arb_halt` — worker and dispatcher stop accepting new signals.
+5. Enable `features.enable_metrics` + `monitoring.enable_prometheus` — scrape `solana_bot_*` metrics.
+6. Copy-trading: set `strategy.whale_copy=true`, `copy_trading.enabled=true`, provide Helius key — whale watcher feeds dispatcher bus.
+7. Liquidation: `strategy.liquidation=true`, `liquidation.enabled=true` — Kamino scan stub publishes CRITICAL signals.
+8. Config: all five sections in `config.example.toml` — `[arbitrage]`, `[sniper]`, `[copy_trading]`, `[liquidation]`, `[momentum]`.

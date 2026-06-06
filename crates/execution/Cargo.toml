@@ -10,4 +10,8 @@ config = { path = "../config" }
 graph = { version = "0.1.0", path = "../graph" }
 routing = { path = "../routing" }
 crossbeam-channel = "0.5"
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { version = "1.52.3", features = ["rt", "rt-multi-thread", "macros"] }
 tracing = "0.1.44"

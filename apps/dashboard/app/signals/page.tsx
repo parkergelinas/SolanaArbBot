@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from 'react';
 import TxTape from '@/components/intelligence/TxTape';
 import WalletRail from '@/components/intelligence/WalletRail';
 import WhaleFeed from '@/components/intelligence/WhaleFeed';
+import WhaleSourcesPanel from '@/components/intelligence/WhaleSourcesPanel';
 import SignalDetailPanel from '@/components/signals/SignalDetailPanel';
 import SignalFeedTable from '@/components/signals/SignalFeedTable';
 import SignalFilters from '@/components/signals/SignalFilters';
@@ -14,6 +15,7 @@ import { api } from '@/lib/api';
 import { useFetch, useStreamSignals } from '@/lib/hooks';
 import { intelligenceToSignals } from '@/lib/intelligence/bridge';
 import { useIntelConnected, useSmartMoney, useWhales } from '@/lib/intelligence/hooks';
+import { streamSignalsToEvents } from '@/lib/intelligence/streamBridge';
 import {
   filterSignals,
   mergeSignals,
@@ -23,10 +25,37 @@ import {
   type SignalSortKey,
 } from '@/lib/signals';
 import type { SignalEvent } from '@/lib/types';
+import { useMarketStore } from '@/stores/marketStore';
+import { useStreamStore } from '@/stores/streamStore';
+
+function FeedPill({
+  port,
+  live,
+  label,
+}: {
+  port: string;
+  live: boolean;
+  label?: string;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-terminal border text-[10px] font-mono uppercase ${
+        live
+          ? 'border-ds-green/30 text-ds-green bg-ds-green/5'
+          : 'border-ds-border text-ds-text-muted bg-ds-elevated/30'
+      }`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${live ? 'bg-ds-green live-pulse' : 'bg-ds-text-muted'}`} />
+      {port} {label ?? (live ? 'live' : 'off')}
+    </span>
+  );
+}
 
 export default function SignalsPage() {
   const { connected } = useWsContext();
   const intelConnected = useIntelConnected();
+  const streamConnected = useStreamStore((s) => s.connected);
+  const marketSignals = useMarketStore((s) => s.signals);
   const whales = useWhales();
   const smart = useSmartMoney();
 
@@ -34,7 +63,7 @@ export default function SignalsPage() {
   const [dirFilter, setDirFilter] = useState<SignalFilterDirection>('All');
   const [sortKey, setSortKey] = useState<SignalSortKey>('time');
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [showIntel, setShowIntel] = useState(false);
+  const [showIntel, setShowIntel] = useState(true);
 
   const fetcher = useCallback(async () => {
     const live = await api.liveSignals({ limit: 200 });
@@ -49,9 +78,14 @@ export default function SignalsPage() {
     [whales, smart, showIntel],
   );
 
+  const streamApiSignals = useMemo(
+    () => (streamConnected ? streamSignalsToEvents(marketSignals) : []),
+    [marketSignals, streamConnected],
+  );
+
   const organized = useMemo(
-    () => mergeSignals(liveSignals, historical, intelSignals),
-    [liveSignals, historical, intelSignals],
+    () => mergeSignals(liveSignals, historical, [...intelSignals, ...streamApiSignals]),
+    [liveSignals, historical, intelSignals, streamApiSignals],
   );
 
   const filtered = useMemo(() => {
@@ -64,82 +98,110 @@ export default function SignalsPage() {
     [filtered, selectedId],
   );
 
+  const anyFeedLive = connected || intelConnected || streamConnected;
+
   return (
-    <div className="flex flex-col gap-5 max-w-[90rem] pb-8">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-100 tracking-tight">Signals</h1>
-          <p className="text-platform-muted text-sm mt-0.5">
-            Engine signals + live whale intelligence from chain
+    <div className="flex flex-col gap-2 min-h-[calc(100dvh-5.5rem)] max-w-[100rem] mx-auto w-full">
+      {/* Header */}
+      <header className="flex flex-wrap items-center gap-x-4 gap-y-2 shrink-0 pb-2 border-b border-ds-border">
+        <div className="flex items-baseline gap-3 min-w-0">
+          <h1 className="text-[15px] font-semibold tracking-[0.06em] text-ds-text-primary uppercase">
+            Signals
+          </h1>
+          <p className="hidden sm:inline text-[11px] text-ds-text-muted truncate">
+            Engine · stream-api · intelligence unified feed
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+
+        <div className="flex items-center gap-2 flex-wrap ml-auto">
           <button
             type="button"
             onClick={() => setShowIntel((v) => !v)}
-            className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+            className={`text-[10px] px-2 py-0.5 rounded-terminal border font-medium uppercase tracking-wider transition-colors ${
               showIntel
-                ? 'border-platform-accent/40 bg-platform-accent/10 text-platform-accent'
-                : 'border-platform-border text-platform-muted hover:text-slate-200'
+                ? 'border-ds-blue/40 bg-ds-blue/10 text-ds-blue'
+                : 'border-ds-border text-ds-text-muted hover:text-ds-text-primary hover:bg-ds-elevated/50'
             }`}
           >
-            Whale feed {showIntel ? 'on' : 'off'}
+            Intel {showIntel ? 'on' : 'off'}
           </button>
-          <span
-            className={`text-[10px] px-2 py-1 rounded-md border ${
-              intelConnected
-                ? 'border-platform-accent/30 text-platform-accent'
-                : 'border-red-500/30 text-red-400'
-            }`}
-          >
-            Intel {intelConnected ? 'live' : 'offline'}
-          </span>
+          <FeedPill port=":3001" live={connected} label={connected ? 'ctrl' : 'off'} />
+          <FeedPill port=":8080" live={streamConnected} />
+          <FeedPill port=":8090" live={intelConnected} />
         </div>
       </header>
 
-      {error && (
-        <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 max-w-xl">
-          Historical API: {error}. Live feeds may still work.
-        </p>
+      {/* Alerts */}
+      {(error || !intelConnected) && (
+        <div className="flex flex-col gap-1.5 shrink-0">
+          {error && (
+            <p className="text-[11px] text-ds-amber bg-ds-amber/8 border border-ds-amber/20 rounded-terminal px-3 py-1.5">
+              Historical API: {error}. Live feeds may still work.
+            </p>
+          )}
+          {!intelConnected && (
+            <p className="text-[11px] text-ds-text-secondary bg-ds-elevated/40 border border-ds-border rounded-terminal px-3 py-1.5">
+              Intelligence offline —{' '}
+              <code className="text-ds-blue font-mono text-[10px]">cargo run -p intelligence-api</code>{' '}
+              on :8090 for whale alerts.
+            </p>
+          )}
+        </div>
       )}
 
-      <SignalStatsBar stats={organized.stats} connected={connected || intelConnected} />
+      {/* Stats strip */}
+      <SignalStatsBar stats={organized.stats} connected={anyFeedLive} />
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_17rem] gap-4">
-        <div className="flex flex-col gap-4 min-w-0">
-          <SignalFilters
-            type={typeFilter}
-            direction={dirFilter}
-            sort={sortKey}
-            count={filtered.length}
-            onType={setTypeFilter}
-            onDirection={setDirFilter}
-            onSort={setSortKey}
+      {/* Toolbar: filters + whale sources */}
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_minmax(16rem,22rem)] gap-2 shrink-0 items-start">
+        <SignalFilters
+          type={typeFilter}
+          direction={dirFilter}
+          sort={sortKey}
+          count={filtered.length}
+          onType={setTypeFilter}
+          onDirection={setDirFilter}
+          onSort={setSortKey}
+        />
+        <WhaleSourcesPanel compact />
+      </div>
+
+      {/* Main desk: table | detail | right rail */}
+      <div className="flex-1 min-h-[420px] grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_17rem] xl:grid-cols-[minmax(0,1fr)_17rem_14.5rem] gap-0 border border-ds-border rounded-terminal overflow-hidden bg-ds-base">
+        <div className="flex flex-col min-h-0 min-w-0 lg:col-span-1 xl:col-span-1 border-b lg:border-b-0 lg:border-r border-ds-border">
+          <SignalFeedTable
+            signals={filtered}
+            liveIds={organized.liveIds}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            loading={loading}
           />
-
-          <div className="flex flex-col lg:flex-row gap-4 items-start">
-            <div className="flex-1 min-w-0 w-full">
-              <SignalFeedTable
-                signals={filtered}
-                liveIds={organized.liveIds}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-                loading={loading}
-              />
-            </div>
-            <SignalDetailPanel
-              signal={selected}
-              isLive={selected ? organized.liveIds.has(selected.signal_id) : false}
-            />
-          </div>
         </div>
 
-        <aside className="flex flex-col gap-3 xl:sticky xl:top-0 xl:self-start">
-          <WhaleFeed compact />
-          <WalletRail />
+        <div className="flex flex-col min-h-0 min-w-0 border-b xl:border-b-0 xl:border-r border-ds-border max-h-[320px] lg:max-h-none">
+          <SignalDetailPanel
+            signal={selected}
+            isLive={selected ? organized.liveIds.has(selected.signal_id) : false}
+          />
+        </div>
+
+        <aside className="hidden xl:flex flex-col min-h-0 divide-y divide-ds-border">
+          <div className="flex-1 min-h-[12rem]">
+            <WhaleFeed compact fillHeight />
+          </div>
+          <div className="flex-1 min-h-[10rem]">
+            <WalletRail fillHeight />
+          </div>
         </aside>
       </div>
 
+      {/* Mobile / tablet whale rail */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 xl:hidden shrink-0">
+        <WhaleFeed compact />
+        <WalletRail />
+      </div>
+
+      {/* Swap tape */}
       <TxTape />
     </div>
   );

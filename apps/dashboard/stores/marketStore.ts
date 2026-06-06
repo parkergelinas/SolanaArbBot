@@ -15,9 +15,12 @@ import type {
   WSMessage,
 } from '@/lib/stream/types';
 
-const MAX_SWAPS = 500;
+export const MAX_SWAPS = 500;
 const MAX_SIGNALS = 80;
 const MAX_CANDLE_HISTORY = 120;
+
+/** Chart is DexScreener embed — skip candle history to save memory. */
+const STORE_CANDLES = false;
 
 export function candleKey(mint: string, interval: CandleInterval) {
   return `${mint}:${interval}`;
@@ -51,7 +54,7 @@ export interface ArbOpportunity {
   timestamp_ms: number;
 }
 
-interface MarketState {
+export interface MarketState {
   prices: Record<string, TokenPrice>;
   tokens: Record<string, TokenRow>;
   swaps: SwapEvent[];
@@ -180,15 +183,20 @@ export const useMarketStore = create<MarketState>((set) => ({
       let signals = state.signals;
       const dexPrices = { ...state.dexPrices };
       let arbOpportunities = state.arbOpportunities;
+      const swapSigs = new Set(swaps.map((x) => x.signature));
 
       for (const msg of messages) {
         switch (msg.type) {
           case 'swap': {
             const s = msg.payload;
-            swaps =
-              swaps.length >= MAX_SWAPS
-                ? [...swaps.slice(1), s]
-                : [...swaps, s];
+            if (swapSigs.has(s.signature)) break;
+            swapSigs.add(s.signature);
+            if (swaps.length >= MAX_SWAPS) {
+              swapSigs.delete(swaps[0].signature);
+              swaps = [...swaps.slice(1), s];
+            } else {
+              swaps = [...swaps, s];
+            }
 
             const amountIn = amountToHuman(s.token_in, s.amount_in);
             const amountOut = amountToHuman(s.token_out, s.amount_out);
@@ -266,15 +274,16 @@ export const useMarketStore = create<MarketState>((set) => ({
             };
             break;
           }
-          case 'candle': {
-            const raw = msg.payload;
-            const live = prices[raw.mint]?.price_usd ?? tokens[raw.mint]?.price_usd;
-            const c = normalizeCandle(raw, live);
-            const key = candleKey(c.mint, c.interval);
-            candles[key] = c;
-            candleHistory = pushCandleHistory(candleHistory, key, c);
+          case 'candle':
+            if (STORE_CANDLES) {
+              const raw = msg.payload;
+              const live = prices[raw.mint]?.price_usd ?? tokens[raw.mint]?.price_usd;
+              const c = normalizeCandle(raw, live);
+              const key = candleKey(c.mint, c.interval);
+              candles[key] = c;
+              candleHistory = pushCandleHistory(candleHistory, key, c);
+            }
             break;
-          }
           case 'signal':
             signals = [msg.payload, ...signals].slice(0, MAX_SIGNALS);
             break;

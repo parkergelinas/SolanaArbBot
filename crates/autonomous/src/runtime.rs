@@ -152,6 +152,7 @@ async fn run_loop(
     let arb_cooldown_us = cfg_snapshot.scalper.trade_cooldown_secs * 1_000_000;
     let trade_size = cfg_snapshot.execution.simulation_initial_amount_usd;
     let min_profit = cfg_snapshot.execution.min_profit_threshold_usd;
+    let max_loss = cfg_snapshot.execution.max_loss_per_trade_usd;
     let capital_usd = cfg_snapshot.portfolio.capital_usd;
 
     let mut enforcer_state = EnforcerState::new(capital_usd);
@@ -580,6 +581,24 @@ async fn run_loop(
                         let net = gross_edge * (1.0 - SLIPPAGE_HAIRCUT)
                             - trade_size * 0.005
                             - NETWORK_COST_USD;
+                        if net < -max_loss {
+                            emit_trade(
+                                &callbacks,
+                                TradeEmit::paper(
+                                    &trade_id,
+                                    "arb",
+                                    &pair,
+                                    "buy",
+                                    trade_size,
+                                    net,
+                                    evt_ts,
+                                    TradeStage::Rejected,
+                                    Some(step),
+                                )
+                                .with_reject("arb net loss exceeds max_loss_per_trade_usd"),
+                            );
+                            continue;
+                        }
                         if net < min_profit {
                             emit_trade(
                                 &callbacks,

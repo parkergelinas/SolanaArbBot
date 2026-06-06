@@ -5,9 +5,11 @@
 mod bridge;
 mod broker;
 mod contracts;
+mod external_pollers;
 mod hub_client;
 mod ingestion;
 mod market;
+mod pricing;
 mod router;
 mod routes;
 
@@ -97,6 +99,8 @@ async fn main() -> anyhow::Result<()> {
     let market = spawn_market_engine(swap_rx, ws_tx.clone());
     broker::spawn_batcher(ws_rx, batch_tx.clone());
     spawn_signal_bus_fanout(signal_bus.clone(), ws_tx.clone());
+    external_pollers::spawn_optional_external_pollers();
+    pricing::spawn_jupiter_price_poller(ws_tx.clone());
 
     let hub_url = std::env::var("SIGNAL_HUB_URL").ok().filter(|s| !s.is_empty());
     let use_mock = std::env::var("STREAM_USE_MOCK")

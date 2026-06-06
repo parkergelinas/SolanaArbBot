@@ -165,7 +165,14 @@ export const SIGNAL_TYPE_META: Record<
   WhaleFlow: { label: 'Whale', color: '#4da3ff', bg: '#4da3ff18' },
   SmartMoney: { label: 'Smart $', color: '#a78bfa', bg: '#a78bfa18' },
   Momentum: { label: 'Momentum', color: '#00dfa8', bg: '#00dfa818' },
+  Swap: { label: 'Swap', color: '#f59e0b', bg: '#f59e0b18' },
 };
+
+/** Extract feed source tag from explanation prefix e.g. `[intelligence-api]`. */
+export function parseSignalSource(explanation: string): string | null {
+  const match = explanation.match(/^\[([^\]]+)\]/);
+  return match ? match[1] : null;
+}
 
 export const DIRECTION_META: Record<Direction, { color: string; bg: string }> = {
   Long: { color: '#22c55e', bg: '#22c55e18' },

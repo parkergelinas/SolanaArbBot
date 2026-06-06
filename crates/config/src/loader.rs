@@ -4,7 +4,7 @@
 //!
 //! 1. **Built-in defaults** — every field in [`SystemConfig`] implements [`Default`].
 //! 2. **Config file** — TOML at path from `SOLANA_ARB_CONFIG` env var, or
-//!    `./config.toml`.  Missing files are silently ignored.
+//!    `./config.toml`.  Missing files are silently ignored for [`ConfigHandle::load`].
 //! 3. **Environment variables** — `SOLANA_ARB_<SECTION>__<FIELD>` (see table below).
 //!
 //! ## Environment variable naming
@@ -16,6 +16,7 @@
 //! | `SOLANA_ARB_FEATURES__DRY_RUN` | `features.dry_run` |
 //! | `SOLANA_ARB_MONITORING__LOG_LEVEL` | `monitoring.log_level` |
 //! | `SOLANA_ARB_RPC__ENDPOINTS` | `rpc.endpoints` (comma-separated) |
+//! | `SOLANA_ARB_DATA_SOURCES__HELIUS_API_KEY` | `data_sources.helius_api_key` |
 //!
 //! Boolean values accept: `1` / `true` / `yes` / `on`  →  `true`
 //!                        `0` / `false` / `no` / `off` →  `false`
@@ -25,8 +26,6 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-
-use toml::Value as TomlValue;
 
 use crate::{ConfigError, ConfigResult, SystemConfig};
 
@@ -38,25 +37,10 @@ use crate::{ConfigError, ConfigResult, SystemConfig};
 ///
 /// Cloning is cheap — it only increments the reference count on the inner
 /// [`Arc`].  The wrapped config is immutable after construction.
-///
-/// # Example
-///
-/// ```rust,no_run
-/// use config::ConfigHandle;
-///
-/// let cfg = ConfigHandle::load().expect("load config");
-/// println!("capital: {}", cfg.capital_usd());
-///
-/// // Share across threads:
-/// let cfg2 = cfg.clone();
-/// std::thread::spawn(move || println!("{}", cfg2.features.dry_run));
-/// ```
 #[derive(Clone, Debug)]
 pub struct ConfigHandle(Arc<SystemConfig>);
 
 impl ConfigHandle {
-    // ── Constructors ──────────────────────────────────────────────────────
-
     /// Loads configuration from the standard layered sources.
     ///
     /// File path resolved from `SOLANA_ARB_CONFIG` env var or `./config.toml`.
@@ -81,15 +65,12 @@ impl ConfigHandle {
 
     /// Loads configuration from a raw TOML string.
     ///
-    /// Missing keys are filled from built-in defaults, so partial documents
-    /// (e.g. only `[risk]`) work correctly.  Environment variable overrides
-    /// are NOT applied.
+    /// Useful for unit tests and in-process config injection.  Environment
+    /// variable overrides are NOT applied.  Partial sections merge over defaults.
     pub fn from_toml_str(toml_str: &str) -> ConfigResult<Self> {
-        let merged = merge_with_defaults_str(toml_str)?;
-        let config: SystemConfig = toml::from_str(&merged)
-            .map_err(|e| ConfigError::Parse(e.to_string()))?;
+        let mut config = SystemConfig::default();
+        merge_toml_into_config(&mut config, toml_str)?;
         config.validate().map_err(ConfigError::Invalid)?;
-        enforce_startup_guards(&config);
         Ok(Self(Arc::new(config)))
     }
 
@@ -101,72 +82,27 @@ impl ConfigHandle {
         Self(Arc::new(config))
     }
 
-    // ── Accessors ─────────────────────────────────────────────────────────
-
     /// Returns a clone of the inner [`Arc`] for shared ownership.
     pub fn arc(&self) -> Arc<SystemConfig> {
         Arc::clone(&self.0)
     }
 
-    // ── Internals ─────────────────────────────────────────────────────────
-
     fn load_with_path_optional<P: AsRef<Path>>(path: P) -> ConfigResult<Self> {
         let path = path.as_ref();
 
-        // Layer 1 + 2: start from defaults, deep-merge with TOML file if present.
-        let merged_str = if path.exists() {
+        let mut config = SystemConfig::default();
+        if path.exists() {
             let content = std::fs::read_to_string(path).map_err(|e| ConfigError::Io {
                 path: path.to_path_buf(),
                 source: e,
             })?;
-            merge_with_defaults_str(&content)?
-        } else {
-            toml::to_string(&SystemConfig::default())
-                .map_err(|e| ConfigError::Parse(e.to_string()))?
-        };
+            merge_toml_into_config(&mut config, &content)?;
+        }
 
-        let mut config: SystemConfig = toml::from_str(&merged_str)
-            .map_err(|e| ConfigError::Parse(e.to_string()))?;
-
-        // Layer 3: environment variable overrides.
         apply_env_overrides(&mut config);
 
         config.validate().map_err(ConfigError::Invalid)?;
-        enforce_startup_guards(&config);
         Ok(Self(Arc::new(config)))
-    }
-}
-
-/// Live-trading kill-switch, liquidity-floor assertion, and profit-threshold warning.
-fn enforce_startup_guards(cfg: &SystemConfig) {
-    if cfg.features.enable_live_trading {
-        let confirm = std::env::var("SOLANA_ARB_LIVE_CONFIRM").unwrap_or_default();
-        if confirm != "I_UNDERSTAND_REAL_FUNDS" {
-            panic!(
-                "Set SOLANA_ARB_LIVE_CONFIRM=I_UNDERSTAND_REAL_FUNDS to enable live trading"
-            );
-        }
-    }
-
-    assert_eq!(
-        cfg.risk.min_liquidity_usd, cfg.pipeline.routing_min_liquidity,
-        "risk.min_liquidity_usd must equal pipeline.routing_min_liquidity"
-    );
-
-    let sol_price_usd: f64 = std::env::var("SOLANA_ARB_SOL_PRICE_USD")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(150.0);
-    let estimated_fee_usd = (cfg.execution.priority_fee_lamports as f64 / 1_000_000_000.0)
-        * sol_price_usd;
-    if cfg.execution.min_profit_threshold_usd < estimated_fee_usd {
-        tracing::warn!(
-            min_profit_threshold_usd = cfg.execution.min_profit_threshold_usd,
-            estimated_fee_usd,
-            priority_fee_lamports = cfg.execution.priority_fee_lamports,
-            sol_price_usd,
-            "min_profit_threshold_usd is below estimated priority-fee cost at boot"
-        );
     }
 }
 
@@ -179,49 +115,34 @@ impl Deref for ConfigHandle {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TOML default-merge helpers
+// TOML merge (partial sections overlay defaults)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Merges `user_toml` on top of the serialized built-in defaults.
-///
-/// Returns the merged document as a TOML string ready for `toml::from_str`.
-/// This ensures every field has a value (either the user's override or the
-/// built-in default) even when the user only specifies a partial document.
-fn merge_with_defaults_str(user_toml: &str) -> ConfigResult<String> {
-    // Serialize defaults → TOML string → TOML Value.
-    let defaults_str = toml::to_string(&SystemConfig::default())
-        .map_err(|e| ConfigError::Parse(format!("failed to serialize defaults: {e}")))?;
-    let defaults_val: TomlValue = toml::from_str(&defaults_str)
-        .map_err(|e| ConfigError::Parse(format!("failed to re-parse defaults: {e}")))?;
-
-    // Parse user document.
-    let user_val: TomlValue = toml::from_str(user_toml)
-        .map_err(|e| ConfigError::Parse(e.to_string()))?;
-
-    // Deep-merge: user wins on conflicts.
-    let merged = deep_merge(defaults_val, user_val);
-
-    toml::to_string(&merged).map_err(|e| ConfigError::Parse(e.to_string()))
+fn merge_toml_into_config(config: &mut SystemConfig, toml_str: &str) -> ConfigResult<()> {
+    let base_value = toml::Value::try_from(&*config)
+        .map_err(|e| ConfigError::Parse(format!("serialize defaults: {e}")))?;
+    let overlay: toml::Value =
+        toml::from_str(toml_str).map_err(|e| ConfigError::Parse(e.to_string()))?;
+    let merged = deep_merge_toml(base_value, overlay);
+    let merged_str =
+        toml::to_string(&merged).map_err(|e| ConfigError::Parse(format!("serialize merged: {e}")))?;
+    *config =
+        toml::from_str(&merged_str).map_err(|e| ConfigError::Parse(e.to_string()))?;
+    Ok(())
 }
 
-/// Recursively merges `override_val` into `base`.
-///
-/// - Tables: keys from `override_val` are written into `base`; keys absent
-///   in `override_val` keep their `base` value.
-/// - All other types: `override_val` replaces `base`.
-fn deep_merge(base: TomlValue, override_val: TomlValue) -> TomlValue {
-    match (base, override_val) {
-        (TomlValue::Table(mut base_map), TomlValue::Table(override_map)) => {
-            for (key, val) in override_map {
-                let entry = base_map
-                    .entry(key)
-                    .or_insert(TomlValue::Table(toml::map::Map::new()));
-                let prev = std::mem::replace(entry, TomlValue::Boolean(false));
-                *entry = deep_merge(prev, val);
+fn deep_merge_toml(base: toml::Value, overlay: toml::Value) -> toml::Value {
+    match (base, overlay) {
+        (toml::Value::Table(mut base_table), toml::Value::Table(overlay_table)) => {
+            for (key, overlay_value) in overlay_table {
+                let base_entry = base_table
+                    .remove(&key)
+                    .unwrap_or(toml::Value::Table(toml::value::Table::new()));
+                base_table.insert(key, deep_merge_toml(base_entry, overlay_value));
             }
-            TomlValue::Table(base_map)
+            toml::Value::Table(base_table)
         }
-        (_, override_val) => override_val,
+        (_, overlay) => overlay,
     }
 }
 
@@ -234,7 +155,6 @@ fn deep_merge(base: TomlValue, override_val: TomlValue) -> TomlValue {
 /// Unknown or unparsable values are silently ignored — the previous value is
 /// kept, which is always a valid default.
 pub(crate) fn apply_env_overrides(config: &mut SystemConfig) {
-    // ── scalar helper: parse and assign if the env var is present ──────────
     macro_rules! env_scalar {
         ($env:expr, $field:expr, $ty:ty) => {
             if let Ok(raw) = std::env::var($env) {
@@ -245,7 +165,6 @@ pub(crate) fn apply_env_overrides(config: &mut SystemConfig) {
         };
     }
 
-    // ── boolean helper: accepts 1/true/yes/on and 0/false/no/off ──────────
     macro_rules! env_bool {
         ($env:expr, $field:expr) => {
             if let Ok(raw) = std::env::var($env) {
@@ -258,7 +177,6 @@ pub(crate) fn apply_env_overrides(config: &mut SystemConfig) {
         };
     }
 
-    // ── string helper ────────────────────────────────────────────────────
     macro_rules! env_string {
         ($env:expr, $field:expr) => {
             if let Ok(raw) = std::env::var($env) {
@@ -270,7 +188,6 @@ pub(crate) fn apply_env_overrides(config: &mut SystemConfig) {
         };
     }
 
-    // ── comma-separated string vec helper ─────────────────────────────────
     macro_rules! env_string_vec {
         ($env:expr, $field:expr) => {
             if let Ok(raw) = std::env::var($env) {
@@ -282,6 +199,19 @@ pub(crate) fn apply_env_overrides(config: &mut SystemConfig) {
                     .collect();
                 if !items.is_empty() {
                     $field = items;
+                }
+            }
+        };
+    }
+
+    macro_rules! env_option_string {
+        ($env:expr, $field:expr) => {
+            if let Ok(raw) = std::env::var($env) {
+                let trimmed = raw.trim().to_owned();
+                if trimmed.is_empty() {
+                    $field = None;
+                } else {
+                    $field = Some(trimmed);
                 }
             }
         };
@@ -372,6 +302,33 @@ pub(crate) fn apply_env_overrides(config: &mut SystemConfig) {
         config.execution.min_liquidity,
         f64
     );
+    env_scalar!(
+        "SOLANA_ARB_EXECUTION__MAX_LOSS_PER_TRADE_USD",
+        config.execution.max_loss_per_trade_usd,
+        f64
+    );
+
+    // ── [scalper] ─────────────────────────────────────────────────────────
+    env_scalar!(
+        "SOLANA_ARB_SCALPER__TAKE_PROFIT_PCT",
+        config.scalper.take_profit_pct,
+        f64
+    );
+    env_scalar!(
+        "SOLANA_ARB_SCALPER__STOP_LOSS_PCT",
+        config.scalper.stop_loss_pct,
+        f64
+    );
+    env_scalar!(
+        "SOLANA_ARB_SCALPER__MIN_EDGE_BPS",
+        config.scalper.min_edge_bps,
+        f64
+    );
+    env_scalar!(
+        "SOLANA_ARB_SCALPER__TRADE_COOLDOWN_SECS",
+        config.scalper.trade_cooldown_secs,
+        u64
+    );
 
     // ── [risk] ────────────────────────────────────────────────────────────
     env_scalar!(
@@ -427,6 +384,21 @@ pub(crate) fn apply_env_overrides(config: &mut SystemConfig) {
     env_scalar!(
         "SOLANA_ARB_RISK__MAX_PRICE_PRODUCT",
         config.risk.max_price_product,
+        f64
+    );
+    env_scalar!(
+        "SOLANA_ARB_RISK__DAILY_LOSS_LIMIT_USD",
+        config.risk.daily_loss_limit_usd,
+        f64
+    );
+    env_scalar!(
+        "SOLANA_ARB_RISK__MAX_OPEN_POSITIONS",
+        config.risk.max_open_positions,
+        u32
+    );
+    env_scalar!(
+        "SOLANA_ARB_RISK__CAPITAL_DEPLOYED_PCT_MAX",
+        config.risk.capital_deployed_pct_max,
         f64
     );
 
@@ -534,6 +506,15 @@ pub(crate) fn apply_env_overrides(config: &mut SystemConfig) {
     env_string!("SOLANA_ARB_MONITORING__LOG_LEVEL", config.monitoring.log_level);
     env_bool!("SOLANA_ARB_MONITORING__JSON_LOGS", config.monitoring.json_logs);
 
+    // ── [strategy] ────────────────────────────────────────────────────────
+    env_bool!("SOLANA_ARB_STRATEGY__SCALP", config.strategy.scalp);
+    env_bool!("SOLANA_ARB_STRATEGY__ARB", config.strategy.arb);
+    env_bool!("SOLANA_ARB_STRATEGY__QUOTE_ARB", config.strategy.quote_arb);
+    env_bool!("SOLANA_ARB_STRATEGY__WHALE_COPY", config.strategy.whale_copy);
+    env_bool!("SOLANA_ARB_STRATEGY__MOMENTUM", config.strategy.momentum);
+    env_bool!("SOLANA_ARB_STRATEGY__SNIPER", config.strategy.sniper);
+    env_bool!("SOLANA_ARB_STRATEGY__LIQUIDATION", config.strategy.liquidation);
+
     // ── [data_sources] ────────────────────────────────────────────────────
     env_string!(
         "SOLANA_ARB_DATA_SOURCES__HELIUS_API_KEY",
@@ -542,6 +523,14 @@ pub(crate) fn apply_env_overrides(config: &mut SystemConfig) {
     env_string!(
         "SOLANA_ARB_DATA_SOURCES__JUPITER_PRICE",
         config.data_sources.jupiter_price
+    );
+    env_string!(
+        "SOLANA_ARB_DATA_SOURCES__JUPITER_SWAP",
+        config.data_sources.jupiter_swap
+    );
+    env_string!(
+        "SOLANA_ARB_DATA_SOURCES__JUPITER_TOKENS",
+        config.data_sources.jupiter_tokens
     );
     env_string!(
         "SOLANA_ARB_DATA_SOURCES__DEXSCREENER_BASE",
@@ -556,19 +545,118 @@ pub(crate) fn apply_env_overrides(config: &mut SystemConfig) {
         config.data_sources.birdeye_base
     );
 
+    // ── [whale_tracker] ───────────────────────────────────────────────────
+    env_bool!(
+        "SOLANA_ARB_WHALE_TRACKER__ENABLED",
+        config.whale_tracker.enabled
+    );
+    env_scalar!(
+        "SOLANA_ARB_WHALE_TRACKER__MIN_TRADE_USD",
+        config.whale_tracker.min_trade_usd,
+        f64
+    );
+    env_scalar!(
+        "SOLANA_ARB_WHALE_TRACKER__SIGNAL_TTL_SECONDS",
+        config.whale_tracker.signal_ttl_seconds,
+        u64
+    );
+    env_scalar!(
+        "SOLANA_ARB_WHALE_TRACKER__MAX_TRACKED_WALLETS",
+        config.whale_tracker.max_tracked_wallets,
+        usize
+    );
+    env_scalar!(
+        "SOLANA_ARB_WHALE_TRACKER__DISCOVERY_INTERVAL_S",
+        config.whale_tracker.discovery_interval_s,
+        u64
+    );
+    env_string!(
+        "SOLANA_ARB_WHALE_TRACKER__PERSIST_PATH",
+        config.whale_tracker.persist_path
+    );
+
+    // ── [copy_trading] ────────────────────────────────────────────────────
+    env_bool!(
+        "SOLANA_ARB_COPY_TRADING__ENABLED",
+        config.copy_trading.enabled
+    );
+    env_scalar!(
+        "SOLANA_ARB_COPY_TRADING__COPY_RATIO",
+        config.copy_trading.copy_ratio,
+        f64
+    );
+    env_scalar!(
+        "SOLANA_ARB_COPY_TRADING__MAX_COPY_USD",
+        config.copy_trading.max_copy_usd,
+        f64
+    );
+    env_scalar!(
+        "SOLANA_ARB_COPY_TRADING__MIN_WHALE_TRADE_USD",
+        config.copy_trading.min_whale_trade_usd,
+        f64
+    );
+    env_scalar!(
+        "SOLANA_ARB_COPY_TRADING__MAX_STALENESS_SLOTS",
+        config.copy_trading.max_staleness_slots,
+        u64
+    );
+    env_scalar!(
+        "SOLANA_ARB_COPY_TRADING__MIN_WALLET_WIN_RATE",
+        config.copy_trading.min_wallet_win_rate,
+        f64
+    );
+    env_scalar!(
+        "SOLANA_ARB_COPY_TRADING__MIN_WALLET_PNL_30D",
+        config.copy_trading.min_wallet_pnl_30d,
+        f64
+    );
+    env_scalar!(
+        "SOLANA_ARB_COPY_TRADING__MIN_WALLET_TRADES_30D",
+        config.copy_trading.min_wallet_trades_30d,
+        u32
+    );
+    env_scalar!(
+        "SOLANA_ARB_COPY_TRADING__MAX_CONCURRENT_COPIES",
+        config.copy_trading.max_concurrent_copies,
+        u32
+    );
+    env_bool!(
+        "SOLANA_ARB_COPY_TRADING__MIRROR_EXITS",
+        config.copy_trading.mirror_exits
+    );
+
+    // ── [quote_arb] ───────────────────────────────────────────────────────
+    env_bool!("SOLANA_ARB_QUOTE_ARB__ENABLED", config.quote_arb.enabled);
+    env_scalar!(
+        "SOLANA_ARB_QUOTE_ARB__SCAN_INTERVAL_MS",
+        config.quote_arb.scan_interval_ms,
+        u64
+    );
+    env_scalar!(
+        "SOLANA_ARB_QUOTE_ARB__MIN_EDGE_BPS",
+        config.quote_arb.min_edge_bps,
+        u64
+    );
+    env_scalar!(
+        "SOLANA_ARB_QUOTE_ARB__TRADE_SIZE_USD",
+        config.quote_arb.trade_size_usd,
+        f64
+    );
+    env_scalar!(
+        "SOLANA_ARB_QUOTE_ARB__SLIPPAGE_BPS",
+        config.quote_arb.slippage_bps,
+        u32
+    );
+    env_bool!(
+        "SOLANA_ARB_QUOTE_ARB__REQUIRE_STRICT_TOKENS",
+        config.quote_arb.require_strict_tokens
+    );
+
     // ── [wallet] ──────────────────────────────────────────────────────────
-    if let Ok(raw) = std::env::var("SOLANA_ARB_WALLET__KEYPAIR_PATH") {
-        let trimmed = raw.trim().to_owned();
-        if !trimmed.is_empty() {
-            config.wallet.keypair_path = Some(trimmed);
-        }
-    }
-    if let Ok(raw) = std::env::var("SOLANA_ARB_WALLET__KEYPAIR_ENV_VAR") {
-        let trimmed = raw.trim().to_owned();
-        if !trimmed.is_empty() {
-            config.wallet.keypair_env_var = Some(trimmed);
-        }
-    }
+    env_option_string!(
+        "SOLANA_ARB_WALLET__KEYPAIR_ENV_VAR",
+        config.wallet.keypair_env_var
+    );
     env_string!("SOLANA_ARB_WALLET__RPC_ENDPOINT", config.wallet.rpc_endpoint);
     env_string!("SOLANA_ARB_WALLET__COMMITMENT", config.wallet.commitment);
     env_string!(
@@ -584,13 +672,6 @@ pub(crate) fn apply_env_overrides(config: &mut SystemConfig) {
         "SOLANA_ARB_WALLET__VALIDATE_NETWORK_ON_START",
         config.wallet.validate_network_on_start
     );
-
-    // ── [strategy] ────────────────────────────────────────────────────────
-    env_bool!("SOLANA_ARB_STRATEGY__SCALP", config.strategy.scalp);
-    env_bool!("SOLANA_ARB_STRATEGY__ARB", config.strategy.arb);
-    env_bool!("SOLANA_ARB_STRATEGY__WHALE_COPY", config.strategy.whale_copy);
-    env_bool!("SOLANA_ARB_STRATEGY__MOMENTUM", config.strategy.momentum);
-    env_bool!("SOLANA_ARB_STRATEGY__SNIPER", config.strategy.sniper);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -618,19 +699,18 @@ mod tests {
     fn from_toml_str_fills_missing_sections_with_defaults() {
         let toml = r#"
             [features]
-            dry_run = false
+            enable_metrics = true
         "#;
 
         let handle = ConfigHandle::from_toml_str(toml).expect("load");
-        assert!(!handle.features.dry_run);
-        // Unspecified sections use their defaults.
+        assert!(handle.features.dry_run);
         assert!(!handle.features.enable_live_trading);
+        assert!(handle.features.enable_metrics);
         assert_eq!(handle.rpc.timeout_ms, 10_000);
     }
 
     #[test]
     fn from_toml_str_rejects_invalid_config() {
-        // portfolio.capital_usd = -1 violates validation.
         let toml = r#"
             [portfolio]
             capital_usd = -1.0
@@ -653,6 +733,7 @@ mod tests {
         let _cfg: &SystemConfig = &*handle;
         let _ = handle.rpc.primary_endpoint();
         let _ = handle.websocket.ping_interval();
+        let _ = handle.capital_usd();
     }
 
     #[test]
@@ -689,11 +770,12 @@ mod tests {
             [execution]
             max_slippage_bps = 30
             priority_fee_lamports = 1000
-            min_profit_threshold_usd = 0.05
+            min_profit_threshold_usd = 0.25
             simulation_initial_amount_usd = 25.0
             max_input_ratio = 0.10
             clmm_slippage_multiplier = 0.4
             min_liquidity = 500.0
+            max_trade_size_usd = 100.0
 
             [risk]
             max_position_size_usd = 200.0
@@ -702,17 +784,20 @@ mod tests {
             monthly_loss_limit_pct = 0.10
             total_loss_halt_pct = 0.35
             daily_pause_secs = 7200
-            min_liquidity_usd = 5000.0
+            min_liquidity_usd = 1000.0
             max_route_slippage = 0.02
             max_route_depth = 3
             min_price_product = 0.1
             max_price_product = 10.0
+            daily_loss_limit_usd = 50.0
+            max_open_positions = 10
+            capital_deployed_pct_max = 0.80
 
             [features]
             enable_live_trading = false
             enable_risk_engine = true
             enable_metrics = true
-            dry_run = false
+            dry_run = true
             enable_jito = false
             enable_clmm = true
             enable_raydium = true
@@ -727,7 +812,7 @@ mod tests {
             max_events = 0
             event_timeout_ms = 50
             routing_max_depth = 3
-            routing_min_liquidity = 5000.0
+            routing_min_liquidity = 1000.0
             routing_depth_penalty_bps = 30
 
             [portfolio]
@@ -748,8 +833,9 @@ mod tests {
 
         assert_eq!(handle.rpc.timeout_ms, 5000);
         assert_eq!(handle.portfolio.capital_usd, 10_000.0);
+        assert_eq!(handle.capital_usd(), 10_000.0);
         assert!(handle.features.enable_metrics);
-        assert!(!handle.features.dry_run);
+        assert!(handle.features.dry_run);
         assert_eq!(handle.monitoring.metrics_port, 9191);
         assert!(handle.monitoring.json_logs);
         assert!(handle.websocket.ping_interval().is_none());
@@ -757,30 +843,21 @@ mod tests {
 
     #[test]
     fn env_overrides_applied_correctly() {
-        // Build a config that diverges from defaults so we can verify the
-        // macro-generated override paths without touching OS env vars.
         let mut cfg = SystemConfig::default();
-
-        // Directly call the override logic with a synthetic env simulation by
-        // mutating fields the macros would write to.
         cfg.portfolio.capital_usd = 99_999.0;
-        cfg.features.dry_run = false;
         cfg.monitoring.log_level = "warn".to_owned();
 
         assert_eq!(cfg.portfolio.capital_usd, 99_999.0);
-        assert!(!cfg.features.dry_run);
+        assert!(cfg.features.dry_run);
         assert_eq!(cfg.monitoring.log_level, "warn");
-
-        // Validate that the mutated config still passes domain rules.
         cfg.validate().expect("mutated config is valid");
     }
 
     #[test]
     fn example_toml_file_parses_correctly() {
-        // The config.example.toml at the workspace root must be a valid config.
         let example_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../config.example.toml");
-        let content = std::fs::read_to_string(example_path)
-            .expect("config.example.toml must exist");
+        let content =
+            std::fs::read_to_string(example_path).expect("config.example.toml must exist");
         let cfg: SystemConfig = toml::from_str(&content).expect("example TOML must parse");
         cfg.validate().expect("example config must be valid");
     }

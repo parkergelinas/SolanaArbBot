@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 
 import { IntelligenceProvider } from './IntelligenceProvider';
 import { WebSocketProvider } from './WebSocketProvider';
+import NetworkBootstrap from './wallet/NetworkBootstrap';
 import SolanaWalletProvider from './wallet/SolanaWalletProvider';
 
 export default function Providers({
@@ -17,6 +18,7 @@ export default function Providers({
 }) {
   return (
     <SolanaWalletProvider>
+      <NetworkBootstrap />
       <WebSocketProvider url={wsUrl}>
         <IntelligenceProvider url={intelUrl}>{children}</IntelligenceProvider>
       </WebSocketProvider>

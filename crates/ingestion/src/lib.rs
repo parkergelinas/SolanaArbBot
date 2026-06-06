@@ -10,9 +10,16 @@
 #![forbid(unsafe_code)]
 
 pub mod engine;
+pub mod geyser;
 pub mod helius;
 pub mod rpc;
+pub mod sniper_ingest;
 
 pub use engine::{IngestionConfig, IngestionEngine, DEFAULT_PLACEHOLDER_EVENT_LIMIT};
 pub use helius::spawn_helius_stream;
 pub use rpc::{MockRpcClient, RpcClient, RpcClientInterface};
+pub use sniper_ingest::{
+    parse_pool_creation_from_logs, parse_pool_creation_notification, spawn_sniper_ingest,
+    PoolCreationEvent, PoolCreationSource, PUMP_FUN, PUMP_SWAP, RAYDIUM_AMM_V4, RAYDIUM_CLMM,
+    SOL_MINT,
+};

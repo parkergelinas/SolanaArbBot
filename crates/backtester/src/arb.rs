@@ -141,6 +141,10 @@ pub fn run_arb_backtest(cfg: Arc<SystemConfig>, dataset: &ReplayDataset) -> Stra
                 continue;
             }
 
+            if net < -cfg.execution.max_loss_per_trade_usd {
+                continue;
+            }
+
             total += 1;
             last_trade_ts = *ts;
             traded_this_tick = true;
