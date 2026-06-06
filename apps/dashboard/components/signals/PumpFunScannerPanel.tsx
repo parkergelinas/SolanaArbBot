@@ -19,8 +19,12 @@ export default function PumpFunScannerPanel({
 
   return (
     <section
-      className={`bg-ds-surface flex flex-col min-h-0 overflow-hidden ${
-        fillHeight ? 'h-full rounded-none border-0' : 'border border-ds-border rounded-terminal'
+      className={`bg-ds-surface flex flex-col overflow-hidden ${
+        fillHeight
+          ? 'h-full min-h-0 rounded-none border-0'
+          : compact
+            ? 'h-64 border border-ds-border rounded-terminal'
+            : 'min-h-64 border border-ds-border rounded-terminal'
       }`}
     >
       <div className="px-3 py-1.5 border-b border-ds-border flex items-center justify-between shrink-0 gap-2">
@@ -49,11 +53,7 @@ export default function PumpFunScannerPanel({
         <p className="text-[9px] text-ds-red px-3 py-1 border-b border-ds-border">{error}</p>
       )}
 
-      <div
-        className={`flex-1 overflow-y-auto terminal-scroll p-1.5 space-y-1.5 ${
-          compact && !fillHeight ? 'max-h-56' : 'min-h-0'
-        }`}
-      >
+      <div className="flex-1 min-h-0 overflow-y-auto terminal-scroll p-1.5 space-y-1.5">
         {loading && hits.length === 0 ? (
           <p className="text-[10px] text-ds-text-muted text-center py-6">Watching pump.fun curves…</p>
         ) : hits.length === 0 ? (

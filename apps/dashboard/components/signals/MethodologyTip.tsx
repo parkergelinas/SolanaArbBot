@@ -22,7 +22,7 @@ export default function MethodologyTip({
         ? method
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-20 w-56 p-2.5 rounded-terminal border border-ds-border bg-ds-elevated shadow-lg text-[10px] text-ds-text-secondary leading-relaxed">
+        <div className="absolute right-0 top-full mt-1 z-50 w-56 max-w-[calc(100vw-2rem)] p-2.5 rounded-terminal border border-ds-border bg-ds-elevated shadow-lg text-[10px] text-ds-text-secondary leading-relaxed">
           <p className="font-semibold text-ds-text-primary mb-1">{title}</p>
           <p>{body}</p>
         </div>

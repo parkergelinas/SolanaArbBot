@@ -10,13 +10,23 @@ const TIER_STYLE: Record<string, string> = {
   retail: 'text-ds-text-muted bg-ds-elevated/50 border-ds-border',
 };
 
-export default function WalletRail({ fillHeight = false }: { fillHeight?: boolean }) {
+export default function WalletRail({
+  fillHeight = false,
+  compact = false,
+}: {
+  fillHeight?: boolean;
+  compact?: boolean;
+}) {
   const wallets = useTrackedWallets();
 
   return (
     <aside
-      className={`bg-ds-surface flex flex-col min-h-0 overflow-hidden ${
-        fillHeight ? 'h-full rounded-none border-0' : 'border border-ds-border rounded-terminal w-full lg:w-56 shrink-0'
+      className={`bg-ds-surface flex flex-col overflow-hidden ${
+        fillHeight
+          ? 'h-full min-h-0 rounded-none border-0'
+          : compact
+            ? 'h-64 border border-ds-border rounded-terminal w-full'
+            : 'min-h-64 border border-ds-border rounded-terminal w-full lg:w-56 shrink-0'
       }`}
     >
       <div className="px-3 py-1.5 border-b border-ds-border shrink-0">
