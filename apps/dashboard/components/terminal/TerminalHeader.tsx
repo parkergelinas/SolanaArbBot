@@ -1,60 +1,94 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+
+import { tokenMeta, tokenSymbol } from '@/lib/terminal/tokens';
+import { useMarketStore } from '@/stores/marketStore';
 import { useStreamStore } from '@/stores/streamStore';
 import { useUiStore } from '@/stores/uiStore';
-import { useMarketStore, shortMint } from '@/stores/marketStore';
 
 export default function TerminalHeader() {
+  const [now, setNow] = useState('');
+  useEffect(() => {
+    const tick = () =>
+      setNow(
+        new Date().toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        }),
+      );
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+
   const connected = useStreamStore((s) => s.connected);
+  const url = useStreamStore((s) => s.url);
   const messagesApplied = useStreamStore((s) => s.messagesApplied);
+  const lastSeq = useStreamStore((s) => s.lastSeq);
   const selectedMint = useUiStore((s) => s.selectedMint);
   const price = useMarketStore((s) => (selectedMint ? s.tokens[selectedMint] : undefined));
+  const meta = selectedMint ? tokenMeta(selectedMint) : undefined;
+  const symbol = selectedMint ? tokenSymbol(selectedMint) : 'SOL';
 
   return (
-    <header className="flex items-center justify-between px-3 py-2 border-b border-terminal-border bg-terminal-panel">
-      <div className="flex items-center gap-3">
+    <header className="terminal-header flex items-center justify-between px-3 py-2 border-b border-terminal-border shrink-0">
+      <div className="flex items-center gap-4">
         <div>
-          <div className="text-xs font-bold tracking-[0.2em] text-terminal-live">
-            SOLARB TERMINAL
+          <div className="text-sm font-bold tracking-[0.18em] text-terminal-accent">
+            SOLARB
           </div>
-          <div className="text-[9px] text-terminal-muted uppercase tracking-wider">
-            Institutional · Stream v1
+          <div className="text-[9px] text-terminal-muted uppercase tracking-[0.25em]">
+            Personal Trading Terminal
           </div>
         </div>
         <div
-          className={`flex items-center gap-1.5 px-2 py-0.5 rounded border text-[10px] mono ${
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[10px] mono font-medium ${
             connected
-              ? 'border-terminal-live/40 text-terminal-live bg-terminal-live/5'
-              : 'border-flow-sell/40 text-flow-sell'
+              ? 'border-terminal-accent/50 text-terminal-accent bg-terminal-accent/8'
+              : 'border-terminal-warn/40 text-terminal-warn bg-terminal-warn/8'
           }`}
         >
-          <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-terminal-live live-pulse' : 'bg-flow-sell'}`} />
-          {connected ? 'STREAM LIVE' : 'OFFLINE'}
+          <span
+            className={`w-2 h-2 rounded-full ${connected ? 'bg-terminal-accent live-pulse' : 'bg-terminal-warn'}`}
+          />
+          {connected ? 'LIVE' : 'SIM'}
+        </div>
+        <div className="hidden md:flex items-center gap-3 text-[10px] mono text-terminal-muted">
+          <span>Seq {lastSeq}</span>
+          <span>{messagesApplied.toLocaleString()} evt</span>
         </div>
       </div>
 
-      {selectedMint && (
-        <div className="text-center hidden sm:block">
-          <div className="text-[10px] text-terminal-muted mono">{shortMint(selectedMint, 6, 4)}</div>
-          <div className="text-xl font-mono text-terminal-live tabular-nums">
-            ${price ? price.price_usd.toFixed(4) : '—'}
-          </div>
-          {price && (
-            <div
-              className={`text-[10px] mono ${
-                price.changePct >= 0 ? 'text-flow-buy' : 'text-flow-sell'
-              }`}
-            >
-              {price.changePct >= 0 ? '+' : ''}
-              {price.changePct.toFixed(2)}%
-            </div>
-          )}
+      <div className="text-center">
+        <div className="text-[10px] text-terminal-muted uppercase tracking-wider">
+          {symbol}/USD
         </div>
-      )}
+        <div className="text-2xl font-semibold tabular-nums text-slate-50 leading-tight">
+          $
+          {(price?.price_usd ?? meta?.refPrice ?? 0).toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: price && price.price_usd < 1 ? 6 : 2,
+          })}
+        </div>
+        {price && (
+          <div
+            className={`text-[11px] mono font-medium ${
+              price.changePct >= 0 ? 'text-flow-buy' : 'text-flow-sell'
+            }`}
+          >
+            {price.changePct >= 0 ? '+' : ''}
+            {price.changePct.toFixed(2)}%
+          </div>
+        )}
+      </div>
 
-      <div className="text-right text-[10px] mono text-terminal-muted">
-        <div>{messagesApplied.toLocaleString()} events</div>
-        <div className="text-terminal-live/70">ws://8080/stream</div>
+      <div className="text-right text-[10px] mono">
+        <div className="text-slate-300 tabular-nums">{now}</div>
+        <div className="text-terminal-muted truncate max-w-[10rem] mt-0.5" title={url}>
+          {connected ? url.replace('ws://', '') : 'demo · local sim'}
+        </div>
       </div>
     </header>
   );
