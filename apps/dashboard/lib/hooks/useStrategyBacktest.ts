@@ -62,12 +62,8 @@ export function useStrategyBacktest(config: BotStrategyConfig, activePresetId?: 
         );
         const rowKeys = new Set(row.bot_store_keys);
         const sameKeys =
-<<<<<<< Updated upstream
           enabled.size === rowKeys.size &&
           Array.from(enabled).every((k) => typeof k === 'string' && rowKeys.has(k));
-=======
-          enabled.size === rowKeys.size && Array.from(enabled).every((k) => typeof k === 'string' && rowKeys.has(k));
->>>>>>> Stashed changes
         if (sameKeys) return metricsFromRanking(row, hours);
       }
     }

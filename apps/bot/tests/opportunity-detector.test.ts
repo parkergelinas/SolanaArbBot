@@ -46,7 +46,7 @@ describe('Orca pool account fixture decoding', () => {
     expect(price).toBeCloseTo(170, 0); // within ±1 USDC
   });
 
-  it('tokenMintA at offset 101 matches SOL mint', () => {
+  it('tokenMintA at offset 101 matches SOL mint', async () => {
     const { PublicKey } = await import('@solana/web3.js');
     const data = buildOrcaPoolAccount();
     const mintA = new PublicKey(data.subarray(101, 133)).toBase58();

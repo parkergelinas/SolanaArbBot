@@ -12,11 +12,13 @@
 pub mod engine;
 pub mod geyser;
 pub mod helius;
+pub mod pools;
 pub mod rpc;
 pub mod sniper_ingest;
 
 pub use engine::{IngestionConfig, IngestionEngine, DEFAULT_PLACEHOLDER_EVENT_LIMIT};
-pub use helius::spawn_helius_stream;
+pub use helius::{spawn_helius_stream, spawn_helius_hotpath_feed};
+pub use pools::{mainnet_pools, spl_token_amount, PoolEntry};
 pub use rpc::{MockRpcClient, RpcClient, RpcClientInterface};
 pub use sniper_ingest::{
     parse_pool_creation_from_logs, parse_pool_creation_notification, parse_pump_trade_from_logs,

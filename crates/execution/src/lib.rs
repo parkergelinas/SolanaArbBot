@@ -298,8 +298,8 @@ pub use jito::{
 };
 pub use simulator::{ExecutionConfig, ExecutionResult, ExecutionSimulator, SimulationModel};
 pub use jupiter_swap::{
-    build_legacy_quote_url, sign_legacy_transaction, JupiterSwapConfig, JupiterSwapExecutor,
-    SwapExecutionResult,
+    build_legacy_quote_url, execute_swap_blocking, sign_legacy_transaction,
+    BlockingSwapTx, JupiterSwapConfig, JupiterSwapExecutor, SwapExecutionResult,
 };
 pub use tip_calibrator::TipCalibrator;
 

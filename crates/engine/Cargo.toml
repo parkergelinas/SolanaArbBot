@@ -14,6 +14,7 @@ common = { path = "../common" }
 decoder = { path = "../decoder" }
 execution = { path = "../execution" }
 config = { path = "../config" }
+wallet = { path = "../wallet" }
 crossbeam-channel = "0.5"
 graph = { path = "../graph" }
 pricing = { path = "../pricing" }

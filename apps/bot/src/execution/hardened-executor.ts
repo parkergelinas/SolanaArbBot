@@ -137,18 +137,13 @@ export class HardenedExecutor {
       const priorityFeeLamports = await this.estimatePriorityFee();
 
       // 3. Guard: abort if gas + tip would exceed expected profit
-      const solPriceUsd = 170; // fallback; real code reads from state
       const totalFeeLamports = priorityFeeLamports + (this.jitoEnabled ? this.jitoTipLamports : 0);
-      if (
-        this.minProfitLamports > 0 &&
-        totalFeeLamports > this.minProfitLamports
-      ) {
+      if (this.minProfitLamports > 0 && totalFeeLamports > this.minProfitLamports) {
         return {
           success: false,
           error: `fees_exceed_profit_floor: fees=${totalFeeLamports} min=${this.minProfitLamports}`,
         };
       }
-      void solPriceUsd; // used by scorer; kept here for explicit fee guard
 
       // 4. Build swap transaction from Jupiter
       const swap = await withTimeout(

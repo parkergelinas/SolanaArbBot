@@ -13,7 +13,8 @@ use config::{ConfigHandle, HotPathConfig, SystemConfig};
 use crossbeam_channel::{bounded, Sender};
 use execution::hotpath::{ColdPathExecutor, HotPathEngine, MarketTick};
 use tokio::sync::Mutex;
-use tracing::info;
+use tracing::{info, warn};
+use wallet::WalletKeypair;
 
 use crate::arbitrage::{ArbitrageEngine, DexVenue, PoolQuote};
 
@@ -28,7 +29,17 @@ pub struct HotPathRuntime {
 
 impl HotPathRuntime {
     /// Bootstrap the full single-process hot-path system.
+    ///
+    /// Attempts to load a live keypair from `SOLANA_ARB_WALLET_KEY` when
+    /// `cfg.paper_mode` is false.  Falls back to `None` (paper mode) if the
+    /// env var is missing or the system config has `dry_run = true`.
     pub fn start(cfg: &HotPathConfig) -> Self {
+        let system_cfg = SystemConfig::default();
+        Self::start_with_config(cfg, &system_cfg)
+    }
+
+    /// Bootstrap with an explicit `SystemConfig` (used by the main binary).
+    pub fn start_with_config(cfg: &HotPathConfig, sys: &SystemConfig) -> Self {
         let mut engine = HotPathEngine::new(cfg);
         engine.register_pools(
             cfg,
@@ -39,11 +50,31 @@ impl HotPathRuntime {
         let (tick_tx, tick_rx) = bounded(TICK_CHANNEL_CAPACITY);
         let queue_rx = engine.queue_receiver();
         let router = engine.execution_router();
+        let exposure_tx = engine.exposure_release_sender();
 
         let engine = Arc::new(std::sync::Mutex::new(engine));
 
+        // ── Wallet (live mode only) ───────────────────────────────────────────
+        let wallet: Option<Arc<WalletKeypair>> = if cfg.paper_mode {
+            info!("hot-path: paper mode — wallet not loaded");
+            None
+        } else {
+            match WalletKeypair::load_wallet_key(sys) {
+                Ok(kp) => {
+                    info!("hot-path: live wallet loaded");
+                    Some(Arc::new(kp))
+                }
+                Err(e) => {
+                    warn!(error = %e, "hot-path: wallet load failed, running paper mode");
+                    None
+                }
+            }
+        };
+
+        let rpc_endpoint = sys.rpc.primary_endpoint().to_owned();
+
         // ── Cold-path I/O thread (Jito / RPC) ────────────────────────────────
-        let cold = ColdPathExecutor::new(router, queue_rx);
+        let cold = ColdPathExecutor::new(router, queue_rx, exposure_tx, rpc_endpoint, wallet);
         thread::Builder::new()
             .name("cold-io".into())
             .spawn(move || cold.run_loop())
@@ -68,7 +99,7 @@ impl HotPathRuntime {
     /// Load config from disk and start runtime.
     pub fn from_config() -> Self {
         let handle = ConfigHandle::load().expect("config load");
-        Self::start(&handle.hotpath)
+        Self::start_with_config(&handle.hotpath, &*handle)
     }
 
     /// Publish a market tick into the hot loop (from ingestion thread).

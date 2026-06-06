@@ -96,7 +96,8 @@ describe('scoreRoundTripUsd', () => {
   it('handles minimum atomic amounts (1 lamport)', () => {
     const result = scoreRoundTripUsd(makeInput('1', '1'));
     expect(result.rejected).toBe(false);
-    expect(result.startUsd).toBeCloseTo(0, 10);
+    expect(result.startUsd).toBeGreaterThanOrEqual(0);
+    expect(result.startUsd).toBeLessThan(1e-5); // 1 lamport at $170/SOL ≈ 1.7e-7 USD
   });
 
   it('correctly propagates fees into net profit', () => {

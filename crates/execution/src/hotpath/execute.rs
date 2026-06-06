@@ -131,59 +131,108 @@ impl ColdPathExecutor {
 
     fn submit_jito(&self, intent: &ExecutionIntent) {
         use crate::jito::{BundleRequest, JitoSubmitter, build_bundle_signed};
+        use crate::jupiter_swap::execute_swap_blocking;
         use config::ArbitrageConfig;
 
-        let cfg = ArbitrageConfig::default();
-        let submitter = JitoSubmitter::new(&cfg);
+        let release = || {
+            let _ = self.exposure_release_tx.send(
+                intent.size_lamports.saturating_mul(100) / 1_000_000,
+            );
+        };
 
-        match &self.wallet {
-            Some(wallet) => {
-                let req = BundleRequest {
-                    opportunity_id: format!("hotpath-{}-{}", intent.pool_idx, intent.slot),
-                    tip_lamports: intent.tip_lamports,
-                    priority_fee_lamports: 100_000,
-                    amount_in_lamports: intent.size_lamports,
-                    route_hops: 2,
-                };
-                // Fetch recent blockhash, build and sign the tip tx, then submit.
-                match crate::jito::fetch_blockhash_blocking(&self.rpc_endpoint) {
-                    Ok(blockhash) => {
-                        let payer = wallet.pubkey();
-                        let bundle = build_bundle_signed(
-                            &submitter,
-                            &req,
-                            payer.as_bytes(),
-                            &blockhash,
-                            |msg| {
-                                wallet.sign_message(msg).unwrap_or([0u8; 64])
-                            },
-                        );
-                        let _ = crate::jito::submit_bundle_blocking_raw(&submitter, bundle, &req.opportunity_id);
-                    }
-                    Err(e) => {
-                        tracing::error!(
-                            pool_idx = intent.pool_idx,
-                            slot = intent.slot,
-                            error = %e,
-                            "failed to fetch blockhash for Jito bundle; intent dropped"
-                        );
-                    }
-                }
-            }
+        let wallet = match &self.wallet {
+            Some(w) => w,
             None => {
                 tracing::error!(
                     pool_idx = intent.pool_idx,
                     slot = intent.slot,
-                    "Jito submission attempted without a loaded wallet keypair; intent dropped. \
-                     Ensure features.dry_run=false and a live keypair is configured."
+                    "Jito submission attempted without a loaded wallet keypair — \
+                     set features.dry_run=false and SOLANA_ARB_WALLET_KEY"
+                );
+                release();
+                return;
+            }
+        };
+
+        let opportunity_id = format!("hotpath-{}-{}", intent.pool_idx, intent.slot);
+        let cfg = ArbitrageConfig::default();
+        let submitter = JitoSubmitter::new(&cfg);
+
+        // Step 1: Fetch recent blockhash for tip tx.
+        let blockhash = match crate::jito::fetch_blockhash_blocking(&self.rpc_endpoint) {
+            Ok(bh) => bh,
+            Err(e) => {
+                tracing::error!(error = %e, pool_idx = intent.pool_idx,
+                    "blockhash fetch failed; dropping intent");
+                release();
+                return;
+            }
+        };
+
+        // Step 2: Get a real signed swap tx from Jupiter.
+        let (input_mint, output_mint) = pool_mints_for_idx(intent.pool_idx);
+        let swap_bytes = match execute_swap_blocking(
+            input_mint,
+            output_mint,
+            intent.size_lamports,
+            50, // 50 bps slippage
+            wallet,
+        ) {
+            Ok(result) => {
+                let raw = base64_decode_simple(&result.signed_tx_b64);
+                tracing::debug!(
+                    pool_idx = intent.pool_idx,
+                    out_amount = result.out_amount,
+                    tx_len = raw.len(),
+                    "jupiter swap tx built"
+                );
+                raw
+            }
+            Err(e) => {
+                tracing::error!(error = %e, pool_idx = intent.pool_idx,
+                    "Jupiter swap build failed; dropping intent");
+                release();
+                return;
+            }
+        };
+
+        // Step 3: Build tip tx + inject swap tx → submit bundle.
+        let req = BundleRequest {
+            opportunity_id: opportunity_id.clone(),
+            tip_lamports: intent.tip_lamports,
+            priority_fee_lamports: 100_000,
+            amount_in_lamports: intent.size_lamports,
+            route_hops: 2,
+        };
+        let payer = wallet.pubkey();
+        let mut bundle = build_bundle_signed(
+            &submitter,
+            &req,
+            payer.as_bytes(),
+            &blockhash,
+            |msg| wallet.sign_message(msg).unwrap_or([0u8; 64]),
+        );
+        bundle.swap_tx = swap_bytes;
+
+        match crate::jito::submit_bundle_blocking_raw(&submitter, bundle, &opportunity_id) {
+            Ok(r) => {
+                tracing::info!(
+                    pool_idx = intent.pool_idx,
+                    bundle_id = %r.bundle_id,
+                    "Jito bundle submitted"
+                );
+            }
+            Err(e) => {
+                tracing::error!(
+                    error = %e,
+                    pool_idx = intent.pool_idx,
+                    "Jito bundle submission failed"
                 );
             }
         }
 
-        // Always release exposure so the hot-path counter does not permanently lock (item 3).
-        let _ = self.exposure_release_tx.send(
-            intent.size_lamports.saturating_mul(100) / 1_000_000, // rough USD×100 estimate
-        );
+        // Always release exposure regardless of submission outcome.
+        release();
     }
 
     /// Direct RPC submission is not yet implemented.
@@ -206,6 +255,36 @@ impl ColdPathExecutor {
             intent.size_lamports.saturating_mul(100) / 1_000_000,
         );
     }
+}
+
+/// Map pool_idx to (input_mint, output_mint) for Jupiter quote calls.
+///
+/// Even pool indices are Raydium or Orca pools where we sell SOL for USDC.
+/// Odd indices represent the return leg (USDC → SOL) or alternative pairs.
+/// This mapping mirrors the pool registry in `ingestion::pools`.
+fn pool_mints_for_idx(pool_idx: u16) -> (&'static str, &'static str) {
+    // Well-known mainnet mint addresses.
+    const WSOL:  &str = "So11111111111111111111111111111111111111112";
+    const USDC:  &str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    const USDT:  &str = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+
+    match pool_idx {
+        0 | 4 => (WSOL, USDC), // Raydium/CLMM SOL/USDC
+        1     => (WSOL, USDC), // Orca SOL/USDC
+        2     => (WSOL, USDT), // Raydium SOL/USDT
+        3     => (WSOL, USDT), // Orca SOL/USDT
+        _     => (WSOL, USDC), // fallback
+    }
+}
+
+/// Decode a base64 string to bytes using the standard alphabet.
+/// Returns an empty Vec if decoding fails.
+fn base64_decode_simple(s: &str) -> Vec<u8> {
+    // Use the base64 crate already in scope via the `base64` dep in execution/Cargo.toml.
+    use base64::Engine as _;
+    base64::engine::general_purpose::STANDARD
+        .decode(s.trim())
+        .unwrap_or_default()
 }
 
 /// Build an execution intent from an approved signal.

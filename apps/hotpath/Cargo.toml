@@ -12,5 +12,7 @@ path = "src/main.rs"
 config  = { path = "../../crates/config" }
 engine  = { path = "../../crates/engine" }
 execution = { path = "../../crates/execution" }
+ingestion = { path = "../../crates/ingestion" }
+tokio   = { version = "1", features = ["rt", "time"] }
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
