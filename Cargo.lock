@@ -546,6 +546,7 @@ dependencies = [
  "tokio",
  "tokio-util 0.7.18",
  "tracing",
+ "wallet",
 ]
 
 [[package]]
@@ -864,6 +865,8 @@ dependencies = [
  "config",
  "engine",
  "execution",
+ "ingestion",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1105,6 +1108,7 @@ dependencies = [
  "config",
  "crossbeam-channel",
  "events",
+ "execution",
  "futures-util",
  "serde",
  "serde_json",

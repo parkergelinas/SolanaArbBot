@@ -257,6 +257,129 @@ fn decode_short_vec_len(bytes: &[u8]) -> Option<(usize, usize)> {
     Some((len, 3))
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Blocking API for use from sync (cold-path) threads
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Outcome of a blocking Jupiter quote + swap build call.
+#[derive(Clone, Debug)]
+pub struct BlockingSwapTx {
+    /// Base64-encoded signed transaction bytes, ready for RPC or Jito.
+    pub signed_tx_b64: String,
+    /// Quote output amount in the smallest output token unit.
+    pub out_amount: u64,
+}
+
+/// Fetch a Jupiter quote and build a signed swap transaction, synchronously.
+///
+/// Intended for use from the cold-path I/O thread where async is not available.
+/// Spawns a minimal single-threaded Tokio runtime internally; the overhead is
+/// one runtime creation per Jito bundle submission (~1–2 ms).
+///
+/// Returns `Err(String)` on any HTTP, parsing, or signing failure.
+pub fn execute_swap_blocking(
+    input_mint: &str,
+    output_mint: &str,
+    amount_lamports: u64,
+    slippage_bps: u32,
+    wallet: &wallet::WalletKeypair,
+) -> Result<BlockingSwapTx, String> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| format!("tokio runtime: {e}"))?;
+
+    rt.block_on(async {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .map_err(|e| e.to_string())?;
+
+        // 1. Fetch quote
+        let req = pricing::SwapQuoteRequest {
+            input_mint,
+            output_mint,
+            amount: amount_lamports,
+            slippage_bps,
+            restrict_intermediate_tokens: true,
+        };
+        let quote_url = build_legacy_quote_url(pricing::JUPITER_SWAP_V1_BASE, &req);
+        let resp = pricing::jupiter_get(&client, &quote_url)
+            .send()
+            .await
+            .map_err(|e| format!("quote fetch: {e}"))?;
+
+        if !resp.status().is_success() {
+            return Err(format!("jupiter quote HTTP {}", resp.status()));
+        }
+
+        let quote: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+
+        // Extract out_amount for caller's information.
+        let out_amount = quote
+            .get("outAmount")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+
+        // 2. Build swap transaction
+        let base = pricing::normalize_jupiter_swap_base(pricing::JUPITER_SWAP_V1_BASE);
+        let swap_url = format!("{base}/swap");
+
+        #[derive(serde::Serialize)]
+        struct SwapReq {
+            #[serde(rename = "quoteResponse")]
+            quote_response: serde_json::Value,
+            #[serde(rename = "userPublicKey")]
+            user_public_key: String,
+            #[serde(rename = "wrapAndUnwrapSol")]
+            wrap_and_unwrap_sol: bool,
+            #[serde(rename = "dynamicComputeUnitLimit")]
+            dynamic_compute_unit_limit: bool,
+            #[serde(rename = "asLegacyTransaction")]
+            as_legacy_transaction: bool,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct SwapResp {
+            #[serde(rename = "swapTransaction", default)]
+            swap_transaction: String,
+        }
+
+        let body = SwapReq {
+            quote_response: quote,
+            user_public_key: bs58::encode(wallet.pubkey().as_bytes()).into_string(),
+            wrap_and_unwrap_sol: true,
+            dynamic_compute_unit_limit: true,
+            as_legacy_transaction: true,
+        };
+
+        let resp = pricing::jupiter_request(&client, reqwest::Method::POST, &swap_url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("swap build: {e}"))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body_text = resp.text().await.unwrap_or_default();
+            return Err(format!("jupiter swap HTTP {status}: {body_text}"));
+        }
+
+        let swap: SwapResp = resp.json().await.map_err(|e| e.to_string())?;
+        if swap.swap_transaction.is_empty() {
+            return Err("jupiter swap returned empty swapTransaction".to_owned());
+        }
+
+        // 3. Sign
+        let signed = sign_legacy_transaction(&swap.swap_transaction, wallet)?;
+        Ok(BlockingSwapTx {
+            signed_tx_b64: signed,
+            out_amount,
+        })
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

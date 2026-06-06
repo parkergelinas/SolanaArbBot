@@ -34,6 +34,10 @@ pub struct HotPathEngine {
     pub queue: ExecutionQueue,
     pub stats: HotPathStats,
     decision_budget_us: u64,
+    /// Receives exposure-release amounts from the cold-path thread after each submission (item 3).
+    exposure_release_rx: crossbeam_channel::Receiver<u64>,
+    /// Cloned into `ColdPathExecutor` so the cold path can signal back (item 3).
+    exposure_release_tx: crossbeam_channel::Sender<u64>,
 }
 
 impl HotPathEngine {
@@ -42,13 +46,22 @@ impl HotPathEngine {
     pub fn new(cfg: &HotPathConfig) -> Self {
         let queue = ExecutionQueue::new(cfg.execution_queue_capacity);
         let table = PrecomputeTable::build(cfg, 0);
+        let (exposure_release_tx, exposure_release_rx) = crossbeam_channel::unbounded::<u64>();
         Self {
             state: HotState::new(),
             table,
             queue,
             stats: HotPathStats::default(),
             decision_budget_us: cfg.decision_budget_us,
+            exposure_release_rx,
+            exposure_release_tx,
         }
+    }
+
+    /// Returns a sender the `ColdPathExecutor` uses to release exposure after submission.
+    #[must_use]
+    pub fn exposure_release_sender(&self) -> crossbeam_channel::Sender<u64> {
+        self.exposure_release_tx.clone()
     }
 
     /// Register pools and rebuild route table.
@@ -68,6 +81,13 @@ impl HotPathEngine {
     #[inline]
     pub fn process_tick(&mut self, tick: MarketTick) -> TickOutcome {
         let start = Instant::now();
+
+        // Drain exposure releases posted by the cold-path thread (item 3).
+        // try_recv never allocates — safe on the hot path.
+        while let Ok(release_amount) = self.exposure_release_rx.try_recv() {
+            self.state.open_exposure_x100 =
+                self.state.open_exposure_x100.saturating_sub(release_amount);
+        }
 
         let pool_snapshot = {
             let pool = self.state.ingest(&tick);
@@ -108,8 +128,12 @@ impl HotPathEngine {
             );
         }
 
-        // Update state after successful queue.
+        // Update state after successful enqueue (items 3, 5).
         self.state.pool_mut(tick.pool_idx).last_trade_slot = tick.slot;
+        self.state.last_any_intent_slot = tick.slot;
+        self.state.open_exposure_x100 = self.state
+            .open_exposure_x100
+            .saturating_add(self.table.thresholds.default_trade_usd_x100);
         self.stats.intents_queued += 1;
 
         self.record_tick(start);

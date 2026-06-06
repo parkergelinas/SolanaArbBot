@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 
+import AuthBootstrap from './auth/AuthBootstrap';
 import GlobalFeedsBootstrap from './feeds/GlobalFeedsBootstrap';
 import { IntelligenceProvider } from './IntelligenceProvider';
 import { WebSocketProvider } from './WebSocketProvider';
@@ -20,6 +21,7 @@ export default function Providers({
   return (
     <SolanaWalletProvider>
       <NetworkBootstrap />
+      <AuthBootstrap />
       <WebSocketProvider url={wsUrl}>
         <IntelligenceProvider url={intelUrl}>
           <GlobalFeedsBootstrap />

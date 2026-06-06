@@ -15,15 +15,20 @@ pub struct ThresholdTable {
     pub momentum_accel_x1000: u32,
     pub min_strength_x1000: u32,
     pub cooldown_slots: u64,
+    /// Minimum slots between any two globally queued intents (item 5).
+    pub global_cooldown_slots: u64,
     pub max_exposure_x100: u64,
     pub default_trade_lamports: u64,
     pub default_trade_usd_x100: u64,
+    /// Maximum acceptable loss in lamports per trade (item 7).
+    pub max_loss_lamports: u64,
 }
 
 impl ThresholdTable {
     /// Build from `SystemConfig` — called once at startup, never in hot loop.
     #[must_use]
     pub fn from_config(cfg: &HotPathConfig, max_exposure_usd_x100: u64) -> Self {
+        const DEFAULT_TRADE_LAMPORTS: u64 = 100_000_000; // 0.1 SOL
         Self {
             min_edge_bps: cfg.min_edge_bps,
             max_slippage_bps: cfg.max_slippage_bps,
@@ -31,9 +36,11 @@ impl ThresholdTable {
             momentum_accel_x1000: cfg.momentum_accel_threshold_x1000,
             min_strength_x1000: cfg.min_signal_strength_x1000,
             cooldown_slots: 75, // ~30s at 400ms/slot
+            global_cooldown_slots: cfg.global_cooldown_slots,
             max_exposure_x100: max_exposure_usd_x100,
-            default_trade_lamports: 100_000_000, // 0.1 SOL default
-            default_trade_usd_x100: 200_00,      // $200 notional
+            default_trade_lamports: DEFAULT_TRADE_LAMPORTS,
+            default_trade_usd_x100: 200_00, // $200 notional
+            max_loss_lamports: DEFAULT_TRADE_LAMPORTS * cfg.max_loss_bps as u64 / 10_000,
         }
     }
 }

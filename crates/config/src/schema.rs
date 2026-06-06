@@ -1869,6 +1869,13 @@ pub struct HotPathConfig {
     pub execution_queue_capacity: usize,
     /// Paper mode — no network submission (default `true`).
     pub paper_mode: bool,
+    /// Minimum slots between any two queued intents (global rate limiter).
+    /// 5 slots ≈ 2 seconds at 400 ms/slot. 0 = disabled.
+    pub global_cooldown_slots: u64,
+    /// Maximum acceptable loss per trade as basis points of notional size.
+    /// Trades where estimated cost exceeds this fraction are rejected.
+    /// 100 bps = 1 %. Must be ≤ 10 000.
+    pub max_loss_bps: u32,
 }
 
 impl Default for HotPathConfig {
@@ -1886,6 +1893,8 @@ impl Default for HotPathConfig {
             allow_direct_rpc_fallback: true,
             execution_queue_capacity: 256,
             paper_mode: true,
+            global_cooldown_slots: 5,
+            max_loss_bps: 100,
         }
     }
 }
@@ -1901,6 +1910,9 @@ impl HotPathConfig {
         }
         if self.execution_queue_capacity == 0 {
             return Err("hotpath.execution_queue_capacity must be > 0".into());
+        }
+        if self.max_loss_bps > 10_000 {
+            return Err("hotpath.max_loss_bps must be ≤ 10 000".into());
         }
         Ok(())
     }

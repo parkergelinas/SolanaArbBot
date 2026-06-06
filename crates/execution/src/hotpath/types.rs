@@ -60,8 +60,12 @@ pub enum RiskVerdict {
     RejectedSlippage,
     RejectedLiquidity,
     RejectedCooldown,
+    /// Fired when a second intent is queued before `global_cooldown_slots` have elapsed.
+    RejectedGlobalCooldown,
     RejectedExposure,
     RejectedTradingDisabled,
+    /// Fired when estimated cost in lamports exceeds `max_loss_lamports` (per-trade circuit breaker).
+    RejectedMaxLoss,
 }
 
 impl RiskVerdict {

@@ -5,6 +5,8 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import type { WalletName } from '@solana/wallet-adapter-base';
 import type { PublicKey } from '@solana/web3.js';
 
+import { useAuthStore } from '@/stores/authStore';
+
 const WALLET_LABELS: Record<string, { title: string; subtitle: string }> = {
   Phantom: { title: 'Phantom', subtitle: 'Solana extension' },
   Trust: { title: 'Trust Wallet', subtitle: 'Extension or mobile' },
@@ -17,6 +19,7 @@ function shortenAddress(key: PublicKey): string {
 
 export default function WalletConnectButton() {
   const { publicKey, wallet, disconnect, connecting, connected, select, wallets } = useWallet();
+  const logout = useAuthStore((s) => s.logout);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -49,8 +52,9 @@ export default function WalletConnectButton() {
 
   const handleDisconnect = useCallback(async () => {
     await disconnect();
+    await logout();
     setOpen(false);
-  }, [disconnect]);
+  }, [disconnect, logout]);
 
   const installedWallets = wallets.filter((w) => w.readyState === 'Installed' || w.readyState === 'Loadable');
   const availableWallets = installedWallets.length > 0 ? installedWallets : wallets;

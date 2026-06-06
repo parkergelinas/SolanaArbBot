@@ -37,9 +37,22 @@ pub fn check_risk(
         return RiskVerdict::RejectedSlippage;
     }
 
+    // Global inter-trade cooldown — prevents queue pile-up across all pools (item 5).
+    if t.global_cooldown_slots > 0
+        && state.current_slot.saturating_sub(state.last_any_intent_slot) < t.global_cooldown_slots
+    {
+        return RiskVerdict::RejectedGlobalCooldown;
+    }
+
     let trade_usd_x100 = t.default_trade_usd_x100;
     if state.open_exposure_x100.saturating_add(trade_usd_x100) > t.max_exposure_x100 {
         return RiskVerdict::RejectedExposure;
+    }
+
+    // Per-trade absolute loss cap — matches the backtester guardrail (item 7).
+    let worst_case_cost = (t.default_trade_lamports as u128 * total_cost_bps as u128 / 10_000) as u64;
+    if worst_case_cost > t.max_loss_lamports {
+        return RiskVerdict::RejectedMaxLoss;
     }
 
     RiskVerdict::Approved
