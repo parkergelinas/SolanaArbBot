@@ -24,7 +24,7 @@ Local build check
 1. From repository root, install and build the dashboard locally:
 
 ```powershell
-npm install --prefix apps/dashboard
+npm install --legacy-peer-deps --prefix apps/dashboard
 npm run build --prefix apps/dashboard
 ```
 

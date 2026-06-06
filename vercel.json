@@ -8,7 +8,7 @@
       "use": "@vercel/next"
     }
   ],
-  "installCommand": "npm install --prefix apps/dashboard",
+  "installCommand": "npm install --legacy-peer-deps --prefix apps/dashboard",
   "buildCommand": "npm run build --prefix apps/dashboard",
   "env": {
     "CONTROL_API_URL": "@control_api_url",

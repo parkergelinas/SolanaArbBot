@@ -62,7 +62,8 @@ export function useStrategyBacktest(config: BotStrategyConfig, activePresetId?: 
         );
         const rowKeys = new Set(row.bot_store_keys);
         const sameKeys =
-          enabled.size === rowKeys.size && Array.from(enabled).every((k) => rowKeys.has(k!));
+          enabled.size === rowKeys.size &&
+          Array.from(enabled).every((k) => typeof k === 'string' && rowKeys.has(k));
         if (sameKeys) return metricsFromRanking(row, hours);
       }
     }
