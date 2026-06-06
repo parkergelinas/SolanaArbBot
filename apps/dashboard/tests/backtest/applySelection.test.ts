@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatProbability, togglesForRanking, type StrategyRankingRow } from '@/lib/backtest/applySelection';
+import {
+  configFromRanking,
+  formatProbability,
+  togglesForRanking,
+  type StrategyRankingRow,
+} from '@/lib/backtest/applySelection';
 
 const sampleRow: StrategyRankingRow = {
   id: 'combined',
@@ -32,5 +37,12 @@ describe('backtest strategy selection', () => {
 
   it('formats probability as percent', () => {
     expect(formatProbability(0.825)).toBe('82.5%');
+  });
+
+  it('builds full config from ranking', () => {
+    const cfg = configFromRanking(sampleRow);
+    expect(cfg.scalp).toBe(true);
+    expect(cfg.arb).toBe(true);
+    expect(cfg.whale_copy).toBe(false);
   });
 });

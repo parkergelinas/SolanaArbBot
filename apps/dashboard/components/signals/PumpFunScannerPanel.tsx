@@ -32,7 +32,7 @@ export default function PumpFunScannerPanel({
           <span className="text-[10px] uppercase tracking-[0.14em] text-ds-text-muted font-semibold">
             Pump.fun Edge
           </span>
-          <p className="text-[9px] text-ds-text-muted truncate">Pre-UI bonding curve momentum</p>
+          <p className="text-[9px] text-ds-text-muted truncate">stream-api · DexScreener + Helius launches</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <MethodologyTip

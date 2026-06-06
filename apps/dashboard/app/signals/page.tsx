@@ -16,7 +16,10 @@ import { useWsContext } from '@/components/WebSocketProvider';
 import { api } from '@/lib/api';
 import { useFetch, useStreamSignals } from '@/lib/hooks';
 import { intelligenceToSignals } from '@/lib/intelligence/bridge';
-import { useIntelConnected, useSmartMoney, useWhales } from '@/lib/intelligence/hooks';
+import { arbOpportunitiesToSignals } from '@/lib/arb/arbSignals';
+import { useIntelConnected, useIntelSwaps, useSmartMoney, useWhales } from '@/lib/intelligence/hooks';
+import { scannerHitsToSignals } from '@/lib/scanners/scannerSignals';
+import { useSolscanResearcher, usePumpFunScanner } from '@/lib/scanners/hooks';
 import { streamSignalsToEvents } from '@/lib/intelligence/streamBridge';
 import {
   filterSignals,
@@ -58,8 +61,12 @@ export default function SignalsPage() {
   const intelConnected = useIntelConnected();
   const streamConnected = useStreamStore((s) => s.connected);
   const marketSignals = useMarketStore((s) => s.signals);
+  const arbOpportunities = useMarketStore((s) => s.arbOpportunities);
   const whales = useWhales();
   const smart = useSmartMoney();
+  const intelSwaps = useIntelSwaps();
+  const { data: solscanData } = useSolscanResearcher(25_000);
+  const { data: pumpData } = usePumpFunScanner(20_000);
 
   const [typeFilter, setTypeFilter] = useState<SignalFilterType>('All');
   const [dirFilter, setDirFilter] = useState<SignalFilterDirection>('All');
@@ -82,8 +89,22 @@ export default function SignalsPage() {
   const liveSignals = useStreamSignals<SignalEvent>(500);
 
   const intelSignals = useMemo(
-    () => (showIntel ? intelligenceToSignals(whales, smart) : []),
-    [whales, smart, showIntel],
+    () => (showIntel ? intelligenceToSignals(whales, smart, intelSwaps) : []),
+    [whales, smart, intelSwaps, showIntel],
+  );
+
+  const arbSignals = useMemo(
+    () => arbOpportunitiesToSignals(arbOpportunities),
+    [arbOpportunities],
+  );
+
+  const scannerSignals = useMemo(
+    () =>
+      scannerHitsToSignals({
+        solscan: solscanData?.hits ?? [],
+        pumpFun: pumpData?.hits ?? [],
+      }),
+    [solscanData?.hits, pumpData?.hits],
   );
 
   const streamApiSignals = useMemo(
@@ -92,8 +113,14 @@ export default function SignalsPage() {
   );
 
   const organized = useMemo(
-    () => mergeSignals(liveSignals, historical, [...intelSignals, ...streamApiSignals]),
-    [liveSignals, historical, intelSignals, streamApiSignals],
+    () =>
+      mergeSignals(liveSignals, historical, [
+        ...intelSignals,
+        ...streamApiSignals,
+        ...arbSignals,
+        ...scannerSignals,
+      ]),
+    [liveSignals, historical, intelSignals, streamApiSignals, arbSignals, scannerSignals],
   );
 
   const filtered = useMemo(() => {

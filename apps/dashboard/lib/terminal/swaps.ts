@@ -41,6 +41,7 @@ const DEX_LABEL: Record<string, string> = {
   raydium: 'RAY',
   orca: 'ORC',
   jupiter: 'JUP',
+  pump: 'PMP',
 };
 
 export function dexBadge(dex: string): string {

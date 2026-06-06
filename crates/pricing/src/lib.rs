@@ -11,7 +11,7 @@ pub mod token_quality;
 pub use jupiter::{spawn_jupiter_poller, MintWatchlist};
 pub use jupiter_api::{
     build_quote_url, extract_jupiter_prices, fetch_swap_quote, fetch_verified_tokens,
-    jupiter_get, normalize_jupiter_price_url, normalize_jupiter_swap_base,
+    jupiter_get, jupiter_request, normalize_jupiter_price_url, normalize_jupiter_swap_base,
     token_passes_quality, JupiterTokenMeta, SwapQuoteRequest, SwapQuoteResponse,
     JUPITER_API_BASE, JUPITER_PRICE_V3_URL, JUPITER_SWAP_V1_BASE, JUPITER_TOKENS_V2_BASE,
 };

@@ -280,6 +280,13 @@ body {
   overflow-y: auto;
 }
 
+/* Tall desk pages (bot) scroll via main instead of clipping inner shell */
+.app-main > [data-page-scroll] {
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow: visible;
+}
+
 /* Higher contrast on desk pages — Terminal keeps original muted palette */
 .page-desk-contrast {
   --text-primary:   #f2f2f6;

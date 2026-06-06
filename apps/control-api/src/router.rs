@@ -1,9 +1,9 @@
 //! Assembles the axum `Router` from all route modules.
 
-use axum::{routing::get, routing::post, Router};
+use axum::{middleware, routing::get, routing::post, Router};
 use tower_http::cors::CorsLayer;
 
-use crate::{routes, state::AppState};
+use crate::{middleware::require_api_key, routes, state::AppState};
 
 pub fn build(state: AppState) -> Router {
     Router::new()
@@ -31,6 +31,7 @@ pub fn build(state: AppState) -> Router {
         )
         // ── WebSocket stream ──────────────────────────────────────────────────
         .route("/ws", get(routes::ws::ws_handler))
+        .layer(middleware::from_fn(require_api_key))
         // ── Middleware ────────────────────────────────────────────────────────
         .layer(CorsLayer::permissive())
         .with_state(state)

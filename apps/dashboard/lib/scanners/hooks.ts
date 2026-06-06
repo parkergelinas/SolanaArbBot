@@ -2,12 +2,24 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
+import { streamHttpBase } from '@/lib/config/streamHttp';
+
 import type { PumpScannerResponse, SolscanResearcherResponse } from './types';
 
 async function fetchJson<T>(path: string): Promise<T> {
   const res = await fetch(path, { cache: 'no-store' });
   if (!res.ok) throw new Error(`${path} → ${res.status}`);
   return res.json() as Promise<T>;
+}
+
+/** Prefer dashboard Next routes, then stream-api HTTP mirror. */
+async function fetchScanner<T>(localPath: string, remotePath: string): Promise<T> {
+  try {
+    return await fetchJson<T>(localPath);
+  } catch {
+    const base = streamHttpBase();
+    return fetchJson<T>(`${base}${remotePath}`);
+  }
 }
 
 export function useSolscanResearcher(pollMs = 20_000) {
@@ -17,7 +29,10 @@ export function useSolscanResearcher(pollMs = 20_000) {
 
   const refresh = useCallback(async () => {
     try {
-      const next = await fetchJson<SolscanResearcherResponse>('/api/scanners/solscan');
+      const next = await fetchScanner<SolscanResearcherResponse>(
+        '/api/scanners/solscan',
+        '/api/scanners/solscan',
+      );
       setData(next);
       setError(null);
     } catch (e) {
@@ -43,7 +58,10 @@ export function usePumpFunScanner(pollMs = 15_000) {
 
   const refresh = useCallback(async () => {
     try {
-      const next = await fetchJson<PumpScannerResponse>('/api/scanners/pump-fun');
+      const next = await fetchScanner<PumpScannerResponse>(
+        '/api/scanners/pump-fun',
+        '/api/scanners/pump-fun',
+      );
       setData(next);
       setError(null);
     } catch (e) {

@@ -41,7 +41,10 @@ pub mod types;
 pub use balance::{BalanceMonitor, BalanceReport};
 pub use config::WalletConfig;
 pub use error::{WalletError, WalletResult};
-pub use guard::{require_live_mode, require_network_match, require_sufficient_balance};
+pub use guard::{
+    expected_network, require_live_mode, require_live_mode_for_wallet, require_network_match,
+    require_sufficient_balance, validate_network,
+};
 pub use keypair::WalletKeypair;
 pub use rpc::{make_rpc, Network, RpcClientWrapper, SimulationResult};
 pub use types::Blockhash;

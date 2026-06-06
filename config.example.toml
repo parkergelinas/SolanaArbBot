@@ -446,3 +446,28 @@ max_repay_pct              = 0.50
 jito_tip_pct_of_bonus      = 0.70
 protocols                  = ["kamino", "marginfi", "drift", "save"]
 min_position_value_usd     = 1000.0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [wallet] — Key management + RPC for live signing (wallet crate only)
+# ─────────────────────────────────────────────────────────────────────────────
+[wallet]
+# Private key is NEVER read from disk — inject via env only:
+#   SOLANA_ARB_WALLET_KEY=<base58 64-byte secret>
+# Or override env var name:
+# keypair_env_var = "SOLANA_ARB_WALLET_KEY"
+rpc_endpoint = "https://api.devnet.solana.com"
+commitment = "confirmed"
+expected_network = "devnet"   # mainnet | devnet | localnet
+min_sol_balance = 0.1
+validate_network_on_start = true
+
+# ── Mainnet live trading env vars (required together) ───────────────────────
+# SOLANA_ARB_CONFIG=config.mainnet.toml
+# SOLANA_ARB_FEATURES__DRY_RUN=false
+# SOLANA_ARB_FEATURES__ENABLE_LIVE_TRADING=true
+# SOLANA_ARB_CONFIRM_LIVE_TRADING=1
+# SOLANA_ARB_WALLET_KEY=<base58 secret>
+# SOLANA_ARB_WALLET__RPC_ENDPOINT=https://mainnet.helius-rpc.com/?api-key=...
+# SOLANA_ARB_WALLET__EXPECTED_NETWORK=mainnet
+# CONTROL_API_KEY=<random secret for dashboard proxy>
+# JUPITER_API_KEY=<optional jup.ag key>

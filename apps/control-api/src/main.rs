@@ -12,6 +12,7 @@ mod intelligence_bridge;
 mod dto;
 mod error;
 mod events;
+mod middleware;
 mod router;
 mod routes;
 mod runtime_ctl;

@@ -4,13 +4,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 
+import StrategyWorkbench from '@/components/bot/StrategyWorkbench';
 import WhaleFeed from '@/components/intelligence/WhaleFeed';
 import LiveDataStatusCard from '@/components/LiveDataStatusCard';
 import PaperTradingPanel from '@/components/paper/PaperTradingPanel';
 import { CompactPageHeader, DsPanel, DsStatPill, PageShell } from '@/components/layout/PageShell';
 import DsBadge from '@/components/ui/DsBadge';
+import { enabledStrategyLabels, findPreset, presetDisplayName } from '@/lib/strategies/presets';
 import { api } from '@/lib/api';
+import { formatRoiPct } from '@/lib/backtest/metrics';
 import { useFetch, useLatestTrade } from '@/lib/hooks';
+import { useStrategyBacktest } from '@/lib/hooks/useStrategyBacktest';
 import { intelligenceToSignals } from '@/lib/intelligence/bridge';
 import { useIntelConnected, useSmartMoney, useWhales } from '@/lib/intelligence/hooks';
 import { streamSignalsToEvents } from '@/lib/intelligence/streamBridge';
@@ -19,77 +23,29 @@ import { signalBotScore } from '@/lib/signals';
 import { formatUsd, type BotStatus } from '@/lib/types';
 import { useBotStore } from '@/stores/botStore';
 
-const STRATEGIES = [
-  { key: 'scalp' as const, label: 'Scalping', desc: 'Short-term momentum entries' },
-  { key: 'arb' as const, label: 'DEX Arb', desc: 'Cross-DEX spread capture' },
-  { key: 'whale_copy' as const, label: 'Whale Copy', desc: 'Mirror large wallet flows' },
-  { key: 'momentum' as const, label: 'Momentum', desc: 'Trend-following signals' },
-  { key: 'sniper' as const, label: 'Sniper', desc: 'Fast entry on new pools' },
-];
-
-function ParamSlider({
-  label,
-  value,
-  min,
-  max,
-  step,
-  format,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  format: (v: number) => string;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <label className="space-y-1 block">
-      <span className="text-[10px] uppercase tracking-[0.12em] text-ds-text-muted">
-        {label} · {format(value)}
-      </span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="w-full accent-ds-blue h-1"
-      />
-    </label>
-  );
-}
-
 export default function BotPage() {
   const { publicKey } = useWallet();
   const { connection } = useConnection();
   const [balance, setBalance] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [mobileIntelTab, setMobileIntelTab] = useState<'queue' | 'whale'>('queue');
+  const [hydrated, setHydrated] = useState(false);
 
   const intelConnected = useIntelConnected();
   const whales = useWhales();
   const smart = useSmartMoney();
 
-  const {
-    strategies,
-    toggleStrategy,
-    setMinConfidence,
-    setMinWhaleSol,
-    setAutoCopyWhale,
-    setScalpTakeProfitPct,
-    setScalpStopLossPct,
-    setArbMinProfitUsd,
-    setArbMaxLossUsd,
-    recordWhaleCopy,
-    lastWhaleCopyAt,
-    pendingCopies,
-    toConfigPatch,
-  } = useBotStore();
+  const strategies = useBotStore((s) => s.strategies);
+  const applyPreset = useBotStore((s) => s.applyPreset);
+  const activePresetId = useBotStore((s) => s.activePresetId);
+  const customPresets = useBotStore((s) => s.customPresets);
+  const hydrateFromApiConfig = useBotStore((s) => s.hydrateFromApiConfig);
+  const refreshCustomPresets = useBotStore((s) => s.refreshCustomPresets);
+  const recordWhaleCopy = useBotStore((s) => s.recordWhaleCopy);
+  const lastWhaleCopyAt = useBotStore((s) => s.lastWhaleCopyAt);
+  const pendingCopies = useBotStore((s) => s.pendingCopies);
+  const toConfigPatch = useBotStore((s) => s.toConfigPatch);
 
   const { data: bot, refetch } = useFetch<BotStatus>(
     useCallback(() => api.botStatus(), []),
@@ -106,6 +62,40 @@ export default function BotPage() {
       setBalance(lamports / LAMPORTS_PER_SOL);
     }).catch(() => setBalance(null));
   }, [publicKey, connection]);
+
+  useEffect(() => {
+    let cancelled = false;
+    refreshCustomPresets();
+    const custom = useBotStore.getState().customPresets;
+    const presetId = useBotStore.getState().activePresetId;
+    const preset = findPreset(presetId, custom);
+
+    if (presetId.startsWith('backtest-') || presetId === 'custom-draft') {
+      setHydrated(true);
+      return;
+    }
+
+    if (preset) {
+      applyPreset(preset);
+      setHydrated(true);
+      return;
+    }
+
+    api
+      .config()
+      .then((cfg) => {
+        if (!cancelled) hydrateFromApiConfig(cfg);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setHydrated(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hydrate once on mount
+  }, []);
 
   const marketSignals = useMarketStore((s) => s.signals);
 
@@ -160,31 +150,27 @@ export default function BotPage() {
     }
   };
 
-  const syncConfig = async () => {
-    setSyncing(true);
-    setSyncMsg(null);
-    try {
-      await api.patchConfig(toConfigPatch());
-      setSyncMsg('Config synced — paper mode enforced.');
-    } catch (e) {
-      setSyncMsg(String(e));
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   const statusClass = bot?.trading_halted
     ? 'text-ds-red'
     : bot?.running
       ? 'text-ds-green'
       : 'text-ds-text-muted';
 
+  const enabledEngines = useMemo(() => enabledStrategyLabels(strategies), [strategies]);
+  const noEngines = enabledEngines.length === 0;
+
   const paramInvalid =
     strategies.scalp_stop_loss_pct >= strategies.scalp_take_profit_pct ||
     strategies.arb_max_loss_usd <= 0;
 
+  const activePresetLabel = presetDisplayName(activePresetId, customPresets);
+  const { activeMetrics, loaded: backtestLoaded } = useStrategyBacktest(
+    strategies,
+    activePresetId,
+  );
+
   return (
-    <PageShell desk>
+    <PageShell desk scroll>
       <CompactPageHeader
         title="Bot"
         subtitle="Paper execution · strategy fusion · whale-aware copy logic"
@@ -217,21 +203,46 @@ export default function BotPage() {
         </span>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 shrink-0">
         <DsStatPill label="Net PnL" value={bot ? formatUsd(bot.net_pnl_usd) : '–'} accent={bot && bot.net_pnl_usd >= 0 ? 'var(--green)' : 'var(--red)'} />
         <DsStatPill label="Scalp trades" value={bot?.scalp_trades ?? 0} />
         <DsStatPill label="Arb trades" value={bot?.arb_trades ?? 0} />
         <DsStatPill label="Win rate" value={`${((bot?.win_rate ?? 0) * 100).toFixed(0)}%`} accent="var(--blue)" />
+        <DsStatPill
+          label="Backtest conf."
+          value={backtestLoaded && activeMetrics ? `${activeMetrics.confidenceScore.toFixed(0)}%` : '–'}
+          accent="var(--green)"
+        />
+        <DsStatPill
+          label="Est. daily ROI"
+          value={backtestLoaded && activeMetrics ? formatRoiPct(activeMetrics.dailyRoiPct) : '–'}
+          accent={activeMetrics && activeMetrics.dailyRoiPct >= 0 ? 'var(--green)' : 'var(--red)'}
+        />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 shrink-0">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 shrink-0 items-start">
         <LiveDataStatusCard compact />
         <PaperTradingPanel />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 flex-1 min-h-0">
+      {!hydrated ? (
+        <DsPanel title="Strategy Workbench" className="shrink-0">
+          <div className="space-y-3 animate-pulse">
+            <div className="h-3 w-48 bg-ds-elevated rounded" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-20 bg-ds-elevated/60 rounded-terminal" />
+              ))}
+            </div>
+          </div>
+        </DsPanel>
+      ) : (
+        <StrategyWorkbench paramInvalid={paramInvalid} onSyncMsg={setSyncMsg} />
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(11rem,1fr)] gap-2 shrink-0 items-start">
         <DsPanel
-          className={`lg:col-span-2 ${bot?.running ? 'border-ds-green/30' : ''}`}
+          className={`min-w-0 ${bot?.running ? 'border-ds-green/30' : ''}`}
           title="Bot Control"
           action={
             <span className={`text-[10px] font-mono uppercase ${statusClass}`}>
@@ -239,17 +250,30 @@ export default function BotPage() {
             </span>
           }
         >
-          <div className="flex items-start justify-between gap-4">
-            <div>
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
+            <div className="min-w-0">
               {bot?.halt_reason && (
                 <p className="text-[11px] text-ds-red mb-2">{bot.halt_reason}</p>
               )}
-              <p className="text-3xl font-bold font-mono text-ds-text-primary">
+              <p className="text-2xl sm:text-3xl font-bold font-mono text-ds-text-primary tabular-nums">
                 {bot ? formatUsd(bot.net_pnl_usd) : '–'}
               </p>
               <p className="text-[10px] text-ds-text-muted uppercase tracking-wider mt-0.5">
                 Net PnL (paper)
               </p>
+              <p className="text-[10px] text-ds-blue mt-2 truncate">
+                Preset: {activePresetLabel}
+              </p>
+              <p className="text-[9px] font-mono text-ds-text-muted truncate">
+                {enabledEngines.join(' · ') || 'No engines enabled'}
+              </p>
+              {backtestLoaded && activeMetrics && (
+                <p className="text-[9px] font-mono mt-1.5 text-ds-green">
+                  {activeMetrics.confidenceScore.toFixed(0)}% conf ·{' '}
+                  {formatRoiPct(activeMetrics.dailyRoiPct)}/day ·{' '}
+                  {formatRoiPct(activeMetrics.monthlyRoiPct)}/mo
+                </p>
+              )}
             </div>
             <div className="text-right text-[10px] font-mono text-ds-text-muted space-y-1">
               <p>{bot?.runtime_mode ?? bot?.mode ?? 'disabled'}</p>
@@ -282,12 +306,12 @@ export default function BotPage() {
             </div>
           )}
 
-          <div className="flex gap-2 mt-4">
+          <div className="flex flex-col sm:flex-row gap-2 mt-4">
             <button
               type="button"
               onClick={() => runAction('start')}
-              disabled={busy || bot?.running || paramInvalid}
-              className="flex-1 py-2 rounded-terminal bg-ds-green/10 border border-ds-green/30 text-ds-green text-sm font-medium disabled:opacity-40 hover:bg-ds-green/20 transition-colors"
+              disabled={busy || bot?.running || paramInvalid || noEngines}
+              className="touch-target flex-1 py-2.5 sm:py-2 rounded-terminal bg-ds-green/10 border border-ds-green/30 text-ds-green text-sm font-medium disabled:opacity-40 hover:bg-ds-green/20 transition-colors"
             >
               Start Bot
             </button>
@@ -295,14 +319,21 @@ export default function BotPage() {
               type="button"
               onClick={() => runAction('stop')}
               disabled={busy || !bot?.running}
-              className="flex-1 py-2 rounded-terminal bg-ds-red/10 border border-ds-red/30 text-ds-red text-sm font-medium disabled:opacity-40 hover:bg-ds-red/20 transition-colors"
+              className="touch-target flex-1 py-2.5 sm:py-2 rounded-terminal bg-ds-red/10 border border-ds-red/30 text-ds-red text-sm font-medium disabled:opacity-40 hover:bg-ds-red/20 transition-colors"
             >
               Stop Bot
             </button>
           </div>
+          {(paramInvalid || noEngines) && (
+            <p className="text-[10px] text-ds-amber mt-2">
+              {noEngines
+                ? 'Enable at least one strategy in the workbench before starting.'
+                : 'Fix scalping exits and arb limits in the workbench before starting.'}
+            </p>
+          )}
         </DsPanel>
 
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 lg:grid-cols-1 gap-2 min-w-0 shrink-0">
           <StatCard label="Scalp" value={bot?.scalp_trades ?? 0} pnl={bot?.scalp_pnl_usd} />
           <StatCard label="Arb" value={bot?.arb_trades ?? 0} pnl={bot?.arb_pnl_usd} />
           <StatCard label="Win rate" value={`${((bot?.win_rate ?? 0) * 100).toFixed(0)}%`} />
@@ -310,155 +341,72 @@ export default function BotPage() {
         </div>
       </div>
 
-      <DsPanel
-        title="Strategy Matrix"
-        action={
-          <button
-            type="button"
-            onClick={syncConfig}
-            disabled={syncing || paramInvalid}
-            className="text-[10px] px-2 py-0.5 rounded-terminal border border-ds-border text-ds-text-muted hover:text-ds-text-primary hover:border-ds-blue/30 disabled:opacity-50"
-          >
-            {syncing ? 'Syncing…' : 'Sync to API'}
-          </button>
-        }
-      >
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-4">
-          {STRATEGIES.map(({ key, label, desc }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => toggleStrategy(key)}
-              className={`text-left rounded-terminal border px-3 py-2 transition-all ${
-                strategies[key]
-                  ? 'border-ds-blue/40 bg-ds-blue/8'
-                  : 'border-ds-border bg-ds-elevated/30 opacity-70'
-              }`}
-            >
-              <p className="text-[11px] font-semibold text-ds-text-primary">{label}</p>
-              <p className="text-[9px] text-ds-text-muted mt-0.5">{desc}</p>
-            </button>
-          ))}
-        </div>
+      {syncMsg && (
+        <p
+          className={`text-[11px] shrink-0 px-1 ${
+            syncMsg.toLowerCase().includes('sync') ? 'text-ds-green' : 'text-ds-amber'
+          }`}
+        >
+          {syncMsg}
+        </p>
+      )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-ds-border">
-          <div className="space-y-3">
-            <p className="text-[9px] uppercase tracking-[0.14em] text-ds-text-muted font-semibold">
-              Scalping exits
-            </p>
-            <ParamSlider
-              label="Take profit"
-              value={strategies.scalp_take_profit_pct}
-              min={0.003}
-              max={0.05}
-              step={0.001}
-              format={(v) => `${(v * 100).toFixed(2)}%`}
-              onChange={setScalpTakeProfitPct}
-            />
-            <ParamSlider
-              label="Stop loss"
-              value={strategies.scalp_stop_loss_pct}
-              min={0.002}
-              max={0.03}
-              step={0.001}
-              format={(v) => `${(v * 100).toFixed(2)}%`}
-              onChange={setScalpStopLossPct}
-            />
-          </div>
-          <div className="space-y-3">
-            <p className="text-[9px] uppercase tracking-[0.14em] text-ds-text-muted font-semibold">
-              DEX arb limits
-            </p>
-            <ParamSlider
-              label="Min profit"
-              value={strategies.arb_min_profit_usd}
-              min={0.05}
-              max={5}
-              step={0.05}
-              format={(v) => `$${v.toFixed(2)}`}
-              onChange={setArbMinProfitUsd}
-            />
-            <ParamSlider
-              label="Max loss / trade"
-              value={strategies.arb_max_loss_usd}
-              min={0.5}
-              max={10}
-              step={0.5}
-              format={(v) => `$${v.toFixed(2)}`}
-              onChange={setArbMaxLossUsd}
-            />
-          </div>
-        </div>
+      <div className="lg:hidden flex w-full p-0.5 gap-0.5 bg-ds-elevated border border-ds-border rounded-terminal shrink-0">
+        <button
+          type="button"
+          onClick={() => setMobileIntelTab('queue')}
+          className={`segment-btn flex-1 py-2 ${mobileIntelTab === 'queue' ? 'segment-btn-active' : ''}`}
+        >
+          Queue ({actionable.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileIntelTab('whale')}
+          className={`segment-btn flex-1 py-2 ${mobileIntelTab === 'whale' ? 'segment-btn-active' : ''}`}
+        >
+          Whale Radar
+        </button>
+      </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 mt-4 border-t border-ds-border">
-          <ParamSlider
-            label="Min confidence"
-            value={strategies.min_confidence}
-            min={0.4}
-            max={0.95}
-            step={0.05}
-            format={(v) => `${(v * 100).toFixed(0)}%`}
-            onChange={setMinConfidence}
-          />
-          <ParamSlider
-            label="Min whale"
-            value={strategies.min_whale_sol}
-            min={10}
-            max={500}
-            step={10}
-            format={(v) => `${v} SOL`}
-            onChange={setMinWhaleSol}
-          />
-          <label className="flex items-center gap-2 cursor-pointer pt-4">
-            <input
-              type="checkbox"
-              checked={strategies.auto_copy_whale}
-              onChange={(e) => setAutoCopyWhale(e.target.checked)}
-              className="rounded border-ds-border accent-ds-blue"
-            />
-            <span className="text-[11px] text-ds-text-secondary">Auto copy whale (paper)</span>
-          </label>
-        </div>
-
-        {paramInvalid && (
-          <p className="text-[11px] text-ds-red mt-3">
-            Stop loss must be less than take profit; max loss must be positive.
-          </p>
-        )}
-        {syncMsg && (
-          <p className={`text-[11px] mt-2 ${syncMsg.includes('synced') ? 'text-ds-green' : 'text-ds-amber'}`}>
-            {syncMsg}
-          </p>
-        )}
-      </DsPanel>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 shrink-0">
-        <DsPanel title="Action Queue" action={<span className="text-[10px] text-ds-text-muted">{intelConnected ? `${actionable.length} signals` : 'Intel offline'}</span>}>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 shrink-0 items-start">
+        <DsPanel
+          className={`min-h-0 min-w-0 ${mobileIntelTab === 'queue' ? 'flex' : 'hidden lg:flex'} flex-col`}
+          title="Action Queue"
+          action={
+            <span className="text-[10px] text-ds-text-muted">
+              {intelConnected ? `${actionable.length} signals` : 'Intel offline'}
+            </span>
+          }
+        >
           {actionable.length === 0 ? (
             <p className="text-[11px] text-ds-text-muted py-6 text-center">
               No signals above threshold
             </p>
           ) : (
-            <ul className="space-y-1.5">
+            <ul className="space-y-1.5 max-h-64 lg:max-h-none overflow-y-auto terminal-scroll">
               {actionable.map(({ signal, score }) => (
                 <li
                   key={signal.signal_id}
                   className="rounded-terminal border border-ds-border bg-ds-elevated/30 px-2 py-1.5"
                 >
-                  <div className="flex justify-between text-[9px]">
-                    <span className="text-ds-blue font-semibold uppercase">{signal.signal_type}</span>
-                    <span className="font-mono text-ds-text-muted">score {(score * 100).toFixed(0)}</span>
+                  <div className="flex justify-between gap-2 text-[9px]">
+                    <span className="text-ds-blue font-semibold uppercase shrink-0">{signal.signal_type}</span>
+                    <span className="font-mono text-ds-text-muted shrink-0">score {(score * 100).toFixed(0)}</span>
                   </div>
-                  <p className="text-[10px] text-ds-text-secondary mt-0.5 line-clamp-2">{signal.explanation}</p>
+                  <p className="text-[10px] text-ds-text-secondary mt-0.5 line-clamp-2 break-words">
+                    {signal.explanation}
+                  </p>
                 </li>
               ))}
             </ul>
           )}
           {pendingCopies > 0 && (
-            <p className="text-[10px] text-ds-blue mt-2">Paper copies triggered: {pendingCopies}</p>
+            <p className="text-[10px] text-ds-blue mt-2 shrink-0">Paper copies triggered: {pendingCopies}</p>
           )}
         </DsPanel>
-        <WhaleFeed compact />
+        <div className={`min-w-0 ${mobileIntelTab === 'whale' ? 'block' : 'hidden lg:block'}`}>
+          <WhaleFeed compact />
+        </div>
       </div>
     </PageShell>
   );
@@ -474,11 +422,13 @@ function StatCard({
   pnl?: number;
 }) {
   return (
-    <div className="bg-ds-surface border border-ds-border rounded-terminal px-3 py-2.5">
-      <p className="text-[9px] uppercase tracking-[0.12em] text-ds-text-muted">{label}</p>
-      <p className="text-lg font-semibold text-ds-text-primary font-mono mt-0.5">{value}</p>
+    <div className="bg-ds-surface border border-ds-border rounded-terminal px-3 py-2.5 min-w-0 overflow-hidden">
+      <p className="text-[9px] uppercase tracking-[0.12em] text-ds-text-muted truncate">{label}</p>
+      <p className="text-base sm:text-lg font-semibold text-ds-text-primary font-mono mt-0.5 tabular-nums truncate">
+        {value}
+      </p>
       {pnl !== undefined && (
-        <p className={`text-[11px] font-mono mt-0.5 ${pnl >= 0 ? 'text-ds-green' : 'text-ds-red'}`}>
+        <p className={`text-[11px] font-mono mt-0.5 tabular-nums truncate ${pnl >= 0 ? 'text-ds-green' : 'text-ds-red'}`}>
           {formatUsd(pnl)}
         </p>
       )}

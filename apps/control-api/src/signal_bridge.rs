@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use autonomous::ExternalIngestionBuffer;
 use common::Pubkey;
-use signal_bus::{AlertType, LiveSignal, SignalBus};
-use signals::{Direction, WhaleEvent};
+use signal_bus::{AlertType, LiveSignal, SignalBus, SignalKind, SignalSourceMeta, StrategyTag, SCHEMA_VERSION};
+use signals::{Direction, QuoteArbSignal, WhaleEvent};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -79,6 +79,42 @@ pub async fn push_live_signal(
             "bridged live signal to autonomous whale ingestion"
         );
     }
+}
+
+/// Publish a quote-arb opportunity onto the shared signal bus.
+pub async fn publish_quote_arb_signal(bus: &SignalBus, sig: &QuoteArbSignal) {
+    let signal_id = format!("qarb-{}-{}", sig.pair_label, sig.detected_at_ms);
+    let live = LiveSignal {
+        v: SCHEMA_VERSION,
+        signal_id: signal_id.clone(),
+        kind: SignalKind::Engine,
+        source: SignalSourceMeta {
+            layer: "quote_arb".into(),
+            dex: "jupiter".into(),
+            slot: 0,
+            wallet_label: None,
+        },
+        pair: sig.pair_label.clone(),
+        token_in: sig.input_mint.clone(),
+        token_out: sig.output_mint.clone(),
+        timestamp_ms: sig.detected_at_ms,
+        tx_id: signal_id,
+        price: sig.expected_pnl_usd,
+        size: sig.expected_pnl_usd.abs(),
+        confidence: (sig.edge_bps as f64 / 10_000.0).clamp(0.0, 1.0),
+        wallet: String::new(),
+        strength: Some((sig.edge_bps as f64 / 10_000.0).clamp(0.0, 1.0)),
+        size_usd: Some(sig.expected_pnl_usd.abs()),
+        alert_type: None,
+        strategy_tag: Some(StrategyTag::Informational),
+        explanation: Some(format!(
+            "Quote arb {} edge={}bps route_div={}bps",
+            sig.pair_label, sig.edge_bps, sig.route_divergence_bps
+        )),
+        direction: Some("Long".into()),
+        dedup_key: format!("quote_arb:{}:{}", sig.input_mint, sig.detected_at_ms),
+    };
+    bus.publish(live).await;
 }
 
 fn should_bridge(live: &LiveSignal) -> bool {

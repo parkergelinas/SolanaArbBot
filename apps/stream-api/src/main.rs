@@ -105,6 +105,8 @@ async fn main() -> anyhow::Result<()> {
     external_pollers::spawn_optional_external_pollers();
     pricing::spawn_jupiter_price_poller(ws_tx.clone());
 
+    let pump_swap_tx = swap_tx.clone();
+
     let hub_url = std::env::var("SIGNAL_HUB_URL").ok().filter(|s| !s.is_empty());
     let use_mock = std::env::var("STREAM_USE_MOCK")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -133,7 +135,7 @@ async fn main() -> anyhow::Result<()> {
 
     let scanners = signals::ScannerStore::new();
     scanner_pollers::spawn_scanner_pollers(scanners.clone());
-    pump_pollers::spawn_pump_pollers(swap_tx.clone(), ws_tx.clone(), scanners.clone());
+    pump_pollers::spawn_pump_pollers(pump_swap_tx, ws_tx.clone(), scanners.clone());
 
     let state = AppState {
         batch_tx,

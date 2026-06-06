@@ -52,14 +52,23 @@ export function CompactPageHeader({ title, subtitle, actions }: CompactPageHeade
 interface PageShellProps {
   children: ReactNode;
   className?: string;
+  /** Compact desk layout (signals-style pages). */
   desk?: boolean;
+  /** Let main scroll naturally instead of locking to viewport height. */
+  scroll?: boolean;
 }
 
-export function PageShell({ children, className = '', desk }: PageShellProps) {
+export function PageShell({ children, className = '', desk, scroll }: PageShellProps) {
   const base = desk
-    ? 'flex flex-col gap-2 min-h-0 flex-1 max-w-[100rem] mx-auto w-full pb-2 md:pb-4'
+    ? scroll
+      ? 'flex flex-col gap-2 shrink-0 max-w-[100rem] mx-auto w-full pb-2 md:pb-4'
+      : 'flex flex-col gap-2 min-h-0 flex-1 max-w-[100rem] mx-auto w-full pb-2 md:pb-4'
     : 'flex flex-col gap-3 max-w-[90rem] pb-4 md:pb-6';
-  return <div className={`${base} ${className}`}>{children}</div>;
+  return (
+    <div className={`${base} ${className}`} {...(scroll ? { 'data-page-scroll': true } : {})}>
+      {children}
+    </div>
+  );
 }
 
 interface DsPanelProps {

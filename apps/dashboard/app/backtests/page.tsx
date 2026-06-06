@@ -6,12 +6,19 @@ import Link from 'next/link';
 import { CompactPageHeader, DsPanel, DsStatPill, PageShell } from '@/components/layout/PageShell';
 import DsBadge from '@/components/ui/DsBadge';
 import {
+  configFromRanking,
   formatProbability,
   loadStrategyChoice,
   saveStrategyChoice,
-  togglesForRanking,
   type StrategyRankingRow,
 } from '@/lib/backtest/applySelection';
+import {
+  backtestHoursFromReport,
+  computeRoiMetrics,
+  confidenceTone,
+  formatRoiPct,
+} from '@/lib/backtest/metrics';
+import { api } from '@/lib/api';
 import { useBotStore } from '@/stores/botStore';
 
 interface BacktestMetrics {
@@ -44,18 +51,14 @@ interface PipelineReport {
   retest_verification?: { passed: boolean };
 }
 
-function confidenceTone(score: number): 'green' | 'blue' | 'amber' | 'muted' {
-  if (score >= 85) return 'green';
-  if (score >= 70) return 'blue';
-  if (score >= 55) return 'amber';
-  return 'muted';
-}
-
 export default function BacktestsPage() {
   const [report, setReport] = useState<PipelineReport | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [appliedId, setAppliedId] = useState<string | null>(null);
-  const toggleStrategy = useBotStore((s) => s.toggleStrategy);
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const loadStrategies = useBotStore((s) => s.loadStrategies);
+  const setActivePresetId = useBotStore((s) => s.setActivePresetId);
   const strategies = useBotStore((s) => s.strategies);
 
   useEffect(() => {
@@ -74,26 +77,31 @@ export default function BacktestsPage() {
   }, []);
 
   const applySelection = useCallback(
-    (row: StrategyRankingRow) => {
-      const toggles = togglesForRanking(row);
-      const keys = ['scalp', 'arb', 'whale_copy', 'momentum', 'sniper'] as const;
-      for (const key of keys) {
-        const want = toggles[key] ?? false;
-        if (strategies[key] !== want) {
-          toggleStrategy(key);
-        }
+    async (row: StrategyRankingRow) => {
+      setApplying(true);
+      setApplyError(null);
+      try {
+        const config = configFromRanking(row, strategies);
+        loadStrategies(config);
+        setActivePresetId(`backtest-${row.id}`);
+        saveStrategyChoice(row.id);
+        setSelectedId(row.id);
+        setAppliedId(row.id);
+        await api.patchConfig(useBotStore.getState().toConfigPatch());
+      } catch (e) {
+        setApplyError(String(e));
+      } finally {
+        setApplying(false);
       }
-      saveStrategyChoice(row.id);
-      setSelectedId(row.id);
-      setAppliedId(row.id);
     },
-    [strategies, toggleStrategy],
+    [loadStrategies, setActivePresetId, strategies],
   );
 
   const rankings = report?.strategy_rankings ?? [];
   const sim = report?.simulation;
   const retest = report?.retest?.metrics;
   const hasData = rankings.length > 0 || !!(sim || retest);
+  const holdoutHours = backtestHoursFromReport(report);
 
   const generatedLabel = report?.generated_at
     ? new Date(Number(report.generated_at) * 1000).toLocaleString()
@@ -152,7 +160,8 @@ export default function BacktestsPage() {
           <DsPanel title="Strategy comparison — choose by probability" compact className="shrink-0">
             <p className="text-[10px] text-ds-text-muted mb-3 leading-relaxed">
               Rankings use holdout win rate, verification pass probability, Sharpe, and per-trade edge.
-              Select a row and apply to enable matching strategies on the{' '}
+              ROI % is scaled from holdout PnL vs ${2500} paper notional. Apply a row to sync confidence
+              and ROI on the{' '}
               <Link href="/bot" className="text-ds-blue hover:underline">
                 Bot
               </Link>{' '}
@@ -162,6 +171,7 @@ export default function BacktestsPage() {
               {rankings.map((row) => {
                 const selected = selectedId === row.id;
                 const applied = appliedId === row.id;
+                const roi = computeRoiMetrics(row.net_pnl_usd, holdoutHours);
                 return (
                   <button
                     key={row.id}
@@ -193,6 +203,14 @@ export default function BacktestsPage() {
                         <dd className="font-mono text-ds-text-primary">
                           {formatProbability(row.pass_probability)}
                         </dd>
+                      </div>
+                      <div>
+                        <dt className="text-ds-text-muted uppercase text-[8px]">Daily ROI</dt>
+                        <dd className="font-mono text-ds-green">{formatRoiPct(roi.dailyRoiPct)}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-ds-text-muted uppercase text-[8px]">Monthly ROI</dt>
+                        <dd className="font-mono text-ds-text-primary">{formatRoiPct(roi.monthlyRoiPct)}</dd>
                       </div>
                       <div>
                         <dt className="text-ds-text-muted uppercase text-[8px]">$/trade</dt>
@@ -230,11 +248,12 @@ export default function BacktestsPage() {
                   type="button"
                   onClick={() => {
                     const row = rankings.find((r) => r.id === selectedId);
-                    if (row) applySelection(row);
+                    if (row) void applySelection(row);
                   }}
-                  className="px-3 py-1.5 rounded-terminal bg-ds-blue text-white text-[11px] font-medium hover:opacity-90"
+                  disabled={applying}
+                  className="px-3 py-1.5 rounded-terminal bg-ds-blue text-white text-[11px] font-medium hover:opacity-90 disabled:opacity-50"
                 >
-                  Apply {rankings.find((r) => r.id === selectedId)?.name} to bot config
+                  {applying ? 'Applying…' : `Apply ${rankings.find((r) => r.id === selectedId)?.name} to bot`}
                 </button>
                 <span className="text-[10px] text-ds-text-muted">
                   Enables:{' '}
@@ -242,6 +261,9 @@ export default function BacktestsPage() {
                     .find((r) => r.id === selectedId)
                     ?.bot_store_keys.join(', ') ?? '—'}
                 </span>
+                {applyError && (
+                  <p className="text-[10px] text-ds-red w-full">{applyError}</p>
+                )}
               </div>
             )}
           </DsPanel>

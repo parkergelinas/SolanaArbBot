@@ -1,4 +1,5 @@
-import type { BotStrategy } from '@/stores/botStore';
+import type { BotStrategy, BotStrategyConfig } from '@/stores/botStore';
+import { cloneConfig } from '@/lib/strategies/presets';
 
 export interface StrategyRankingRow {
   id: string;
@@ -58,4 +59,30 @@ export function togglesForRanking(
 
 export function formatProbability(p: number): string {
   return `${(p * 100).toFixed(1)}%`;
+}
+
+/** Build a full strategy config from a backtest ranking row (toggles only). */
+export function configFromRanking(
+  row: StrategyRankingRow,
+  base?: BotStrategyConfig,
+): BotStrategyConfig {
+  const toggles = togglesForRanking(row);
+  const next = cloneConfig(base ?? {
+    scalp: true,
+    arb: true,
+    whale_copy: false,
+    momentum: true,
+    sniper: false,
+    min_confidence: 0.65,
+    min_whale_sol: 50,
+    auto_copy_whale: false,
+    scalp_take_profit_pct: 0.012,
+    scalp_stop_loss_pct: 0.006,
+    arb_min_profit_usd: 0.25,
+    arb_max_loss_usd: 2.0,
+  });
+  for (const key of Object.keys(toggles) as BotStrategy[]) {
+    if (toggles[key] !== undefined) next[key] = toggles[key]!;
+  }
+  return next;
 }

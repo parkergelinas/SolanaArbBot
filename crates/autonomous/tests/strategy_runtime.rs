@@ -71,7 +71,9 @@ fn active_mode_drains_external_not_synthetic() {
         momentum: false,
         scalp: true,
         arb: false,
+        quote_arb: false,
         sniper: false,
+        liquidation: false,
     });
 
     let cfg = SystemConfig::default();

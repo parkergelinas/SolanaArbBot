@@ -703,9 +703,14 @@ impl StrategyConfig {
             && !self.liquidation
     }
 
-    /// True when whale-copy or momentum strategies are enabled (non-paper signal path).
+    /// True when whale-copy, momentum, sniper, or quote-arb strategies need live ingestion.
     pub fn requires_live_ingestion(&self) -> bool {
-        self.whale_copy || self.momentum || self.sniper
+        self.whale_copy || self.momentum || self.sniper || self.quote_arb
+    }
+
+    /// True when arb should use live ingestion (non-dry-run only).
+    pub fn requires_live_arb(&self, live_trading: bool) -> bool {
+        live_trading && self.arb
     }
 }
 
