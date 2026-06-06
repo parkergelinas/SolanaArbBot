@@ -90,7 +90,4 @@ Documentation
 License
 - MIT
 
-If you'd like, I can also:
-- run the workspace build and tests locally, or
-- open a short checklist to enumerate any missing per-service READMEs.
 
