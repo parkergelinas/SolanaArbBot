@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 
+import { DsPanel } from '@/components/layout/PageShell';
 import { useIntelConnected } from '@/lib/intelligence/hooks';
 import { timeAgo } from '@/lib/format/time';
 import { useFeedsStore } from '@/stores/feedsStore';
@@ -10,20 +11,20 @@ import { useWsContext } from './WebSocketProvider';
 
 function Row({ label, ok, sub }: { label: string; ok: boolean; sub?: string }) {
   return (
-    <div className="flex items-center justify-between py-1.5 border-b border-platform-border/50 last:border-0">
-      <span className="text-sm text-slate-300">{label}</span>
+    <div className="flex items-center justify-between py-1.5 border-b border-ds-border/50 last:border-0">
+      <span className="text-[11px] text-ds-text-secondary">{label}</span>
       <div className="text-right">
-        <span className={`text-xs font-medium ${ok ? 'text-green-400' : 'text-slate-500'}`}>
+        <span className={`text-[10px] font-medium uppercase tracking-wider ${ok ? 'text-ds-green' : 'text-ds-text-muted'}`}>
           {ok ? 'Connected' : 'Offline'}
         </span>
-        {sub && <div className="text-[10px] text-platform-muted">{sub}</div>}
+        {sub && <div className="text-[9px] font-mono text-ds-text-muted mt-0.5">{sub}</div>}
       </div>
     </div>
   );
 }
 
 /** Shared live-data status for Overview / Bot pages. */
-export default function LiveDataStatusCard() {
+export default function LiveDataStatusCard({ compact }: { compact?: boolean }) {
   const { connected: controlWs } = useWsContext();
   const streamConnected = useStreamStore((s) => s.connected);
   const connectionMode = useStreamStore((s) => s.connectionMode);
@@ -36,26 +37,25 @@ export default function LiveDataStatusCard() {
     streamConnected && (connectionMode === 'live' || connectionMode === 'degraded');
 
   return (
-    <div className="surface-card p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <h2 className="text-sm font-medium text-slate-200">Live data stack</h2>
-          <p className="text-[11px] text-platform-muted mt-0.5">
-            {liveStack ? 'Market stream active' : 'Start stream-api for live prices'}
-          </p>
-        </div>
+    <DsPanel
+      compact
+      title="Live data stack"
+      action={
         <Link
           href="/terminal"
-          className="text-xs px-2.5 py-1 rounded-lg border border-platform-border text-platform-accent hover:bg-platform-accent/10"
+          className="text-[10px] px-2 py-0.5 rounded-terminal border border-ds-border text-ds-blue hover:bg-ds-blue/10 transition-colors"
         >
-          Open terminal →
+          Terminal →
         </Link>
-      </div>
-      <Row
-        label="Control API"
-        ok={controlWs}
-        sub="Bot status, portfolio, config"
-      />
+      }
+      className={compact ? '' : undefined}
+    >
+      {!compact && (
+        <p className="text-[10px] text-ds-text-muted mb-2 -mt-1">
+          {liveStack ? 'Market stream active' : 'Start stream-api for live prices'}
+        </p>
+      )}
+      <Row label="Control API" ok={controlWs} sub="Bot status, portfolio, config" />
       <Row
         label="Stream API (WS)"
         ok={streamConnected}
@@ -72,6 +72,6 @@ export default function LiveDataStatusCard() {
         sub={dex.lastOkAt ? `Watchlist ${timeAgo(dex.lastOkAt)}` : 'Charts + 24h stats'}
       />
       <Row label="Intelligence WS" ok={intelConnected} sub="Whale / smart money" />
-    </div>
+    </DsPanel>
   );
 }

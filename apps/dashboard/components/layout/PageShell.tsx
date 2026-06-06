@@ -22,15 +22,40 @@ export function PageHeader({ title, description, actions }: PageHeaderProps) {
   );
 }
 
+interface CompactPageHeaderProps {
+  title: string;
+  subtitle?: string;
+  actions?: ReactNode;
+}
+
+/** Signals / terminal desk compact header row. */
+export function CompactPageHeader({ title, subtitle, actions }: CompactPageHeaderProps) {
+  return (
+    <header className="flex flex-wrap items-center gap-x-4 gap-y-2 shrink-0 pb-2 border-b border-ds-border">
+      <div className="flex items-baseline gap-3 min-w-0">
+        <h1 className="text-[15px] font-semibold tracking-[0.06em] text-ds-text-primary uppercase">
+          {title}
+        </h1>
+        {subtitle && (
+          <p className="hidden sm:inline text-[11px] text-ds-text-muted truncate">{subtitle}</p>
+        )}
+      </div>
+      {actions && <div className="flex items-center gap-2 flex-wrap ml-auto">{actions}</div>}
+    </header>
+  );
+}
+
 interface PageShellProps {
   children: ReactNode;
   className?: string;
+  desk?: boolean;
 }
 
-export function PageShell({ children, className = '' }: PageShellProps) {
-  return (
-    <div className={`flex flex-col gap-5 max-w-[90rem] pb-8 ${className}`}>{children}</div>
-  );
+export function PageShell({ children, className = '', desk }: PageShellProps) {
+  const base = desk
+    ? 'flex flex-col gap-2 min-h-[calc(100dvh-5.5rem)] max-w-[100rem] mx-auto w-full pb-4'
+    : 'flex flex-col gap-3 max-w-[90rem] pb-6';
+  return <div className={`${base} ${className}`}>{children}</div>;
 }
 
 interface DsPanelProps {
@@ -78,7 +103,7 @@ export function DsStatPill({ label, value, accent }: DsStatPillProps) {
       <p className="text-[9px] uppercase tracking-[0.12em] text-ds-text-muted mb-0.5">{label}</p>
       <p
         className="text-[15px] font-semibold font-mono tabular-nums"
-        style={{ color: accent ?? 'var(--ds-text-primary, #e8ecf4)' }}
+        style={{ color: accent ?? 'var(--text-primary, #e8ecf4)' }}
       >
         {value}
       </p>

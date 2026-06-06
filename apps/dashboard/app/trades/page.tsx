@@ -1,102 +1,126 @@
 'use client';
 
-import { DsPanel, PageHeader, PageShell } from '@/components/layout/PageShell';
+import { useCallback } from 'react';
+
+import { CompactPageHeader, DsPanel, DsStatPill, PageShell } from '@/components/layout/PageShell';
+import DsBadge from '@/components/ui/DsBadge';
+import { DsTable, DsTableHead, DsTd, DsTh } from '@/components/ui/DsTable';
 import { useStreamTrades } from '@/lib/hooks';
 import { formatUsd, type TradeEvent } from '@/lib/types';
 
-function stageColor(stage: TradeEvent['stage']): string {
+function stageTone(stage: TradeEvent['stage']): 'green' | 'red' | 'blue' | 'muted' {
   switch (stage) {
     case 'filled':
-      return 'bg-green-500/15 text-green-400';
+      return 'green';
     case 'failed':
     case 'rejected':
     case 'canceled':
-      return 'bg-red-500/15 text-red-400';
+      return 'red';
     case 'submitted':
-      return 'bg-blue-500/15 text-blue-400';
+      return 'blue';
     default:
-      return 'bg-slate-700 text-slate-300';
+      return 'muted';
   }
 }
 
 export default function TradesPage() {
   const trades = useStreamTrades(200);
 
+  const filled = trades.filter((t) => t.stage === 'filled').length;
+  const netPnl = trades.reduce((sum, t) => sum + t.expected_pnl_usd, 0);
+
   return (
-    <PageShell className="max-w-6xl">
-      <PageHeader
+    <PageShell desk>
+      <CompactPageHeader
         title="Trades"
-        description="Live paper execution — quote through fill without refresh"
+        subtitle="Live paper execution — quote through fill without refresh"
+        actions={
+          <DsBadge tone="blue" mono>
+            {trades.length} events
+          </DsBadge>
+        }
       />
 
-      <DsPanel flush>
-        <table className="w-full text-sm">
-          <thead className="border-b border-slate-700">
-            <tr className="text-slate-400 text-xs uppercase tracking-wide">
-              <th className="text-left px-4 py-3">Time</th>
-              <th className="text-left px-4 py-3">Strategy</th>
-              <th className="text-left px-4 py-3">Pair</th>
-              <th className="text-left px-4 py-3">Side</th>
-              <th className="text-left px-4 py-3">Stage</th>
-              <th className="text-right px-4 py-3">Size</th>
-              <th className="text-right px-4 py-3">Exp. PnL</th>
-              <th className="text-right px-4 py-3">Signal</th>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
+        <DsStatPill label="Total" value={trades.length} />
+        <DsStatPill label="Filled" value={filled} accent="var(--green)" />
+        <DsStatPill
+          label="Net exp. PnL"
+          value={formatUsd(netPnl)}
+          accent={netPnl >= 0 ? 'var(--green)' : 'var(--red)'}
+        />
+        <DsStatPill
+          label="Fill rate"
+          value={trades.length ? `${((filled / trades.length) * 100).toFixed(0)}%` : '—'}
+        />
+      </div>
+
+      <DsPanel flush className="flex-1 min-h-[420px] flex flex-col" title="Execution log">
+        <DsTable>
+          <DsTableHead>
+            <tr>
+              <DsTh>Time</DsTh>
+              <DsTh>Strategy</DsTh>
+              <DsTh>Pair</DsTh>
+              <DsTh>Side</DsTh>
+              <DsTh>Stage</DsTh>
+              <DsTh align="right">Size</DsTh>
+              <DsTh align="right">Exp. PnL</DsTh>
+              <DsTh align="right">Signal</DsTh>
             </tr>
-          </thead>
+          </DsTableHead>
           <tbody>
             {trades.length === 0 ? (
               <tr>
-                <td colSpan={8} className="text-center py-16 text-slate-500">
+                <td colSpan={8} className="text-center py-16 text-ds-text-muted text-[11px]">
                   No trades yet — start the paper trading engine.
                 </td>
               </tr>
             ) : (
               trades.map((t) => (
-                <tr key={t.trade_id} className="border-t border-slate-700/50 hover:bg-slate-700/20">
-                  <td className="px-4 py-3 text-slate-400 mono text-xs">
+                <tr key={t.trade_id} className="hover:bg-ds-elevated/30">
+                  <DsTd mono className="text-ds-text-muted text-[10px]">
                     {new Date(t.timestamp_us / 1000).toLocaleTimeString()}
-                  </td>
-                  <td className="px-4 py-3 text-slate-300 text-xs capitalize">
-                    {t.source_strategy}
-                  </td>
-                  <td className="px-4 py-3 mono text-xs truncate max-w-[140px] text-slate-300" title={t.pair}>
+                  </DsTd>
+                  <DsTd className="text-ds-text-secondary capitalize text-[10px]">{t.source_strategy}</DsTd>
+                  <DsTd mono className="truncate max-w-[140px] text-ds-text-secondary text-[10px]" title={t.pair}>
                     {t.pair.length > 16 ? `${t.pair.slice(0, 16)}…` : t.pair}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${
-                      t.side === 'long' || t.side === 'buy'
-                        ? 'bg-green-500/15 text-green-400'
-                        : 'bg-red-500/15 text-red-400'
-                    }`}>
+                  </DsTd>
+                  <DsTd>
+                    <DsBadge tone={t.side === 'long' || t.side === 'buy' ? 'green' : 'red'}>
                       {t.side}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded font-medium capitalize ${stageColor(t.stage)}`}>
-                      {t.stage}
-                    </span>
+                    </DsBadge>
+                  </DsTd>
+                  <DsTd>
+                    <DsBadge tone={stageTone(t.stage)}>{t.stage}</DsBadge>
                     {t.reject_reason && (
-                      <p className="text-[10px] text-red-400/80 mt-0.5 truncate max-w-[120px]" title={t.reject_reason}>
+                      <p
+                        className="text-[9px] text-ds-red/80 mt-0.5 truncate max-w-[120px]"
+                        title={t.reject_reason}
+                      >
                         {t.reject_reason}
                       </p>
                     )}
-                  </td>
-                  <td className="px-4 py-3 text-right mono text-slate-300">
+                  </DsTd>
+                  <DsTd align="right" mono className="text-ds-text-secondary">
                     {formatUsd(t.size_usd)}
-                  </td>
-                  <td className={`px-4 py-3 text-right mono font-medium ${
-                    t.expected_pnl_usd >= 0 ? 'text-green-400' : 'text-red-400'
-                  }`}>
-                    {t.expected_pnl_usd >= 0 ? '+' : ''}{formatUsd(t.expected_pnl_usd)}
-                  </td>
-                  <td className="px-4 py-3 text-right mono text-slate-500 text-xs">
+                  </DsTd>
+                  <DsTd
+                    align="right"
+                    mono
+                    className={t.expected_pnl_usd >= 0 ? 'text-ds-green' : 'text-ds-red'}
+                  >
+                    {t.expected_pnl_usd >= 0 ? '+' : ''}
+                    {formatUsd(t.expected_pnl_usd)}
+                  </DsTd>
+                  <DsTd align="right" mono className="text-ds-text-muted text-[10px]">
                     {t.signal_id != null ? `#${t.signal_id}` : '–'}
-                  </td>
+                  </DsTd>
                 </tr>
               ))
             )}
           </tbody>
-        </table>
+        </DsTable>
       </DsPanel>
     </PageShell>
   );

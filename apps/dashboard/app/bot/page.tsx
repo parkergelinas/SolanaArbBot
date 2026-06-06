@@ -7,7 +7,8 @@ import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import WhaleFeed from '@/components/intelligence/WhaleFeed';
 import LiveDataStatusCard from '@/components/LiveDataStatusCard';
 import PaperTradingPanel from '@/components/paper/PaperTradingPanel';
-import { DsPanel, PageHeader, PageShell } from '@/components/layout/PageShell';
+import { CompactPageHeader, DsPanel, DsStatPill, PageShell } from '@/components/layout/PageShell';
+import DsBadge from '@/components/ui/DsBadge';
 import { api } from '@/lib/api';
 import { useFetch, useLatestTrade } from '@/lib/hooks';
 import { intelligenceToSignals } from '@/lib/intelligence/bridge';
@@ -182,38 +183,52 @@ export default function BotPage() {
     strategies.arb_max_loss_usd <= 0;
 
   return (
-    <PageShell className="max-w-5xl gap-4">
-      <PageHeader
-        title="Trading Bot"
-        description="Paper execution · strategy fusion · whale-aware copy logic"
+    <PageShell desk>
+      <CompactPageHeader
+        title="Bot"
+        subtitle="Paper execution · strategy fusion · whale-aware copy logic"
         actions={
-          publicKey ? (
-            <div className="bg-ds-surface border border-ds-border rounded-terminal px-3 py-2 text-right">
-              <p className="text-[10px] text-ds-text-muted uppercase tracking-wider">Wallet</p>
-              <p className="text-xs font-mono text-ds-text-secondary truncate max-w-[200px]">
-                {publicKey.toBase58().slice(0, 8)}…{publicKey.toBase58().slice(-6)}
-              </p>
-              {balance !== null && (
-                <p className="text-sm font-semibold text-ds-blue font-mono mt-0.5">
-                  {balance.toFixed(4)} SOL
+          <>
+            {publicKey && (
+              <div className="bg-ds-surface border border-ds-border rounded-terminal px-2.5 py-1.5 text-right">
+                <p className="text-[9px] text-ds-text-muted uppercase tracking-wider">Wallet</p>
+                <p className="text-[10px] font-mono text-ds-text-secondary truncate max-w-[180px]">
+                  {publicKey.toBase58().slice(0, 8)}…{publicKey.toBase58().slice(-6)}
                 </p>
-              )}
-            </div>
-          ) : undefined
+                {balance !== null && (
+                  <p className="text-[11px] font-semibold text-ds-blue font-mono tabular-nums">
+                    {balance.toFixed(4)} SOL
+                  </p>
+                )}
+              </div>
+            )}
+            <DsBadge tone={bot?.running ? 'green' : bot?.trading_halted ? 'red' : 'muted'}>
+              {bot?.trading_halted ? 'Halted' : bot?.running ? 'Running' : 'Stopped'}
+            </DsBadge>
+          </>
         }
       />
 
-      <div className="flex items-center gap-2 px-3 py-2 bg-ds-amber/8 border border-ds-amber/25 rounded-terminal text-[11px] text-ds-amber">
+      <div className="flex items-center gap-2 px-3 py-2 bg-ds-amber/8 border border-ds-amber/25 rounded-terminal text-[11px] text-ds-amber shrink-0">
         <span className="font-mono uppercase tracking-wider shrink-0">Paper only</span>
         <span className="text-ds-text-secondary">
           Live trading requires SOLANA_ARB_CONFIRM_LIVE_TRADING=1 on the server — never enabled from this UI.
         </span>
       </div>
 
-      <LiveDataStatusCard />
-      <PaperTradingPanel />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
+        <DsStatPill label="Net PnL" value={bot ? formatUsd(bot.net_pnl_usd) : '–'} accent={bot && bot.net_pnl_usd >= 0 ? 'var(--green)' : 'var(--red)'} />
+        <DsStatPill label="Scalp trades" value={bot?.scalp_trades ?? 0} />
+        <DsStatPill label="Arb trades" value={bot?.arb_trades ?? 0} />
+        <DsStatPill label="Win rate" value={`${((bot?.win_rate ?? 0) * 100).toFixed(0)}%`} accent="var(--blue)" />
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 shrink-0">
+        <LiveDataStatusCard compact />
+        <PaperTradingPanel />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-2 flex-1 min-h-0">
         <DsPanel
           className={`lg:col-span-2 ${bot?.running ? 'border-ds-green/30' : ''}`}
           title="Bot Control"
@@ -416,7 +431,7 @@ export default function BotPage() {
         )}
       </DsPanel>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 shrink-0">
         <DsPanel title="Action Queue" action={<span className="text-[10px] text-ds-text-muted">{intelConnected ? `${actionable.length} signals` : 'Intel offline'}</span>}>
           {actionable.length === 0 ? (
             <p className="text-[11px] text-ds-text-muted py-6 text-center">
