@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { resolvePairForMint } from '@/lib/dexscreener/client';
 import type { DexPairSnapshot } from '@/lib/dexscreener/types';
-import { WATCHLIST } from '@/lib/terminal/tokens';
+import { useWatchlistStore } from '@/stores/watchlistStore';
 import { useFeedsStore } from '@/stores/feedsStore';
 
 const POLL_MS = 45_000;
@@ -19,17 +19,21 @@ export function useDexScreenerWatchlist(): {
   refresh: () => void;
   loading: boolean;
 } {
+  const entries = useWatchlistStore((s) => s.entries);
   const [snapshots, setSnapshots] = useState<WatchlistDexMap>({});
   const [loading, setLoading] = useState(true);
   const setDexScreener = useFeedsStore((s) => s.setDexScreener);
 
   const refresh = useCallback(async () => {
+    const mints = useWatchlistStore.getState().entries.map((e) => e.mint);
+    if (mints.length === 0) return;
+
     setLoading(true);
     try {
       const results = await Promise.allSettled(
-        WATCHLIST.map(async (t) => {
-          const snap = await resolvePairForMint(t.mint);
-          return [t.mint, snap] as const;
+        mints.map(async (mint) => {
+          const snap = await resolvePairForMint(mint);
+          return [mint, snap] as const;
         }),
       );
 
@@ -46,7 +50,7 @@ export function useDexScreenerWatchlist(): {
       setDexScreener({
         status: hits > 0 ? 'online' : 'degraded',
         lastOkAt: Date.now(),
-        detail: `${hits}/${WATCHLIST.length} pairs`,
+        detail: `${hits}/${mints.length} pairs`,
       });
     } catch {
       setDexScreener({ status: 'offline', lastOkAt: Date.now() });
@@ -59,7 +63,7 @@ export function useDexScreenerWatchlist(): {
     refresh();
     const id = setInterval(refresh, POLL_MS);
     return () => clearInterval(id);
-  }, [refresh]);
+  }, [refresh, entries.length]);
 
   return { snapshots, refresh, loading };
 }

@@ -1,30 +1,14 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 
-import { useMarketStore } from '@/stores/marketStore';
 import { useStreamStore } from '@/stores/streamStore';
 
-/** Mount once to connect the stream client without coupling to React render. */
+/** Connects the terminal to stream-api; clears market state on reconnect. */
 export default function StreamBootstrap() {
-  const connect = useStreamStore((s) => s.connect);
-  const disconnect = useStreamStore((s) => s.disconnect);
-  const connected = useStreamStore((s) => s.connected);
-  const wasLive = useRef(false);
+  const subscribe = useStreamStore((s) => s.subscribe);
 
-  useEffect(() => {
-    connect();
-    return () => disconnect();
-  }, [connect, disconnect]);
-
-  // Drop demo/sim state when live stream first connects.
-  useEffect(() => {
-    if (connected && !wasLive.current) {
-      useMarketStore.getState().clear();
-      wasLive.current = true;
-    }
-    if (!connected) wasLive.current = false;
-  }, [connected]);
+  useEffect(() => subscribe(), [subscribe]);
 
   return null;
 }

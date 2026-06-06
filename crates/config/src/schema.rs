@@ -92,6 +92,26 @@ pub struct SystemConfig {
     /// Whale wallet tracker — Helius swap watcher + GMGN discovery.
     #[serde(default)]
     pub whale_tracker: WhaleTrackerConfig,
+
+    /// Copy-trading / whale-mirror strategy settings.
+    #[serde(default)]
+    pub copy_trading: CopyTradingConfig,
+
+    /// Momentum / volume spike strategy (Strategy 5).
+    #[serde(default)]
+    pub momentum: MomentumConfig,
+
+    /// Cross-DEX atomic arbitrage engine parameters.
+    #[serde(default)]
+    pub arbitrage: ArbitrageConfig,
+
+    /// Liquidation hunter — scan lending protocols for underwater positions.
+    #[serde(default)]
+    pub liquidation: LiquidationConfig,
+
+    /// New-token sniper strategy parameters.
+    #[serde(default)]
+    pub sniper: SniperConfig,
 }
 
 impl Default for SystemConfig {
@@ -115,6 +135,11 @@ impl Default for SystemConfig {
             strategy: StrategyConfig::default(),
             data_sources: DataSourcesConfig::default(),
             whale_tracker: WhaleTrackerConfig::default(),
+            copy_trading: CopyTradingConfig::default(),
+            momentum: MomentumConfig::default(),
+            arbitrage: ArbitrageConfig::default(),
+            liquidation: LiquidationConfig::default(),
+            sniper: SniperConfig::default(),
         }
     }
 }
@@ -140,6 +165,11 @@ impl SystemConfig {
         self.hotpath.validate()?;
         self.data_sources.validate()?;
         self.whale_tracker.validate()?;
+        self.copy_trading.validate()?;
+        self.momentum.validate()?;
+        self.arbitrage.validate()?;
+        self.sniper.validate()?;
+        self.liquidation.validate()?;
 
         if (self.risk.min_liquidity_usd - self.pipeline.routing_min_liquidity).abs()
             > f64::EPSILON
@@ -473,6 +503,15 @@ pub struct RiskConfig {
 
     /// Maximum cumulative price product across all hops (above = suspicious).
     pub max_price_product: f64,
+
+    /// Absolute daily loss cap in USD (global risk gate).
+    pub daily_loss_limit_usd: f64,
+
+    /// Maximum concurrent open positions across all strategies.
+    pub max_open_positions: u32,
+
+    /// Block new trades when deployed capital exceeds this fraction (e.g. 0.80).
+    pub capital_deployed_pct_max: f64,
 }
 
 impl Default for RiskConfig {
@@ -489,6 +528,9 @@ impl Default for RiskConfig {
             max_route_depth: 3,
             min_price_product: 0.2,
             max_price_product: 5.0,
+            daily_loss_limit_usd: 50.0,
+            max_open_positions: 10,
+            capital_deployed_pct_max: 0.80,
         }
     }
 }
@@ -584,6 +626,7 @@ pub struct StrategyConfig {
     pub whale_copy: bool,
     pub momentum: bool,
     pub sniper: bool,
+    pub liquidation: bool,
 }
 
 impl Default for StrategyConfig {
@@ -594,6 +637,7 @@ impl Default for StrategyConfig {
             whale_copy: false,
             momentum: false,
             sniper: false,
+            liquidation: false,
         }
     }
 }
@@ -601,7 +645,12 @@ impl Default for StrategyConfig {
 impl StrategyConfig {
     /// Returns true when every strategy toggle is off (paused matrix).
     pub fn all_disabled(&self) -> bool {
-        !self.scalp && !self.arb && !self.whale_copy && !self.momentum && !self.sniper
+        !self.scalp
+            && !self.arb
+            && !self.whale_copy
+            && !self.momentum
+            && !self.sniper
+            && !self.liquidation
     }
 
     /// True when whale-copy or momentum strategies are enabled (non-paper signal path).
@@ -871,6 +920,309 @@ impl WhaleTrackerConfig {
         }
         if self.persist_path.trim().is_empty() {
             return Err("whale_tracker.persist_path must not be empty".to_owned());
+        }
+        Ok(())
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Copy trading
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Whale mirror / copy-trading strategy parameters.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CopyTradingConfig {
+    /// Master toggle for copy-trading executor and wallet scoring.
+    pub enabled: bool,
+    /// Fraction of whale notional to mirror (e.g. 0.05 = 5%).
+    pub copy_ratio: f64,
+    /// Maximum USD per copy trade.
+    pub max_copy_usd: f64,
+    /// Minimum whale trade USD to trigger a copy signal.
+    pub min_whale_trade_usd: f64,
+    /// Skip copy when signal is older than this many slots.
+    pub max_staleness_slots: u64,
+    /// Minimum 30-day win rate for wallet qualification.
+    pub min_wallet_win_rate: f64,
+    /// Minimum 30-day realized PnL (USD) for wallet qualification.
+    pub min_wallet_pnl_30d: f64,
+    /// Minimum 30-day trade count for wallet qualification.
+    pub min_wallet_trades_30d: u32,
+    /// Maximum concurrent open copy positions.
+    pub max_concurrent_copies: u32,
+    /// Sell immediately when a followed whale sells the same token.
+    pub mirror_exits: bool,
+}
+
+impl Default for CopyTradingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            copy_ratio: 0.05,
+            max_copy_usd: 50.0,
+            min_whale_trade_usd: 5_000.0,
+            max_staleness_slots: 2,
+            min_wallet_win_rate: 0.60,
+            min_wallet_pnl_30d: 10_000.0,
+            min_wallet_trades_30d: 50,
+            max_concurrent_copies: 3,
+            mirror_exits: true,
+        }
+    }
+}
+
+impl CopyTradingConfig {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.copy_ratio <= 0.0 || self.copy_ratio > 1.0 {
+            return Err("copy_trading.copy_ratio must be in (0.0, 1.0]".to_owned());
+        }
+        if self.max_copy_usd <= 0.0 {
+            return Err("copy_trading.max_copy_usd must be positive".to_owned());
+        }
+        if self.min_whale_trade_usd <= 0.0 {
+            return Err("copy_trading.min_whale_trade_usd must be positive".to_owned());
+        }
+        if self.max_staleness_slots == 0 {
+            return Err("copy_trading.max_staleness_slots must be greater than zero".to_owned());
+        }
+        if self.min_wallet_win_rate <= 0.0 || self.min_wallet_win_rate >= 1.0 {
+            return Err("copy_trading.min_wallet_win_rate must be in (0.0, 1.0)".to_owned());
+        }
+        if self.min_wallet_pnl_30d <= 0.0 {
+            return Err("copy_trading.min_wallet_pnl_30d must be positive".to_owned());
+        }
+        if self.min_wallet_trades_30d == 0 {
+            return Err("copy_trading.min_wallet_trades_30d must be greater than zero".to_owned());
+        }
+        if self.max_concurrent_copies == 0 {
+            return Err("copy_trading.max_concurrent_copies must be greater than zero".to_owned());
+        }
+        Ok(())
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Liquidation hunter
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Liquidation hunter strategy — scan lending protocols and execute liquidations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LiquidationConfig {
+    /// Master toggle for the liquidation hunter loop.
+    pub enabled: bool,
+    /// Poll interval (ms) for WATCH and CRITICAL positions.
+    pub scan_interval_ms: u64,
+    /// Poll interval (seconds) for SAFE positions.
+    pub safe_poll_interval_s: u64,
+    /// Health factor below which a position enters WATCH tier.
+    pub watch_health_threshold: f64,
+    /// Health factor below which a position is CRITICAL (liquidatable).
+    pub critical_health_threshold: f64,
+    /// Maximum fraction of debt to repay per liquidation (0.0–1.0).
+    pub max_repay_pct: f64,
+    /// Fraction of expected liquidation bonus allocated as Jito tip.
+    pub jito_tip_pct_of_bonus: f64,
+    /// Lending protocols to scan (`kamino`, `marginfi`, `drift`, `save`).
+    pub protocols: Vec<String>,
+    /// Minimum borrow value (USD) to consider a position.
+    pub min_position_value_usd: f64,
+}
+
+impl Default for LiquidationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            scan_interval_ms: 500,
+            safe_poll_interval_s: 60,
+            watch_health_threshold: 1.10,
+            critical_health_threshold: 1.00,
+            max_repay_pct: 0.50,
+            jito_tip_pct_of_bonus: 0.70,
+            protocols: vec![
+                "kamino".to_owned(),
+                "marginfi".to_owned(),
+                "drift".to_owned(),
+                "save".to_owned(),
+            ],
+            min_position_value_usd: 1000.0,
+        }
+    }
+}
+
+impl LiquidationConfig {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.scan_interval_ms == 0 {
+            return Err("liquidation.scan_interval_ms must be greater than zero".to_owned());
+        }
+        if self.safe_poll_interval_s == 0 {
+            return Err("liquidation.safe_poll_interval_s must be greater than zero".to_owned());
+        }
+        if self.critical_health_threshold >= self.watch_health_threshold {
+            return Err(
+                "liquidation.critical_health_threshold must be less than watch_health_threshold"
+                    .to_owned(),
+            );
+        }
+        if !(0.0..=1.0).contains(&self.max_repay_pct) || self.max_repay_pct <= 0.0 {
+            return Err("liquidation.max_repay_pct must be in (0.0, 1.0]".to_owned());
+        }
+        if !(0.0..=1.0).contains(&self.jito_tip_pct_of_bonus) {
+            return Err("liquidation.jito_tip_pct_of_bonus must be in [0.0, 1.0]".to_owned());
+        }
+        if self.min_position_value_usd <= 0.0 {
+            return Err("liquidation.min_position_value_usd must be positive".to_owned());
+        }
+        if self.protocols.is_empty() {
+            return Err("liquidation.protocols must not be empty".to_owned());
+        }
+        Ok(())
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sniper
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// New-token sniper strategy parameters.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SniperConfig {
+    /// Master toggle for pool-creation ingest + sniper executor.
+    pub enabled: bool,
+    /// Base position size in SOL for verified tokens.
+    pub base_position_sol: f64,
+    /// Maximum concurrent open sniper positions.
+    pub max_concurrent_positions: u32,
+    /// Minimum initial pool liquidity in SOL to consider a buy.
+    pub min_liquidity_sol: f64,
+    /// Reject when creator holding exceeds this percentage.
+    pub max_creator_holding_pct: f64,
+    /// Minimum Rugcheck score (0–1000 scale).
+    pub rugcheck_min_score: u64,
+    /// Take-profit 1 multiple (sell 50 % of position).
+    pub take_profit_1_x: f64,
+    /// Take-profit 2 multiple (sell remainder).
+    pub take_profit_2_x: f64,
+    /// Stop-loss drawdown fraction (0.20 = exit at 0.8× entry).
+    pub stop_loss_pct: f64,
+    /// Time-based exit in seconds (sell 100 %).
+    pub time_exit_seconds: u64,
+}
+
+impl Default for SniperConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            base_position_sol: 0.1,
+            max_concurrent_positions: 5,
+            min_liquidity_sol: 5.0,
+            max_creator_holding_pct: 15.0,
+            rugcheck_min_score: 700,
+            take_profit_1_x: 2.0,
+            take_profit_2_x: 3.0,
+            stop_loss_pct: 0.20,
+            time_exit_seconds: 300,
+        }
+    }
+}
+
+impl SniperConfig {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.base_position_sol <= 0.0 {
+            return Err("sniper.base_position_sol must be positive".to_owned());
+        }
+        if self.max_concurrent_positions == 0 {
+            return Err("sniper.max_concurrent_positions must be greater than zero".to_owned());
+        }
+        if self.min_liquidity_sol <= 0.0 {
+            return Err("sniper.min_liquidity_sol must be positive".to_owned());
+        }
+        if self.max_creator_holding_pct <= 0.0 || self.max_creator_holding_pct > 100.0 {
+            return Err("sniper.max_creator_holding_pct must be in (0.0, 100.0]".to_owned());
+        }
+        if self.take_profit_1_x <= 1.0 {
+            return Err("sniper.take_profit_1_x must be greater than 1.0".to_owned());
+        }
+        if self.take_profit_2_x <= self.take_profit_1_x {
+            return Err("sniper.take_profit_2_x must be greater than take_profit_1_x".to_owned());
+        }
+        if self.stop_loss_pct <= 0.0 || self.stop_loss_pct >= 1.0 {
+            return Err("sniper.stop_loss_pct must be in (0.0, 1.0)".to_owned());
+        }
+        if self.time_exit_seconds == 0 {
+            return Err("sniper.time_exit_seconds must be greater than zero".to_owned());
+        }
+        Ok(())
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Momentum / volume spike (Strategy 5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// DexScreener volume-anomaly momentum strategy parameters.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MomentumConfig {
+    /// Master toggle for the momentum volume-spike poller and executor.
+    pub enabled: bool,
+    /// Minimum `volume_h1 / (volume_h24 / 24)` ratio to qualify as a spike.
+    pub min_volume_ratio: f64,
+    /// Maximum absolute 5m price velocity (% per minute) — filters blow-off tops.
+    pub max_price_velocity_pct_min: f64,
+    /// Minimum pool liquidity (USD) on the best pair.
+    pub min_liquidity_usd: f64,
+    /// Minimum confidence score (0.5 base + whale + multi-DEX bonuses).
+    pub min_confidence: f64,
+    /// Take-profit exit threshold as fractional gain (0.15 = +15%).
+    pub take_profit_pct: f64,
+    /// Stop-loss exit threshold as fractional loss (0.08 = -8%).
+    pub stop_loss_pct: f64,
+    /// Maximum hold duration before time-based exit.
+    pub max_hold_minutes: u64,
+    /// USD notional per momentum entry.
+    pub position_usd: f64,
+}
+
+impl Default for MomentumConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            min_volume_ratio: 5.0,
+            max_price_velocity_pct_min: 2.0,
+            min_liquidity_usd: 50_000.0,
+            min_confidence: 0.70,
+            take_profit_pct: 0.15,
+            stop_loss_pct: 0.08,
+            max_hold_minutes: 10,
+            position_usd: 25.0,
+        }
+    }
+}
+
+impl MomentumConfig {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.min_volume_ratio <= 0.0 {
+            return Err("momentum.min_volume_ratio must be positive".to_owned());
+        }
+        if self.max_price_velocity_pct_min <= 0.0 {
+            return Err("momentum.max_price_velocity_pct_min must be positive".to_owned());
+        }
+        if self.min_liquidity_usd <= 0.0 {
+            return Err("momentum.min_liquidity_usd must be positive".to_owned());
+        }
+        if !(0.0..=1.0).contains(&self.min_confidence) {
+            return Err("momentum.min_confidence must be in [0.0, 1.0]".to_owned());
+        }
+        if self.take_profit_pct <= 0.0 {
+            return Err("momentum.take_profit_pct must be positive".to_owned());
+        }
+        if self.stop_loss_pct <= 0.0 {
+            return Err("momentum.stop_loss_pct must be positive".to_owned());
+        }
+        if self.max_hold_minutes == 0 {
+            return Err("momentum.max_hold_minutes must be greater than zero".to_owned());
+        }
+        if self.position_usd <= 0.0 {
+            return Err("momentum.position_usd must be positive".to_owned());
         }
         Ok(())
     }
@@ -1149,6 +1501,84 @@ impl Default for OrchestratorConfig {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Cross-DEX arbitrage
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Configuration for the cross-DEX atomic arbitrage engine.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArbitrageConfig {
+    /// Solana commitment for bundle landing — use `"processed"` for lowest latency.
+    pub commitment: String,
+
+    /// Minimum gross spread in basis points before an opportunity is considered.
+    pub min_spread_bps: u64,
+
+    /// Maximum route hops (2 = cross-DEX, 3 = triangular).
+    pub max_route_hops: usize,
+
+    /// Initial Jito tip as a fraction of gross profit (e.g. `0.50` = 50 %).
+    pub jito_tip_pct: f64,
+
+    /// Hard floor on Jito tip in lamports.
+    pub jito_tip_min_lamports: u64,
+
+    /// Hard ceiling on Jito tip as a fraction of gross profit.
+    pub jito_tip_max_pct: f64,
+
+    /// Target bundle acceptance rate for tip auto-calibration.
+    pub bundle_acceptance_target: f64,
+
+    /// Submit bundles to US / EU / Tokyo endpoints in parallel.
+    pub parallel_endpoints: bool,
+
+    /// Minimum per-leg pool liquidity in USD for route eligibility.
+    pub min_leg_liquidity_usd: f64,
+}
+
+impl Default for ArbitrageConfig {
+    fn default() -> Self {
+        Self {
+            commitment: "processed".to_owned(),
+            min_spread_bps: 10,
+            max_route_hops: 3,
+            jito_tip_pct: 0.50,
+            jito_tip_min_lamports: 5_000,
+            jito_tip_max_pct: 0.65,
+            bundle_acceptance_target: 0.70,
+            parallel_endpoints: true,
+            min_leg_liquidity_usd: 50_000.0,
+        }
+    }
+}
+
+impl ArbitrageConfig {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        let valid_commitments = ["processed", "confirmed", "finalized"];
+        if !valid_commitments.contains(&self.commitment.as_str()) {
+            return Err(format!(
+                "arbitrage.commitment must be one of {:?}, got {:?}",
+                valid_commitments, self.commitment
+            ));
+        }
+        if self.max_route_hops < 2 || self.max_route_hops > 3 {
+            return Err("arbitrage.max_route_hops must be 2 or 3".to_owned());
+        }
+        if self.jito_tip_pct <= 0.0 || self.jito_tip_pct > 1.0 {
+            return Err("arbitrage.jito_tip_pct must be in (0.0, 1.0]".to_owned());
+        }
+        if self.jito_tip_max_pct <= self.jito_tip_pct {
+            return Err(
+                "arbitrage.jito_tip_max_pct must be greater than jito_tip_pct".to_owned(),
+            );
+        }
+        if self.min_leg_liquidity_usd <= 0.0 {
+            return Err("arbitrage.min_leg_liquidity_usd must be positive".to_owned());
+        }
+        Ok(())
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Hot-path engine
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1408,6 +1838,62 @@ mod tests {
     fn whale_tracker_config_rejects_zero_ttl() {
         let mut cfg = WhaleTrackerConfig::default();
         cfg.signal_ttl_seconds = 0;
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn copy_trading_config_defaults_are_valid() {
+        CopyTradingConfig::default()
+            .validate()
+            .expect("default copy_trading config is valid");
+    }
+
+    #[test]
+    fn copy_trading_config_rejects_zero_ratio() {
+        let mut cfg = CopyTradingConfig::default();
+        cfg.copy_ratio = 0.0;
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn momentum_config_defaults_are_valid() {
+        MomentumConfig::default()
+            .validate()
+            .expect("default momentum config is valid");
+    }
+
+    #[test]
+    fn momentum_config_rejects_zero_hold() {
+        let mut cfg = MomentumConfig::default();
+        cfg.max_hold_minutes = 0;
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn arbitrage_config_defaults_are_valid() {
+        ArbitrageConfig::default()
+            .validate()
+            .expect("default arbitrage config is valid");
+    }
+
+    #[test]
+    fn arbitrage_config_rejects_invalid_commitment() {
+        let mut cfg = ArbitrageConfig::default();
+        cfg.commitment = "instant".to_owned();
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn sniper_config_defaults_are_valid() {
+        SniperConfig::default()
+            .validate()
+            .expect("default sniper config is valid");
+    }
+
+    #[test]
+    fn sniper_config_rejects_zero_positions() {
+        let mut cfg = SniperConfig::default();
+        cfg.max_concurrent_positions = 0;
         assert!(cfg.validate().is_err());
     }
 }

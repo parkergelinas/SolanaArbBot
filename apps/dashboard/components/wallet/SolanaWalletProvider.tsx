@@ -1,30 +1,23 @@
 'use client';
 
-import { useCallback, useMemo, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
 import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare';
-import { clusterApiUrl } from '@solana/web3.js';
+
+import { useNetworkStore } from '@/stores/networkStore';
 
 import '@solana/wallet-adapter-react-ui/styles.css';
 
-function resolveNetwork(): 'devnet' | 'mainnet-beta' | 'testnet' {
-  const raw = process.env.NEXT_PUBLIC_SOLANA_NETWORK ?? 'mainnet-beta';
-  if (raw === 'mainnet' || raw === 'mainnet-beta') return 'mainnet-beta';
-  if (raw === 'testnet') return 'testnet';
-  return 'devnet';
-}
-
-const NETWORK = resolveNetwork();
-
 export default function SolanaWalletProvider({ children }: { children: ReactNode }) {
-  const endpoint = useMemo(() => {
-    if (process.env.NEXT_PUBLIC_SOLANA_RPC) {
-      return process.env.NEXT_PUBLIC_SOLANA_RPC;
-    }
-    return clusterApiUrl(NETWORK);
-  }, []);
+  const cluster = useNetworkStore((s) => s.cluster);
+  const rpcUrl = useNetworkStore((s) => s.rpcUrl);
+  const hydrate = useNetworkStore((s) => s.hydrate);
+
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
 
   const wallets = useMemo(
     () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
@@ -36,7 +29,7 @@ export default function SolanaWalletProvider({ children }: { children: ReactNode
   }, []);
 
   return (
-    <ConnectionProvider endpoint={endpoint}>
+    <ConnectionProvider key={cluster} endpoint={rpcUrl} config={{ commitment: 'confirmed' }}>
       <WalletProvider wallets={wallets} autoConnect onError={onError}>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>

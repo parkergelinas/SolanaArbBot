@@ -1,5 +1,7 @@
 'use client';
 
+import { DsPanel, PageHeader, PageShell } from '@/components/layout/PageShell';
+
 // Backtest results viewer — populated by the backtesting engine once wired.
 // Currently shows an empty state with the expected schema.
 
@@ -21,23 +23,23 @@ export default function BacktestsPage() {
   const results = MOCK_RESULTS;
 
   return (
-    <div className="space-y-5 max-w-6xl">
-      <div>
-        <h1 className="text-xl font-semibold text-slate-100">Backtests</h1>
-        <p className="text-slate-400 text-sm mt-0.5">Historical simulation results from the backtesting engine</p>
-      </div>
+    <PageShell className="max-w-6xl">
+      <PageHeader
+        title="Backtests"
+        description="Historical simulation results from the backtesting engine"
+      />
 
       {results.length === 0 ? (
-        <div className="bg-slate-800 border border-dashed border-slate-600 rounded-xl p-12 text-center space-y-3">
+        <DsPanel className="border-dashed !p-12 text-center space-y-3">
           <p className="text-slate-400 text-sm">No backtest results yet.</p>
           <p className="text-slate-500 text-xs max-w-sm mx-auto">
             Run a backtest from the CLI or wire the backtesting engine to the event bus.
             Results will appear here automatically.
           </p>
-          <code className="block mt-4 text-xs bg-slate-900 text-green-400 px-4 py-2 rounded font-mono">
+          <code className="block mt-4 text-xs bg-ds-elevated text-ds-green px-4 py-2 rounded-terminal font-mono">
             cargo run -p backtester-app -- --hours 24 --interval 10
           </code>
-        </div>
+        </DsPanel>
       ) : (
         <div className="grid gap-4">
           {results.map(r => (
@@ -68,6 +70,6 @@ export default function BacktestsPage() {
           ))}
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

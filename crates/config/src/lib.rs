@@ -48,10 +48,11 @@ pub mod schema;
 
 pub use loader::ConfigHandle;
 pub use schema::{
-    DataSourcesConfig, ExecutionConfig, FeatureFlags, IngestionConfig, MonitoringConfig,
-    OrchestratorConfig, PipelineConfig, PortfolioConfig, RetryConfig, RiskConfig, RpcConfig,
-    ScalerConfig, HotPathConfig, SignalEngineConfig, StrategyConfig, SystemConfig, WalletConfig,
-    WebSocketConfig, WhaleTrackerConfig,
+    ArbitrageConfig, CopyTradingConfig, DataSourcesConfig, ExecutionConfig, FeatureFlags,
+    IngestionConfig, LiquidationConfig, MonitoringConfig, MomentumConfig, OrchestratorConfig, PipelineConfig,
+    PortfolioConfig, RetryConfig, RiskConfig, RpcConfig, ScalerConfig, HotPathConfig,
+    SignalEngineConfig, SniperConfig, StrategyConfig, SystemConfig, WalletConfig, WebSocketConfig,
+    WhaleTrackerConfig,
 };
 
 use std::path::PathBuf;

@@ -11,29 +11,30 @@ export interface WatchToken {
   decimals: number;
 }
 
+/** refPrice is bootstrap-only fallback — live USD comes from DexScreener via PriceBootstrap. */
 export const WATCHLIST: WatchToken[] = [
-  { mint: SOL_MINT, symbol: 'SOL', name: 'Solana', refPrice: 145.42, decimals: 9 },
+  { mint: SOL_MINT, symbol: 'SOL', name: 'Solana', refPrice: 0, decimals: 9 },
   { mint: USDC_MINT, symbol: 'USDC', name: 'USD Coin', refPrice: 1.0, decimals: 6 },
   { mint: USDT_MINT, symbol: 'USDT', name: 'Tether', refPrice: 1.0, decimals: 6 },
   {
     mint: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
     symbol: 'BONK',
     name: 'Bonk',
-    refPrice: 0.000024,
+    refPrice: 0,
     decimals: 5,
   },
   {
     mint: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN',
     symbol: 'JUP',
     name: 'Jupiter',
-    refPrice: 0.92,
+    refPrice: 0,
     decimals: 6,
   },
   {
     mint: 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm',
     symbol: 'WIF',
     name: 'dogwifhat',
-    refPrice: 2.14,
+    refPrice: 0,
     decimals: 6,
   },
 ];

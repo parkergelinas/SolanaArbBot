@@ -7,11 +7,15 @@ use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use config::{DataSourcesConfig, WhaleTrackerConfig};
+use config::{CopyTradingConfig, DataSourcesConfig, WhaleTrackerConfig};
+use crossbeam_channel::Sender;
 use futures_util::{SinkExt, StreamExt};
 use ratelimit::{ApiSource, RateLimiter};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{info, warn};
+
+use crate::copy_trader::{copy_signal_to_bus_payload, CopySignal, RecentSalesTracker};
+use crate::wallet_scoring::QualifiedWalletSet;
 
 /// Seed whale wallets (verified on Solscan).
 pub const WHALE_WALLETS: &[&str] = &[
@@ -69,6 +73,9 @@ pub struct WhaleSwapSignal {
     pub amount_usd: f64,
     pub dex: DexSource,
     pub timestamp: i64,
+    pub tx_slot: u64,
+    pub is_buy: bool,
+    pub signature: String,
 }
 
 #[derive(Default)]
@@ -157,6 +164,15 @@ pub fn seed_tracked_wallets(discovered: &[String]) -> HashSet<String> {
     out
 }
 
+/// Optional copy-trading hooks passed into the whale watcher.
+#[derive(Clone)]
+pub struct CopyWatcherHooks {
+    pub copy_tx: Sender<CopySignal>,
+    pub copy_cfg: Arc<CopyTradingConfig>,
+    pub recent_sales: RecentSalesTracker,
+    pub qualified: Option<QualifiedWalletSet>,
+}
+
 /// Spawn Helius wallet log subscription and transaction parsing loop.
 pub fn spawn_whale_watcher(
     store: WhaleSignalStore,
@@ -164,6 +180,7 @@ pub fn spawn_whale_watcher(
     data_sources: Arc<DataSourcesConfig>,
     tracker_cfg: Arc<WhaleTrackerConfig>,
     limiter: Arc<RateLimiter>,
+    copy_hooks: Option<CopyWatcherHooks>,
 ) {
     let Some(ws_url) = data_sources.helius_ws_url() else {
         info!("whale watcher skipped — no helius_api_key configured");
@@ -194,6 +211,7 @@ pub fn spawn_whale_watcher(
                 &store,
                 &tracker_cfg,
                 &limiter,
+                copy_hooks.clone(),
             )
             .await
             {
@@ -219,6 +237,7 @@ async fn subscribe_wallets_once(
     store: &WhaleSignalStore,
     cfg: &WhaleTrackerConfig,
     limiter: &RateLimiter,
+    copy_hooks: Option<CopyWatcherHooks>,
 ) -> anyhow::Result<()> {
     let (ws, _) = connect_async(ws_url).await?;
     let (mut write, mut read) = ws.split();
@@ -302,8 +321,10 @@ async fn subscribe_wallets_once(
                 token_out = %short_wallet(&signal.token_out),
                 amount_usd = signal.amount_usd,
                 dex = signal.dex.as_str(),
+                is_buy = signal.is_buy,
                 "WhaleSwapSignal detected"
             );
+            emit_copy_signal(&signal, copy_hooks.as_ref());
             store.push(signal);
         }
     }
@@ -335,13 +356,14 @@ async fn fetch_and_parse_swap(
 
     let v: serde_json::Value = resp.json().await.ok()?;
     let tx = v.get("result")?;
-    parse_swap_from_tx(tx, wallet_hint, min_usd)
+    parse_swap_from_tx(tx, wallet_hint, min_usd, signature)
 }
 
 fn parse_swap_from_tx(
     tx: &serde_json::Value,
     wallet_hint: Option<&str>,
     min_usd: f64,
+    signature: &str,
 ) -> Option<WhaleSwapSignal> {
     let meta = tx.get("meta")?;
     if meta.get("err").map_or(false, |e| !e.is_null()) {
@@ -352,10 +374,16 @@ fn parse_swap_from_tx(
     let wallet = resolve_wallet(tx, wallet_hint)?;
 
     let (token_in, token_out, amount_usd) = token_flow_from_balances(meta, &wallet)?;
+    let is_buy = is_whale_buy(&token_in, &token_out);
 
     if amount_usd <= min_usd {
         return None;
     }
+
+    let tx_slot = tx
+        .pointer("/slot")
+        .and_then(|s| s.as_u64())
+        .unwrap_or(0);
 
     Some(WhaleSwapSignal {
         wallet,
@@ -364,7 +392,63 @@ fn parse_swap_from_tx(
         amount_usd,
         dex,
         timestamp: unix_now_secs() as i64,
+        tx_slot,
+        is_buy,
+        signature: signature.to_owned(),
     })
+}
+
+fn is_whale_buy(token_in: &str, token_out: &str) -> bool {
+    let stable = [USDC_MINT, SOL_MINT];
+    stable.contains(&token_in) && !stable.contains(&token_out)
+}
+
+fn emit_copy_signal(swap: &WhaleSwapSignal, hooks: Option<&CopyWatcherHooks>) {
+    let Some(hooks) = hooks else {
+        return;
+    };
+
+    if let Some(ref qualified) = hooks.qualified {
+        if !qualified.is_tracked(&swap.wallet) {
+            return;
+        }
+    }
+
+    if !swap.is_buy {
+        hooks
+            .recent_sales
+            .record_sale(&swap.wallet, &swap.token_in);
+    } else if swap.amount_usd < hooks.copy_cfg.min_whale_trade_usd {
+        return;
+    }
+
+    let detected_slot = swap.tx_slot;
+    let copy = CopySignal {
+        wallet: swap.wallet.clone(),
+        token_in: swap.token_in.clone(),
+        token_out: swap.token_out.clone(),
+        amount_usd: swap.amount_usd,
+        dex: swap.dex,
+        timestamp: swap.timestamp,
+        tx_slot: swap.tx_slot,
+        detected_slot,
+        is_buy: swap.is_buy,
+        signature: swap.signature.clone(),
+    };
+
+    if let Err(e) = hooks.copy_tx.try_send(copy.clone()) {
+        warn!(error = %e, "CopySignal channel full — dropped");
+        return;
+    }
+
+    info!(
+        wallet = %short_wallet(&copy.wallet),
+        token_out = %short_wallet(&copy.token_out),
+        amount_usd = copy.amount_usd,
+        is_buy = copy.is_buy,
+        payload = %copy_signal_to_bus_payload(&copy),
+        "CopySignal emitted"
+    );
 }
 
 fn detect_dex_program(tx: &serde_json::Value) -> Option<DexSource> {
@@ -559,6 +643,9 @@ mod tests {
             amount_usd: 20_000.0,
             dex: DexSource::Jupiter,
             timestamp: now,
+            tx_slot: 100,
+            is_buy: true,
+            signature: "sig0".to_owned(),
         });
         store.push(WhaleSwapSignal {
             wallet: WHALE_WALLETS[1].to_owned(),
@@ -567,6 +654,9 @@ mod tests {
             amount_usd: 15_000.0,
             dex: DexSource::Raydium,
             timestamp: now,
+            tx_slot: 100,
+            is_buy: true,
+            signature: "sig1".to_owned(),
         });
 
         assert_eq!(store.whale_buy_count("TokenA", 60), 2);
@@ -579,8 +669,18 @@ mod tests {
             amount_usd: 12_000.0,
             dex: DexSource::Orca,
             timestamp: now,
+            tx_slot: 100,
+            is_buy: false,
+            signature: "sig2".to_owned(),
         });
         assert!(store.whale_sold_recently("TokenB", 30));
+    }
+
+    #[test]
+    fn is_whale_buy_detects_stable_to_token() {
+        assert!(is_whale_buy(USDC_MINT, "TokenX"));
+        assert!(is_whale_buy(SOL_MINT, "TokenX"));
+        assert!(!is_whale_buy("TokenX", USDC_MINT));
     }
 
     #[test]
@@ -595,6 +695,9 @@ mod tests {
                 amount_usd: 11_000.0,
                 dex: DexSource::Jupiter,
                 timestamp: now,
+                tx_slot: 100,
+                is_buy: true,
+                signature: format!("sig{i}"),
             });
         }
         assert_eq!(store.recent_signals().len(), 100);

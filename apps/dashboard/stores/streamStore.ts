@@ -97,6 +97,7 @@ export const useStreamStore = create<StreamState>((set, get) => {
 
     connect: (url) => {
       const target = url ?? DEFAULT_URL;
+      useMarketStore.getState().clear();
       set({ url: target, error: null });
 
       if (!unsubscribeFlush) {

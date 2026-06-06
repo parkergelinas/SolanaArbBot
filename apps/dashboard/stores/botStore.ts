@@ -1,5 +1,8 @@
 import { create } from 'zustand';
 
+import { clusterToExpectedNetwork, rpcUrlForCluster } from '@/lib/solana/network';
+import { useNetworkStore } from './networkStore';
+
 export type BotStrategy =
   | 'scalp'
   | 'arb'
@@ -68,7 +71,13 @@ export const useBotStore = create<BotStore>((set, get) => ({
 
   toConfigPatch: () => {
     const { strategies } = get();
+    const cluster = useNetworkStore.getState().cluster;
     return {
+      wallet: {
+        rpc_endpoint: rpcUrlForCluster(cluster),
+        expected_network: clusterToExpectedNetwork(cluster),
+        validate_network_on_start: true,
+      },
       strategy: {
         scalp: strategies.scalp,
         arb: strategies.arb,

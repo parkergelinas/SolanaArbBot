@@ -1,18 +1,23 @@
 import type { Candle } from '@/lib/stream/types';
 
-import { tokenMeta } from './tokens';
+import { getAnchorPrice } from '@/lib/pricing/anchorCache';
 
 export function refPriceForMint(mint: string, livePrice?: number): number {
   if (livePrice !== undefined && Number.isFinite(livePrice) && livePrice > 0) {
     return livePrice;
   }
-  return tokenMeta(mint)?.refPrice ?? (mint.startsWith('So1111') ? 145 : 1);
+  const anchor = getAnchorPrice(mint);
+  if (anchor && anchor > 0) return anchor;
+  // Stablecoins only — never hardcode SOL at $145
+  if (mint.startsWith('EPjFW') || mint.startsWith('Es9vM')) return 1;
+  return 0;
 }
 
 /** Widen guard for swap-implied prices — do NOT use on OHLC candles. */
 export function sanitizeTradePrice(mint: string, price: number, livePrice?: number): number {
   const ref = refPriceForMint(mint, livePrice);
-  if (!Number.isFinite(price) || price <= 0) return ref;
+  if (!Number.isFinite(price) || price <= 0) return ref > 0 ? ref : price;
+  if (ref <= 0) return price;
   if (price > ref * 100 || price < ref / 100) return ref;
   return price;
 }
@@ -59,29 +64,21 @@ export interface ChartBar {
 
 export function prepareChartBars(
   candles: Candle[],
-  interval: '1s' | '5s' | '1m',
-  maxBars = 96,
+  interval: Candle['interval'],
 ): ChartBar[] {
-  const sorted = [...candles].sort((a, b) => a.ts_open_ms - b.ts_open_ms);
-  const slice = sorted.slice(-maxBars);
-
-  return slice.map((c) => {
-    const n = normalizeCandle(c);
-    return {
-      ts: n.ts_open_ms,
-      label:
-        interval === '1m'
-          ? new Date(n.ts_open_ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          : new Date(n.ts_open_ms).toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit',
-            }),
-      open: n.open,
-      high: n.high,
-      low: n.low,
-      close: n.close,
-      volume: n.volume,
-    };
-  });
+  return candles
+    .filter((c) => c.interval === interval)
+    .sort((a, b) => a.ts_open_ms - b.ts_open_ms)
+    .map((c) => ({
+      ts: c.ts_open_ms,
+      label: new Date(c.ts_open_ms).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      volume: c.volume,
+    }));
 }

@@ -2,6 +2,7 @@
 
 import {
   DIRECTION_META,
+  parseSignalSource,
   SIGNAL_TYPE_META,
   shortPool,
 } from '@/lib/signals';
@@ -48,6 +49,7 @@ export default function SignalDetailPanel({ signal, isLive }: SignalDetailPanelP
   const typeMeta = SIGNAL_TYPE_META[signal.signal_type];
   const dirMeta = DIRECTION_META[signal.direction];
   const ts = tsToDate(signal.timestamp_micros);
+  const source = parseSignalSource(signal.explanation);
 
   return (
     <aside className="surface-card p-4 lg:w-80 shrink-0 flex flex-col gap-4 lg:sticky lg:top-0 lg:self-start">
@@ -68,6 +70,11 @@ export default function SignalDetailPanel({ signal, isLive }: SignalDetailPanelP
           {isLive && (
             <span className="px-2 py-0.5 rounded-md text-[11px] font-medium text-platform-accent bg-platform-accent/10">
               LIVE
+            </span>
+          )}
+          {source && (
+            <span className="px-2 py-0.5 rounded-terminal text-[10px] font-mono text-ds-text-muted border border-ds-border">
+              {source}
             </span>
           )}
         </div>

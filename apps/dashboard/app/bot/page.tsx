@@ -6,10 +6,14 @@ import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 
 import WhaleFeed from '@/components/intelligence/WhaleFeed';
 import LiveDataStatusCard from '@/components/LiveDataStatusCard';
+import PaperTradingPanel from '@/components/paper/PaperTradingPanel';
+import { PageHeader, PageShell } from '@/components/layout/PageShell';
 import { api } from '@/lib/api';
 import { useFetch, useLatestTrade } from '@/lib/hooks';
 import { intelligenceToSignals } from '@/lib/intelligence/bridge';
 import { useIntelConnected, useSmartMoney, useWhales } from '@/lib/intelligence/hooks';
+import { streamSignalsToEvents } from '@/lib/intelligence/streamBridge';
+import { useMarketStore } from '@/stores/marketStore';
 import { signalBotScore } from '@/lib/signals';
 import { formatUsd, type BotStatus } from '@/lib/types';
 import { useBotStore } from '@/stores/botStore';
@@ -61,10 +65,17 @@ export default function BotPage() {
     }).catch(() => setBalance(null));
   }, [publicKey, connection]);
 
-  const intelSignals = useMemo(
-    () => intelligenceToSignals(whales, smart),
-    [whales, smart],
-  );
+  const marketSignals = useMarketStore((s) => s.signals);
+
+  const intelSignals = useMemo(() => {
+    const fromIntel = intelligenceToSignals(whales, smart);
+    const fromStream = streamSignalsToEvents(marketSignals).filter(
+      (s) => s.signal_type === 'WhaleFlow' || s.signal_type === 'SmartMoney',
+    );
+    return [...fromIntel, ...fromStream].sort(
+      (a, b) => b.timestamp_micros - a.timestamp_micros,
+    );
+  }, [whales, smart, marketSignals]);
 
   const actionable = useMemo(() => {
     return intelSignals
@@ -120,30 +131,30 @@ export default function BotPage() {
       : 'text-slate-400';
 
   return (
-    <div className="max-w-5xl mx-auto space-y-5 pb-8">
-      <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-100 tracking-tight">Trading Bot</h1>
-          <p className="text-platform-muted text-sm mt-0.5">
-            Paper execution · strategy fusion · whale-aware copy logic
-          </p>
-        </div>
-        {publicKey && (
-          <div className="glass-card px-3 py-2 text-right">
-            <p className="text-[10px] text-platform-muted uppercase tracking-wider">Wallet</p>
-            <p className="text-xs mono text-slate-300 truncate max-w-[200px]">
-              {publicKey.toBase58().slice(0, 8)}…{publicKey.toBase58().slice(-6)}
-            </p>
-            {balance !== null && (
-              <p className="text-sm font-semibold text-platform-accent mono mt-0.5">
-                {balance.toFixed(4)} SOL
+    <PageShell className="max-w-5xl mx-auto">
+      <PageHeader
+        title="Trading Bot"
+        description="Paper execution · strategy fusion · whale-aware copy logic"
+        actions={
+          publicKey ? (
+            <div className="bg-ds-surface border border-ds-border rounded-terminal px-3 py-2 text-right">
+              <p className="text-[10px] text-ds-text-muted uppercase tracking-wider">Wallet</p>
+              <p className="text-xs font-mono text-ds-text-secondary truncate max-w-[200px]">
+                {publicKey.toBase58().slice(0, 8)}…{publicKey.toBase58().slice(-6)}
               </p>
-            )}
-          </div>
-        )}
-      </header>
+              {balance !== null && (
+                <p className="text-sm font-semibold text-ds-blue font-mono mt-0.5">
+                  {balance.toFixed(4)} SOL
+                </p>
+              )}
+            </div>
+          ) : undefined
+        }
+      />
 
       <LiveDataStatusCard />
+
+      <PaperTradingPanel />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div
@@ -344,7 +355,7 @@ export default function BotPage() {
 
         <WhaleFeed compact />
       </div>
-    </div>
+    </PageShell>
   );
 }
 

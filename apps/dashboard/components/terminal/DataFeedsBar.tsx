@@ -16,29 +16,30 @@ function FeedPill({
   status: 'online' | 'offline' | 'degraded';
   lastOkAt: number;
 }) {
-  const color =
+  const dot =
     status === 'online'
-      ? 'text-flow-buy border-flow-buy/30 bg-flow-buy/5'
+      ? 'bg-ds-green'
       : status === 'degraded'
-        ? 'text-terminal-warn border-terminal-warn/30 bg-terminal-warn/5'
-        : 'text-terminal-muted border-terminal-border bg-terminal-bg';
+        ? 'bg-ds-amber'
+        : 'bg-ds-text-muted';
+  const text =
+    status === 'online'
+      ? 'text-ds-green border-ds-green/25 bg-ds-green-dim'
+      : status === 'degraded'
+        ? 'text-ds-amber border-ds-amber/25'
+        : 'text-ds-text-muted border-ds-border';
 
   return (
     <span
-      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] mono uppercase tracking-wide ${color}`}
+      className={`inline-flex items-center gap-1 px-1.5 py-px border rounded-terminal text-[9px] font-mono uppercase tracking-wide ${text}`}
       title={lastOkAt ? `Last OK ${timeAgo(lastOkAt)}` : 'No data yet'}
     >
-      <span
-        className={`w-1 h-1 rounded-full ${
-          status === 'online' ? 'bg-flow-buy' : status === 'degraded' ? 'bg-terminal-warn' : 'bg-slate-600'
-        }`}
-      />
+      <span className={`w-1 h-1 rounded-full ${dot}`} />
       {label}
     </span>
   );
 }
 
-/** Compact feed health strip for the terminal. */
 export default function DataFeedsBar() {
   const connectionMode = useStreamStore((s) => s.connectionMode);
   const lastMessageAt = useStreamStore((s) => s.lastMessageAt);
@@ -72,8 +73,8 @@ export default function DataFeedsBar() {
   }, [intelConnected, setIntelligence, intelFeed.lastOkAt]);
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 px-3 py-1 border-b border-terminal-border bg-terminal-panel/60 text-[9px]">
-      <span className="text-terminal-muted uppercase tracking-widest mr-1">Feeds</span>
+    <div className="flex flex-wrap items-center gap-1.5 px-3 h-7 border-b border-ds-border bg-ds-surface shrink-0">
+      <span className="text-[9px] text-ds-text-muted uppercase tracking-widest mr-1">Feeds</span>
       <FeedPill label="Stream" status={streamFeed.status} lastOkAt={streamFeed.lastOkAt} />
       <FeedPill label="Jupiter" status={streamFeed.status} lastOkAt={lastMessageAt} />
       <FeedPill label="Hub" status={hubFeed.status} lastOkAt={hubFeed.lastOkAt} />

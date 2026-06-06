@@ -2,36 +2,30 @@
 
 import { useEffect } from 'react';
 
+import { isTerminalDemoEnabled } from '@/lib/config/env';
 import { startDemoEngine } from '@/lib/terminal/demoEngine';
 import { useMarketStore } from '@/stores/marketStore';
+import { usePriceAnchorStore } from '@/stores/priceAnchorStore';
 import { useStreamStore } from '@/stores/streamStore';
 
-const DEMO_ENABLED =
-  typeof process !== 'undefined' &&
-  process.env.NEXT_PUBLIC_TERMINAL_DEMO !== '0';
-
-const CLEAR_ON_LIVE =
-  typeof process !== 'undefined' &&
-  process.env.NEXT_PUBLIC_TERMINAL_CLEAR_ON_LIVE !== '0';
-
 /**
- * Seeds and simulates market data when the live stream is offline.
- * Live stream takes priority — demo pauses while connected.
+ * Optional demo simulator — only when NEXT_PUBLIC_TERMINAL_DEMO=1.
+ * Production / devnet testing should leave this disabled and run stream-api.
  */
 export default function DemoBootstrap() {
   const connected = useStreamStore((s) => s.connected);
+  const priceReady = usePriceAnchorStore((s) => s.ready);
   const applyMessages = useMarketStore((s) => s.applyMessages);
-  const clearMarket = useMarketStore((s) => s.clear);
 
   useEffect(() => {
-    if (!DEMO_ENABLED) return;
+    if (!isTerminalDemoEnabled() || !priceReady) return;
 
     let engine: ReturnType<typeof startDemoEngine> | null = null;
     let grace: ReturnType<typeof setTimeout> | null = null;
 
     const start = () => {
       if (engine) return;
-      engine = startDemoEngine(applyMessages, { intervalMs: 100, seed: true });
+      engine = startDemoEngine(applyMessages, { intervalMs: 100, seed: false });
     };
 
     const stop = () => {
@@ -40,17 +34,16 @@ export default function DemoBootstrap() {
     };
 
     if (!connected) {
-      grace = setTimeout(start, 400);
+      grace = setTimeout(start, 200);
     } else {
       stop();
-      if (CLEAR_ON_LIVE) clearMarket();
     }
 
     return () => {
       if (grace) clearTimeout(grace);
       stop();
     };
-  }, [connected, applyMessages, clearMarket]);
+  }, [connected, priceReady, applyMessages]);
 
   return null;
 }

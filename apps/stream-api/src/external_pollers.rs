@@ -38,9 +38,39 @@ pub fn spawn_optional_external_pollers() {
             USDC_MINT.to_owned(),
         ]);
 
-        let whale_cfg = Arc::new(handle.whale_tracker.clone());
-        let _handles = signals::spawn_live_data_pollers(bus, data_sources, mints, Some(whale_cfg))
-            .await;
+        let whale_cfg = if handle.whale_tracker.enabled {
+            Some(Arc::new(handle.whale_tracker.clone()))
+        } else {
+            None
+        };
+        let copy_cfg = if handle.copy_trading.enabled {
+            Some(Arc::new(handle.copy_trading.clone()))
+        } else {
+            None
+        };
+        let liquidation_cfg = if handle.liquidation.enabled {
+            Some(Arc::new(handle.liquidation.clone()))
+        } else {
+            None
+        };
+        let momentum_cfg = if handle.momentum.enabled {
+            Some(Arc::new(handle.momentum.clone()))
+        } else {
+            None
+        };
+        let features = Arc::new(handle.features.clone());
+        let _handles = signals::spawn_live_data_pollers(
+            bus,
+            data_sources,
+            mints,
+            whale_cfg,
+            copy_cfg,
+            liquidation_cfg,
+            momentum_cfg,
+            Some(features),
+            None,
+        )
+        .await;
         info!("stream-api external data pollers started (STREAM_EXTERNAL_POLLERS=1)");
     });
 }

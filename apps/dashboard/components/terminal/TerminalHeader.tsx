@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
+import NetworkSwitcher from '@/components/wallet/NetworkSwitcher';
 import WalletConnectButton from '@/components/wallet/WalletConnectButton';
 import { tokenMeta, tokenSymbol } from '@/lib/terminal/tokens';
 import { useMarketStore } from '@/stores/marketStore';
@@ -112,6 +113,7 @@ export default function TerminalHeader() {
       </div>
 
       <div className="flex items-center gap-3 text-right text-[10px] mono">
+        <NetworkSwitcher compact />
         <WalletConnectButton />
         <div>
           <div className="text-slate-300 tabular-nums">{now}</div>

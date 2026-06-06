@@ -109,8 +109,18 @@ impl ColdPathExecutor {
     }
 
     fn submit_jito(intent: &ExecutionIntent) {
-        // Placeholder: real implementation wires to Jito block-engine gRPC.
-        // No JSON parsing — pre-serialized tx bytes in intent would be used here.
+        use crate::jito::{BundleRequest, JitoSubmitter};
+        use config::ArbitrageConfig;
+
+        let submitter = JitoSubmitter::new(&ArbitrageConfig::default());
+        let req = BundleRequest {
+            opportunity_id: format!("hotpath-{}-{}", intent.pool_idx, intent.slot),
+            tip_lamports: intent.tip_lamports,
+            priority_fee_lamports: 100_000,
+            amount_in_lamports: intent.size_lamports,
+            route_hops: 2,
+        };
+        let _ = crate::jito::submit_bundle_blocking(&submitter, req);
         let _ = intent;
     }
 

@@ -97,6 +97,9 @@ mod tests {
                 amount_usd: 20_000.0,
                 dex: DexSource::Jupiter,
                 timestamp: now,
+                tx_slot: 100,
+                is_buy: true,
+                signature: format!("sig{i}"),
             });
         }
         store
@@ -116,6 +119,9 @@ mod tests {
             amount_usd: 15_000.0,
             dex: DexSource::Raydium,
             timestamp: now,
+            tx_slot: 100,
+            is_buy: false,
+            signature: "sig_sell".to_owned(),
         });
 
         let score = apply_whale_boosts(100.0, "TokenX", &store, 60);

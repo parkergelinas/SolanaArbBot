@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useState } from 'react';
+
+import { PageHeader, PageShell } from '@/components/layout/PageShell';
 import { useFetch } from '@/lib/hooks';
 import { api } from '@/lib/api';
 
@@ -106,13 +108,11 @@ export default function ConfigPage() {
   };
 
   return (
-    <div className="space-y-5 max-w-4xl">
-      <div>
-        <h1 className="text-xl font-semibold text-slate-100">Configuration</h1>
-        <p className="text-slate-400 text-sm mt-0.5">
-          Edit SystemConfig sections — all changes are validated by the risk engine before being applied.
-        </p>
-      </div>
+    <PageShell className="max-w-4xl">
+      <PageHeader
+        title="Configuration"
+        description="Edit SystemConfig sections — all changes are validated by the risk engine before being applied."
+      />
 
       <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3 text-amber-300 text-xs">
         ⚠ Config changes take effect immediately in the running process but are not persisted to disk.
@@ -139,6 +139,6 @@ export default function ConfigPage() {
           })}
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

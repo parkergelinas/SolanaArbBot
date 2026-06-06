@@ -1,5 +1,6 @@
 'use client';
 
+import { DsPanel, PageHeader, PageShell } from '@/components/layout/PageShell';
 import { useStreamTrades } from '@/lib/hooks';
 import { formatUsd, type TradeEvent } from '@/lib/types';
 
@@ -22,15 +23,13 @@ export default function TradesPage() {
   const trades = useStreamTrades(200);
 
   return (
-    <div className="space-y-5 max-w-6xl">
-      <div>
-        <h1 className="text-xl font-semibold text-slate-100">Trades</h1>
-        <p className="text-slate-400 text-sm mt-0.5">
-          Live paper execution — quote through fill without refresh
-        </p>
-      </div>
+    <PageShell className="max-w-6xl">
+      <PageHeader
+        title="Trades"
+        description="Live paper execution — quote through fill without refresh"
+      />
 
-      <div className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+      <DsPanel flush>
         <table className="w-full text-sm">
           <thead className="border-b border-slate-700">
             <tr className="text-slate-400 text-xs uppercase tracking-wide">
@@ -98,7 +97,7 @@ export default function TradesPage() {
             )}
           </tbody>
         </table>
-      </div>
-    </div>
+      </DsPanel>
+    </PageShell>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
+import { PageHeader, PageShell } from '@/components/layout/PageShell';
 import LiveDataStatusCard from '@/components/LiveDataStatusCard';
 import MetricCard from '@/components/MetricCard';
 import SystemStatusBadge from '@/components/SystemStatusBadge';
@@ -45,33 +46,30 @@ export default function OverviewPage() {
   const running = status?.running ?? false;
 
   return (
-    <div className="space-y-6 max-w-6xl">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-100">Overview</h1>
-          <p className="text-slate-400 text-sm mt-0.5">System health &amp; portfolio at a glance</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <SystemStatusBadge />
-          <div className="flex gap-2">
+    <PageShell className="max-w-6xl">
+      <PageHeader
+        title="Overview"
+        description="System health & portfolio at a glance"
+        actions={
+          <>
+            <SystemStatusBadge />
             <button
               onClick={handleStart}
               disabled={running || starting}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium bg-green-500/10 text-green-400 border border-green-500/30 hover:bg-green-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-1.5 rounded-terminal text-sm font-medium bg-ds-green/10 text-ds-green border border-ds-green/30 hover:bg-ds-green/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               ▶ Start
             </button>
             <button
               onClick={handleStop}
               disabled={!running || starting}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-1.5 rounded-terminal text-sm font-medium bg-ds-red/10 text-ds-red border border-ds-red/30 hover:bg-ds-red/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               ■ Stop
             </button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <LiveDataStatusCard />
 
@@ -143,6 +141,6 @@ export default function OverviewPage() {
           </div>
         )}
       </div>
-    </div>
+    </PageShell>
   );
 }

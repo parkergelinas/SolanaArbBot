@@ -5,6 +5,8 @@ import { useCallback, useMemo, useState } from 'react';
 import TxTape from '@/components/intelligence/TxTape';
 import WalletRail from '@/components/intelligence/WalletRail';
 import WhaleFeed from '@/components/intelligence/WhaleFeed';
+import WhaleSourcesPanel from '@/components/intelligence/WhaleSourcesPanel';
+import { PageHeader, PageShell } from '@/components/layout/PageShell';
 import SignalDetailPanel from '@/components/signals/SignalDetailPanel';
 import SignalFeedTable from '@/components/signals/SignalFeedTable';
 import SignalFilters from '@/components/signals/SignalFilters';
@@ -14,6 +16,7 @@ import { api } from '@/lib/api';
 import { useFetch, useStreamSignals } from '@/lib/hooks';
 import { intelligenceToSignals } from '@/lib/intelligence/bridge';
 import { useIntelConnected, useSmartMoney, useWhales } from '@/lib/intelligence/hooks';
+import { streamSignalsToEvents } from '@/lib/intelligence/streamBridge';
 import {
   filterSignals,
   mergeSignals,
@@ -23,10 +26,14 @@ import {
   type SignalSortKey,
 } from '@/lib/signals';
 import type { SignalEvent } from '@/lib/types';
+import { useMarketStore } from '@/stores/marketStore';
+import { useStreamStore } from '@/stores/streamStore';
 
 export default function SignalsPage() {
   const { connected } = useWsContext();
   const intelConnected = useIntelConnected();
+  const streamConnected = useStreamStore((s) => s.connected);
+  const marketSignals = useMarketStore((s) => s.signals);
   const whales = useWhales();
   const smart = useSmartMoney();
 
@@ -49,9 +56,14 @@ export default function SignalsPage() {
     [whales, smart, showIntel],
   );
 
+  const streamApiSignals = useMemo(
+    () => (streamConnected ? streamSignalsToEvents(marketSignals) : []),
+    [marketSignals, streamConnected],
+  );
+
   const organized = useMemo(
-    () => mergeSignals(liveSignals, historical, intelSignals),
-    [liveSignals, historical, intelSignals],
+    () => mergeSignals(liveSignals, historical, [...intelSignals, ...streamApiSignals]),
+    [liveSignals, historical, intelSignals, streamApiSignals],
   );
 
   const filtered = useMemo(() => {
@@ -64,53 +76,65 @@ export default function SignalsPage() {
     [filtered, selectedId],
   );
 
+  const anyFeedLive = connected || intelConnected || streamConnected;
+
   return (
-    <div className="flex flex-col gap-5 max-w-[90rem] pb-8">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-100 tracking-tight">Signals</h1>
-          <p className="text-platform-muted text-sm mt-0.5">
-            Engine signals + live whale intelligence from chain
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setShowIntel((v) => !v)}
-            className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-              showIntel
-                ? 'border-platform-accent/40 bg-platform-accent/10 text-platform-accent'
-                : 'border-platform-border text-platform-muted hover:text-slate-200'
-            }`}
-          >
-            Whale feed {showIntel ? 'on' : 'off'}
-          </button>
-          <span
-            className={`text-[10px] px-2 py-1 rounded-md border ${
-              intelConnected
-                ? 'border-platform-accent/30 text-platform-accent'
-                : 'border-red-500/30 text-red-400'
-            }`}
-          >
-            Intel {intelConnected ? 'live' : 'offline'}
-          </span>
-        </div>
-      </header>
+    <PageShell>
+      <PageHeader
+        title="Signals"
+        description="Engine + stream-api + intelligence-api whale radar — unified feed"
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={() => setShowIntel((v) => !v)}
+              className={`text-[11px] px-2.5 py-1 rounded-terminal border transition-colors ${
+                showIntel
+                  ? 'border-ds-blue/40 bg-ds-blue/10 text-ds-blue'
+                  : 'border-ds-border text-ds-text-muted hover:text-ds-text-primary'
+              }`}
+            >
+              Intel {showIntel ? 'on' : 'off'}
+            </button>
+            <span
+              className={`text-[10px] px-2 py-1 rounded-terminal border font-mono ${
+                intelConnected
+                  ? 'border-ds-green/30 text-ds-green'
+                  : 'border-ds-border text-ds-text-muted'
+              }`}
+            >
+              :8090 {intelConnected ? 'live' : 'off'}
+            </span>
+            <span
+              className={`text-[10px] px-2 py-1 rounded-terminal border font-mono ${
+                streamConnected
+                  ? 'border-ds-green/30 text-ds-green'
+                  : 'border-ds-border text-ds-text-muted'
+              }`}
+            >
+              :8080 {streamConnected ? 'live' : 'off'}
+            </span>
+          </>
+        }
+      />
+
+      <WhaleSourcesPanel />
 
       {error && (
-        <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 max-w-xl">
+        <p className="text-xs text-ds-amber bg-ds-amber/10 border border-ds-amber/20 rounded-terminal px-3 py-2 max-w-xl">
           Historical API: {error}. Live feeds may still work.
         </p>
       )}
 
       {!intelConnected && (
-        <p className="text-xs text-slate-400 bg-slate-800/60 border border-platform-border rounded-lg px-3 py-2 max-w-xl">
-          Intelligence WebSocket offline — whale / smart-money signals hidden unless you start{' '}
-          <code className="text-platform-accent">intelligence-api</code> on :8090.
+        <p className="text-xs text-ds-text-secondary bg-ds-elevated/50 border border-ds-border rounded-terminal px-3 py-2 max-w-xl">
+          Intelligence WebSocket offline — start{' '}
+          <code className="text-ds-blue font-mono">cargo run -p intelligence-api</code> on :8090
+          for whale / smart-money alerts.
         </p>
       )}
 
-      <SignalStatsBar stats={organized.stats} connected={connected || intelConnected} />
+      <SignalStatsBar stats={organized.stats} connected={anyFeedLive} />
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_17rem] gap-4">
         <div className="flex flex-col gap-4 min-w-0">
@@ -148,6 +172,6 @@ export default function SignalsPage() {
       </div>
 
       <TxTape />
-    </div>
+    </PageShell>
   );
 }

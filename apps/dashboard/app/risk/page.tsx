@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback } from 'react';
+import { PageHeader, PageShell } from '@/components/layout/PageShell';
 import MetricCard from '@/components/MetricCard';
 import { useFetch } from '@/lib/hooks';
 import { api } from '@/lib/api';
@@ -32,20 +33,20 @@ export default function RiskPage() {
   const statusColor = riskStatus === 'healthy' ? 'text-green-400' : riskStatus === 'warning' ? 'text-yellow-400' : 'text-red-400';
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-100">Risk Panel</h1>
-          <p className="text-slate-400 text-sm mt-0.5">Current exposure vs configured limits</p>
-        </div>
-        <div className={`px-4 py-2 rounded-lg border text-sm font-medium capitalize ${
-          riskStatus === 'healthy' ? 'bg-green-500/10 border-green-500/30 text-green-400' :
-          riskStatus === 'warning' ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400' :
-          'bg-red-500/10 border-red-500/30 text-red-400'
-        }`}>
-          {riskStatus}
-        </div>
-      </div>
+    <PageShell className="max-w-4xl">
+      <PageHeader
+        title="Risk Panel"
+        description="Current exposure vs configured limits"
+        actions={
+          <div className={`px-4 py-2 rounded-terminal border text-sm font-medium capitalize ${
+            riskStatus === 'healthy' ? 'bg-ds-green/10 border-ds-green/30 text-ds-green' :
+            riskStatus === 'warning' ? 'bg-ds-amber/10 border-ds-amber/30 text-ds-amber' :
+            'bg-ds-red/10 border-ds-red/30 text-ds-red'
+          }`}>
+            {riskStatus}
+          </div>
+        }
+      />
 
       {/* Limits grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -111,13 +112,13 @@ export default function RiskPage() {
       </div>
 
       {/* Safety rules notice */}
-      <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 text-xs text-slate-500 space-y-1">
-        <p className="text-slate-400 font-medium mb-2">Safety Rules (enforced server-side)</p>
+      <div className="bg-ds-elevated/50 border border-ds-border rounded-terminal p-4 text-xs text-ds-text-muted space-y-1">
+        <p className="text-ds-text-secondary font-medium mb-2">Safety Rules (enforced server-side)</p>
         <p>✓ Live trading disabled — paper mode only</p>
         <p>✓ All config changes validated before application</p>
         <p>✓ No direct execution access from the UI</p>
         <p>✓ Portfolio reset is restricted to paper mode</p>
       </div>
-    </div>
+    </PageShell>
   );
 }

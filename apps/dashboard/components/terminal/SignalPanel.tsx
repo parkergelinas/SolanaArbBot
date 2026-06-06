@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { memo, useMemo, useState } from 'react';
 
+import PaperTradingPanel from '@/components/paper/PaperTradingPanel';
 import type { Signal, SignalKind } from '@/lib/stream/types';
 import { tokenSymbol } from '@/lib/terminal/tokens';
 import { selectSignals } from '@/stores/marketSelectors';
@@ -115,6 +116,7 @@ export default function SignalPanel() {
           ))
         )}
       </ul>
+      <PaperTradingPanel compact />
       <div className="px-2 py-1 border-t border-terminal-border">
         <Link
           href="/signals"

@@ -36,8 +36,7 @@ export function whaleToSignal(alert: WhaleAlert): SignalEvent {
       volume_short: alert.amount_sol,
     },
     explanation:
-      alert.detail ??
-      `Whale ${alert.amount_sol.toFixed(2)} SOL ($${alert.notional_usd.toFixed(0)}) on ${alert.dex} · ${alert.token_symbol}`,
+      `[intelligence-api] ${alert.detail ?? `Whale ${alert.amount_sol.toFixed(2)} SOL ($${alert.notional_usd.toFixed(0)}) on ${alert.dex} · ${alert.token_symbol}`} · tier ${alert.tier}`,
   };
 }
 
@@ -57,8 +56,7 @@ export function smartMoneyToSignal(alert: SmartMoneyAlert): SignalEvent {
       volume_short: alert.amount_sol,
     },
     explanation:
-      alert.detail ??
-      `Smart money ${alert.amount_sol.toFixed(2)} SOL on ${alert.dex} · ${alert.token_symbol}`,
+      `[intelligence-api] ${alert.detail ?? `Smart money ${alert.amount_sol.toFixed(2)} SOL on ${alert.dex} · ${alert.token_symbol}`}`,
   };
 }
 

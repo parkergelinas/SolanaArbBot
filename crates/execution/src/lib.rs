@@ -6,6 +6,8 @@
 #![forbid(unsafe_code)]
 
 pub mod hotpath;
+pub mod jito;
+pub mod tip_calibrator;
 pub mod simulator {
     //! Execution simulation and outcome modeling responsibilities.
 
@@ -288,7 +290,12 @@ pub use hotpath::{
     HotSignal, HotState, MarketTick, PrecomputeTable, RiskVerdict, RouteChoice, TickOutcome,
     Venue,
 };
+pub use jito::{
+    BuiltBundle, BundleRequest, BundleSubmitResult, JitoSubmitter, COMPUTE_UNITS_LIMIT,
+    JITO_COMMITMENT, JITO_ENDPOINTS,
+};
 pub use simulator::{ExecutionConfig, ExecutionResult, ExecutionSimulator, SimulationModel};
+pub use tip_calibrator::TipCalibrator;
 
 #[cfg(test)]
 mod tests {

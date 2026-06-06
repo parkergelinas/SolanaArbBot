@@ -19,7 +19,24 @@ export function selectTokenRow(mint: string | null) {
 }
 
 export function selectSwapsTail(max: number) {
-  return (s: MarketState) => s.swaps.slice(-max);
+  return (s: MarketState) => {
+    const tail = s.swaps.length <= max ? s.swaps : s.swaps.slice(-max);
+    return tail;
+  };
+}
+
+/** Minimal revision tuple — avoids re-rendering the swap feed on unrelated store updates. */
+export function selectSwapFeedRevision(s: MarketState) {
+  const n = s.swaps.length;
+  return {
+    count: n,
+    lastSig: n > 0 ? s.swaps[n - 1]!.signature : '',
+    lastSeq: s.lastSeq,
+  };
+}
+
+export function selectSwapPrices(s: MarketState) {
+  return s.prices;
 }
 
 export function selectSignals(s: MarketState) {

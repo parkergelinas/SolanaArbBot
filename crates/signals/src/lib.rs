@@ -56,9 +56,14 @@ pub mod engine;
 pub mod external_store;
 pub mod feature_store;
 pub mod live;
+pub mod liquidation;
+pub mod momentum;
 pub mod processor;
 pub mod processors;
 pub mod types;
+pub mod copy_trader;
+pub mod sniper;
+pub mod wallet_scoring;
 pub mod whale_discovery;
 pub mod whale_watcher;
 
@@ -73,11 +78,36 @@ pub use birdeye::{
 pub use bus::{SignalReceiver, SignalSender, signal_channel};
 pub use dexscreener::{rugcheck_passes, spawn_dexscreener_poller, spawn_volume_spike_poller};
 pub use engine::SignalEngine;
-pub use external_store::{ExternalSignalStore, NewTokenSignal, WhaleActivitySignal};
+pub use external_store::{ExternalSignalStore, NewTokenSignal, VolumeSpikeSignal, WhaleActivitySignal};
+pub use momentum::{
+    momentum_confidence, momentum_signal_to_bus_payload, price_velocity_pct_min, spawn_momentum_poller,
+    volume_ratio, MomentumSignal, MomentumTraderState, MOMENTUM_SLIPPAGE_BPS,
+};
+pub use copy_trader::{
+    copy_signal_channel, copy_signal_to_bus_payload, execute_copy, plan_copy, spawn_copy_trader,
+    CopyExecutionPlan, CopySignal, CopySkipReason, CopyTraderState, RecentSalesTracker,
+    COPY_SLIPPAGE_BPS,
+};
+pub use sniper::{
+    compute_position_sol, evaluate_exit, execute_buy, fetch_token_price_usd, pool_creation_channel,
+    rug_check, spawn_sniper_bus_publisher, spawn_sniper_monitor, spawn_sniper_strategy, ExitAction,
+    RugCheckCache, RugRejectReason, RugVerdict, SniperCandidate, SniperPosition,
+    SniperPublisher, JUPITER_SWAP_API, SNIPER_SLIPPAGE_BPS,
+};
+pub use liquidation::{
+    classify_health, compute_health, execute_liquidation, plan_liquidation,
+    spawn_liquidation_hunter, sort_positions_by_urgency, BorrowPosition, HealthTier,
+    LendingProtocol, LiquidationPlan, LiquidationStore,
+};
 pub use live::{spawn_live_data_pollers, LiveDataHandles};
+pub use wallet_scoring::{
+    fetch_wallet_score, qualifies_wallet, score_from_gmgn_row, spawn_wallet_scoring_poller,
+    QualifiedWalletSet, WalletScore,
+};
 pub use whale_discovery::{build_tracked_wallet_set, load_discovered_wallets, spawn_whale_discovery};
 pub use whale_watcher::{
-    spawn_whale_watcher, short_wallet, DexSource, WhaleSignalStore, WhaleSwapSignal, WHALE_WALLETS,
+    spawn_whale_watcher, short_wallet, CopyWatcherHooks, DexSource, WhaleSignalStore,
+    WhaleSwapSignal, WHALE_WALLETS,
 };
 pub use feature_store::{ComputedFeatures, FeatureStore};
 pub use processor::SignalProcessor;

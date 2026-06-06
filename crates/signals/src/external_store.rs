@@ -22,9 +22,24 @@ pub struct WhaleActivitySignal {
     pub volume_h1_usd: f64,
 }
 
+/// Momentum / volume-anomaly signal emitted by Strategy 5.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VolumeSpikeSignal {
+    pub mint: String,
+    pub volume_ratio: f64,
+    pub price_velocity_pct_min: f64,
+    pub liquidity_usd: f64,
+    pub confidence: f64,
+    pub whale_confirmed: bool,
+    pub multi_dex: bool,
+    pub dex_count: usize,
+    pub detected_at_ms: u64,
+}
+
 #[derive(Default)]
 struct StoreInner {
     volume_spike_mints: HashSet<String>,
+    volume_spike_signals: Vec<VolumeSpikeSignal>,
     birdeye_top_mints: HashSet<String>,
     new_pairs: Vec<NewTokenSignal>,
     rugcheck_blocked: HashSet<String>,
@@ -50,6 +65,24 @@ impl ExternalSignalStore {
 
     pub fn set_volume_spikes(&self, mints: HashSet<String>) {
         self.inner.write().expect("lock").volume_spike_mints = mints;
+    }
+
+    pub fn push_volume_spike(&self, signal: VolumeSpikeSignal) {
+        let mut g = self.inner.write().expect("lock");
+        g.volume_spike_signals.push(signal);
+        const MAX_SPIKE_SIGNALS: usize = 100;
+        if g.volume_spike_signals.len() > MAX_SPIKE_SIGNALS {
+            let drop = g.volume_spike_signals.len() - MAX_SPIKE_SIGNALS;
+            g.volume_spike_signals.drain(0..drop);
+        }
+    }
+
+    pub fn recent_volume_spikes(&self) -> Vec<VolumeSpikeSignal> {
+        self.inner
+            .read()
+            .expect("lock")
+            .volume_spike_signals
+            .clone()
     }
 
     pub fn set_birdeye_top(&self, mints: HashSet<String>) {
@@ -106,6 +139,10 @@ impl ExternalSignalStore {
     pub fn is_jupiter_verified(&self, mint: &str) -> bool {
         let g = self.inner.read().expect("lock");
         g.jupiter_verified.is_empty() || g.jupiter_verified.contains(mint)
+    }
+
+    pub fn recent_new_pairs(&self) -> Vec<NewTokenSignal> {
+        self.inner.read().expect("lock").new_pairs.clone()
     }
 
     pub fn new_pair_age_secs(&self, mint: &str) -> Option<u64> {

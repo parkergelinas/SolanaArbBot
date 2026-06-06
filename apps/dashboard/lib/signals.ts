@@ -168,6 +168,12 @@ export const SIGNAL_TYPE_META: Record<
   Swap: { label: 'Swap', color: '#f59e0b', bg: '#f59e0b18' },
 };
 
+/** Extract feed source tag from explanation prefix e.g. `[intelligence-api]`. */
+export function parseSignalSource(explanation: string): string | null {
+  const match = explanation.match(/^\[([^\]]+)\]/);
+  return match ? match[1] : null;
+}
+
 export const DIRECTION_META: Record<Direction, { color: string; bg: string }> = {
   Long: { color: '#22c55e', bg: '#22c55e18' },
   Short: { color: '#ef4444', bg: '#ef444418' },
