@@ -4,8 +4,9 @@
 [advisories]
 version = 2
 ignore = [
-    # Add RUSTSEC IDs here only after explicit review, e.g.:
-    # "RUSTSEC-2024-0001",
+    # stream-api `otel` feature only; opentelemetry 0.20 stack not on default build path.
+    # Upgrade to opentelemetry 0.27+ when OTLP export is needed in production.
+    "RUSTSEC-2024-0387",
 ]
 
 [licenses]

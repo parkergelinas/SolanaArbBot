@@ -1,6 +1,7 @@
 'use client';
 
-import { useMarketStore, shortMint, amountToHuman } from '@/stores/marketStore';
+import { tokenSymbol } from '@/lib/terminal/tokens';
+import { useMarketStore, amountToHuman } from '@/stores/marketStore';
 import { useUiStore } from '@/stores/uiStore';
 
 const VISIBLE_ROWS = 24;
@@ -63,7 +64,7 @@ export default function VirtualizedSwapFeed() {
                     isBuy ? 'text-flow-buy' : 'text-flow-sell'
                   }`}
                 >
-                  {shortMint(s.token_in, 3, 2)}→{shortMint(s.token_out, 3, 2)}
+                  {tokenSymbol(s.token_in)}→{tokenSymbol(s.token_out)}
                 </span>
                 <span className="text-right text-slate-500 truncate leading-[22px]">
                   {formatAmount(s.token_in, s.amount_in)}

@@ -23,13 +23,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 anyhow = "1"
 reqwest = { workspace = true }
 
-# OpenTelemetry / OTLP tracing (optional via env)
-opentelemetry = "0.20"
-tracing-opentelemetry = "0.21"
-opentelemetry-otlp = "0.10"
+# OpenTelemetry / OTLP tracing (optional — enable with `--features otel`)
+opentelemetry = { version = "0.20", optional = true }
+tracing-opentelemetry = { version = "0.21", optional = true }
+opentelemetry-otlp = { version = "0.10", optional = true }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 
 [features]
-otel = []
+otel = ["dep:opentelemetry", "dep:tracing-opentelemetry", "dep:opentelemetry-otlp"]
