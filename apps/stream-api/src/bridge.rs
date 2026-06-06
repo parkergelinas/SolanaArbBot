@@ -13,6 +13,7 @@ fn parse_dex(dex: &str) -> Dex {
     match dex.to_lowercase().as_str() {
         "orca" => Dex::Orca,
         "jupiter" => Dex::Jupiter,
+        "pump" | "pump_fun" | "pumpfun" | "pump_swap" => Dex::Pump,
         _ => Dex::Raydium,
     }
 }

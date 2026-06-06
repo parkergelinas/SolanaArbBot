@@ -124,6 +124,7 @@ fn process_swap(state: &MarketState, swap: &SwapEvent, signal_seq: &AtomicU64) -
         Dex::Raydium => "raydium",
         Dex::Orca => "orca",
         Dex::Jupiter => "jupiter",
+        Dex::Pump => "pump",
     };
     let pool_id = format!("{dex_label}:{}:{}", swap.token_in, swap.token_out);
     state.pools.insert(

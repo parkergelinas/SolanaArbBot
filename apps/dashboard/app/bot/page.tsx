@@ -69,6 +69,7 @@ export default function BotPage() {
   const [busy, setBusy] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [mobileIntelTab, setMobileIntelTab] = useState<'queue' | 'whale'>('queue');
 
   const intelConnected = useIntelConnected();
   const whales = useWhales();
@@ -188,11 +189,11 @@ export default function BotPage() {
         title="Bot"
         subtitle="Paper execution · strategy fusion · whale-aware copy logic"
         actions={
-          <>
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:ml-auto">
             {publicKey && (
-              <div className="bg-ds-surface border border-ds-border rounded-terminal px-2.5 py-1.5 text-right">
+              <div className="bg-ds-surface border border-ds-border rounded-terminal px-2.5 py-1.5 text-left sm:text-right min-w-0 flex-1 sm:flex-none">
                 <p className="text-[9px] text-ds-text-muted uppercase tracking-wider">Wallet</p>
-                <p className="text-[10px] font-mono text-ds-text-secondary truncate max-w-[180px]">
+                <p className="text-[10px] font-mono text-ds-text-secondary truncate max-w-full sm:max-w-[180px]">
                   {publicKey.toBase58().slice(0, 8)}…{publicKey.toBase58().slice(-6)}
                 </p>
                 {balance !== null && (
@@ -205,14 +206,14 @@ export default function BotPage() {
             <DsBadge tone={bot?.running ? 'green' : bot?.trading_halted ? 'red' : 'muted'}>
               {bot?.trading_halted ? 'Halted' : bot?.running ? 'Running' : 'Stopped'}
             </DsBadge>
-          </>
+          </div>
         }
       />
 
-      <div className="flex items-center gap-2 px-3 py-2 bg-ds-amber/8 border border-ds-amber/25 rounded-terminal text-[11px] text-ds-amber shrink-0">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 px-3 py-2 bg-ds-amber/8 border border-ds-amber/25 rounded-terminal text-[11px] text-ds-amber shrink-0">
         <span className="font-mono uppercase tracking-wider shrink-0">Paper only</span>
-        <span className="text-ds-text-secondary">
-          Live trading requires SOLANA_ARB_CONFIRM_LIVE_TRADING=1 on the server — never enabled from this UI.
+        <span className="text-ds-text-secondary leading-snug">
+          Live trading requires server-side confirmation — never enabled from this UI.
         </span>
       </div>
 

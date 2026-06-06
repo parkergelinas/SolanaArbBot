@@ -10,6 +10,7 @@ mod hub_client;
 mod ingestion;
 mod market;
 mod pricing;
+mod pump_pollers;
 mod router;
 mod routes;
 mod scanner_pollers;
@@ -132,6 +133,7 @@ async fn main() -> anyhow::Result<()> {
 
     let scanners = signals::ScannerStore::new();
     scanner_pollers::spawn_scanner_pollers(scanners.clone());
+    pump_pollers::spawn_pump_pollers(swap_tx.clone(), ws_tx.clone(), scanners.clone());
 
     let state = AppState {
         batch_tx,

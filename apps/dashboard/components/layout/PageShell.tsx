@@ -57,7 +57,7 @@ interface PageShellProps {
 
 export function PageShell({ children, className = '', desk }: PageShellProps) {
   const base = desk
-    ? 'flex flex-col gap-2 page-desk-height max-w-[100rem] mx-auto w-full pb-2 md:pb-4'
+    ? 'flex flex-col gap-2 min-h-0 flex-1 max-w-[100rem] mx-auto w-full pb-2 md:pb-4'
     : 'flex flex-col gap-3 max-w-[90rem] pb-4 md:pb-6';
   return <div className={`${base} ${className}`}>{children}</div>;
 }
