@@ -30,9 +30,9 @@ anyhow = "1"
 reqwest = { workspace = true }
 
 # OpenTelemetry / OTLP tracing (optional — enable with `--features otel`)
-opentelemetry = { version = "0.20", optional = true }
+opentelemetry = { version = "0.20", optional = true, features = ["rt-tokio", "trace"] }
 tracing-opentelemetry = { version = "0.21", optional = true }
-opentelemetry-otlp = { version = "0.10", optional = true }
+opentelemetry-otlp = { version = "0.10", optional = true, features = ["http-proto"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
