@@ -30,7 +30,7 @@ jobs:
             ${{ runner.os }}-node-
 
       - name: Install (apps/web)
-        run: npm ci --prefix apps/web
+        run: npm install --prefix apps/web
 
       - name: Typecheck
         run: npm run typecheck --prefix apps/web
