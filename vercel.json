@@ -1,6 +1,18 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
   "framework": "nextjs",
+  "builds": [
+    {
+      "src": "apps/dashboard/package.json",
+      "use": "@vercel/next"
+    }
+  ],
   "installCommand": "npm install --prefix apps/dashboard",
-  "buildCommand": "npm run build --prefix apps/dashboard"
+  "buildCommand": "npm run build --prefix apps/dashboard",
+  "env": {
+    "CONTROL_API_URL": "@control_api_url",
+    "NEXT_PUBLIC_STREAM_HTTP_URL": "@next_public_stream_http_url",
+    "NEXT_PUBLIC_WS_URL": "@next_public_ws_url"
+  }
 }
