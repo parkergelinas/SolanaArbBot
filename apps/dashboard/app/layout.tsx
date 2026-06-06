@@ -1,13 +1,28 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 
-import Navigation from '@/components/Navigation';
+import AppShell from '@/components/layout/AppShell';
 import Providers from '@/components/Providers';
 
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Solana Arb — Control Plane',
-  description: 'Market intelligence & arbitrage simulation dashboard',
+  title: 'Solana Arb — Trading Terminal',
+  description: 'Live market intelligence and arbitrage terminal for Solana',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'SolArb',
+  },
+  formatDetection: {
+    telephone: false,
+  },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#0a0a0b',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -17,12 +32,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <html lang="en">
-      <body className="flex h-screen overflow-hidden bg-platform-bg text-slate-100">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body className="flex h-[100dvh] overflow-hidden bg-ds-base text-ds-text-primary antialiased">
         <Providers wsUrl={wsUrl} intelUrl={intelUrl}>
-          <Navigation />
-          <main className="app-main flex-1 flex flex-col min-h-0 overflow-hidden p-6">
-            {children}
-          </main>
+          <AppShell>{children}</AppShell>
         </Providers>
       </body>
     </html>

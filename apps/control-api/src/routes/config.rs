@@ -24,6 +24,14 @@ pub async fn patch_config(
     State(state): State<AppState>,
     Json(patch): Json<Value>,
 ) -> ApiResult<Json<CommandResult>> {
+    if patch_requests_live_mode(&patch) && !config::live_trading_confirm_env_set() {
+        return Err(ApiError::BadRequest(
+            "Enabling live trading or disabling dry_run via API requires \
+             SOLANA_ARB_CONFIRM_LIVE_TRADING=1 on the control-api process."
+                .to_owned(),
+        ));
+    }
+
     // Serialise current config to Value, merge the patch, deserialise back.
     let current = {
         let cfg = state.config.read().await;
@@ -79,4 +87,18 @@ fn deep_merge(base: Value, patch: Value) -> Value {
         }
         (_base, patch) => patch,
     }
+}
+
+fn patch_requests_live_mode(patch: &Value) -> bool {
+    let Some(features) = patch.get("features") else {
+        return false;
+    };
+    if features
+        .get("enable_live_trading")
+        .and_then(|v| v.as_bool())
+        == Some(true)
+    {
+        return true;
+    }
+    features.get("dry_run").and_then(|v| v.as_bool()) == Some(false)
 }

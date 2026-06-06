@@ -56,6 +56,16 @@ describe('marketStore', () => {
     expect(s.lastSeq).toBe(0);
   });
 
+  it('dedupes swaps by signature', () => {
+    const swap = makeSwap({ signature: 'dup_sig' });
+    useMarketStore.getState().applyMessages(
+      [swapMessage(swap), swapMessage(swap), swapMessage(makeSwap({ signature: 'other' }))],
+      { seq: 1, ts_ms: Date.now() },
+    );
+    const sigs = useMarketStore.getState().swaps.map((s) => s.signature);
+    expect(sigs).toEqual(['dup_sig', 'other']);
+  });
+
   it('detects cross-DEX arb when spread exceeds threshold', () => {
     const base = { token_in: SOL, token_out: USDC, timestamp_ms: Date.now() };
     useMarketStore.getState().applyMessages(

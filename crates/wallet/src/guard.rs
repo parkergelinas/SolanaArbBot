@@ -1,11 +1,38 @@
 //! Safety guards that MUST be called before any signing or live-execution
 //! operation.
 
-use config::SystemConfig;
+use config::{SystemConfig, WalletConfig};
 
 use crate::balance::BalanceReport;
 use crate::error::{WalletError, WalletResult};
-use crate::rpc::Network;
+use crate::keypair::WalletKeypair;
+use crate::rpc::{Network, RpcClientWrapper};
+
+/// Parse `wallet.expected_network` into a [`Network`].
+pub fn expected_network(cfg: &WalletConfig) -> WalletResult<Network> {
+    match cfg.expected_network.to_ascii_lowercase().as_str() {
+        "mainnet" | "mainnet-beta" => Ok(Network::Mainnet),
+        "devnet" => Ok(Network::Devnet),
+        "localnet" | "localhost" => Ok(Network::Localnet),
+        other => Err(WalletError::Rpc(format!(
+            "unknown wallet.expected_network '{other}'"
+        ))),
+    }
+}
+
+/// Validates RPC cluster genesis hash against configured `expected_network`.
+pub async fn validate_network(rpc: &RpcClientWrapper, cfg: &WalletConfig) -> WalletResult<()> {
+    let expected = expected_network(cfg)?;
+    rpc.validate_network(expected).await
+}
+
+/// Rejects signing when the keypair is a paper sentinel.
+pub fn require_live_mode_for_wallet(wallet: &WalletKeypair) -> WalletResult<()> {
+    if wallet.is_paper() {
+        return Err(WalletError::PaperMode);
+    }
+    Ok(())
+}
 
 /// Rejects the operation when the system is in paper/dry-run mode.
 ///

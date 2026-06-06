@@ -20,7 +20,7 @@ export function signalNumericId(id: string): number {
   }
   const u = h >>> 0;
   if (h > 0) {
-    return Number(2n ** 64n - BigInt(u) + 1n);
+    return Number(BigInt('18446744073709551616') - BigInt(u) + BigInt(1));
   }
   return u;
 }

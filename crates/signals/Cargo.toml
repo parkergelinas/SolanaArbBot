@@ -12,9 +12,14 @@ pricing = { path = "../pricing" }
 ratelimit = { path = "../ratelimit" }
 crossbeam-channel = "0.5"
 dashmap = "6.2.1"
+anyhow = { workspace = true }
+futures-util = "0.3"
 reqwest = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+tokio-util = { version = "0.7", features = ["rt"] }
+tokio-tungstenite = "0.24"
 tracing = { workspace = true }
 
 [dev-dependencies]

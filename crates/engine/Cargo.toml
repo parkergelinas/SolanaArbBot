@@ -4,6 +4,10 @@ edition.workspace = true
 version.workspace = true
 license.workspace = true
 
+[features]
+default = []
+prometheus = ["dep:prometheus"]
+
 [dependencies]
 accounts = { path = "../accounts" }
 common = { path = "../common" }
@@ -13,9 +17,16 @@ config = { path = "../config" }
 crossbeam-channel = "0.5"
 graph = { path = "../graph" }
 pricing = { path = "../pricing" }
+ratelimit = { path = "../ratelimit" }
 risk = { path = "../risk" }
 routing = { path = "../routing" }
 rpc_client = { path = "../rpc_client" }
+signals = { path = "../signals" }
 stream = { path = "../stream" }
-tokio = { version = "1.52.3", default-features = false, features = ["macros", "rt", "sync"] }
+tokio = { version = "1.52.3", default-features = false, features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 tracing = "0.1.44"
+prometheus = { version = "0.13", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros"] }

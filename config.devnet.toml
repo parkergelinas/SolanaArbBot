@@ -1,0 +1,35 @@
+# Devnet profile — paper trading by default, devnet RPC + Jupiter api.jup.ag
+#
+# Usage:
+#   set SOLANA_ARB_CONFIG=config.devnet.toml
+#   cargo run -p control-api
+
+[data_sources]
+jupiter_price  = "https://api.jup.ag/price/v3"
+jupiter_swap   = "https://api.jup.ag/swap/v1"
+jupiter_tokens = "https://api.jup.ag/tokens/v2"
+
+[rpc]
+endpoints = ["https://api.devnet.solana.com"]
+commitment = "confirmed"
+
+[websocket]
+endpoints = ["wss://api.devnet.solana.com"]
+
+[wallet]
+rpc_endpoint = "https://api.devnet.solana.com"
+expected_network = "devnet"
+min_sol_balance = 0.1
+validate_network_on_start = true
+
+[features]
+enable_live_trading = false
+dry_run = true
+
+[strategy]
+scalp = true
+arb = true
+quote_arb = false
+
+[quote_arb]
+enabled = false

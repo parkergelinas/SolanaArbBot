@@ -38,7 +38,7 @@ impl EngineConfig {
             token_cooldown_secs: env_u64("TOKEN_COOLDOWN_SECS", 30),
             request_timeout_ms: env_u64("REQUEST_TIMEOUT_MS", 800),
             jupiter_base_url: std::env::var("JUPITER_BASE_URL")
-                .unwrap_or_else(|_| "https://quote-api.jup.ag".into()),
+                .unwrap_or_else(|_| "https://api.jup.ag/swap/v1".into()),
             audit_path: std::env::var("EXECUTION_AUDIT_PATH").ok(),
             wallet_pubkey: std::env::var("EXECUTION_WALLET_PUBKEY")
                 .unwrap_or_else(|_| "11111111111111111111111111111111".into()),

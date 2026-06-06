@@ -9,6 +9,7 @@ export interface SignalStats {
   whale: number;
   smartMoney: number;
   momentum: number;
+  arb: number;
   long: number;
   short: number;
   avgStrength: number;
@@ -94,6 +95,7 @@ function computeStats(
       whale: 0,
       smartMoney: 0,
       momentum: 0,
+      arb: 0,
       long: 0,
       short: 0,
       avgStrength: 0,
@@ -105,6 +107,7 @@ function computeStats(
   let whale = 0;
   let smartMoney = 0;
   let momentum = 0;
+  let arb = 0;
   let long = 0;
   let short = 0;
   let strengthSum = 0;
@@ -115,6 +118,7 @@ function computeStats(
     if (s.signal_type === 'WhaleFlow') whale += 1;
     if (s.signal_type === 'SmartMoney') smartMoney += 1;
     if (s.signal_type === 'Momentum') momentum += 1;
+    if (s.signal_type === 'Arb') arb += 1;
     if (s.direction === 'Long') long += 1;
     if (s.direction === 'Short') short += 1;
     strengthSum += s.strength;
@@ -127,6 +131,7 @@ function computeStats(
     whale,
     smartMoney,
     momentum,
+    arb,
     long,
     short,
     avgStrength: strengthSum / signals.length,
@@ -165,7 +170,15 @@ export const SIGNAL_TYPE_META: Record<
   WhaleFlow: { label: 'Whale', color: '#4da3ff', bg: '#4da3ff18' },
   SmartMoney: { label: 'Smart $', color: '#a78bfa', bg: '#a78bfa18' },
   Momentum: { label: 'Momentum', color: '#00dfa8', bg: '#00dfa818' },
+  Arb: { label: 'Arb', color: '#fbbf24', bg: '#fbbf2418' },
+  Swap: { label: 'Swap', color: '#f59e0b', bg: '#f59e0b18' },
 };
+
+/** Extract feed source tag from explanation prefix e.g. `[intelligence-api]`. */
+export function parseSignalSource(explanation: string): string | null {
+  const match = explanation.match(/^\[([^\]]+)\]/);
+  return match ? match[1] : null;
+}
 
 export const DIRECTION_META: Record<Direction, { color: string; bg: string }> = {
   Long: { color: '#22c55e', bg: '#22c55e18' },

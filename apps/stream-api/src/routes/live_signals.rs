@@ -41,6 +41,7 @@ mod tests {
             batch_tx,
             market: Arc::new(crate::market::spawn_market_engine(swap_rx, ws_tx)),
             signal_bus: bus,
+            scanners: signals::ScannerStore::new(),
         }
     }
 

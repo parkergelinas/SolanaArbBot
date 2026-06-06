@@ -89,6 +89,32 @@ impl RpcClientWrapper {
         Blockhash::from_str(hash_str)
     }
 
+    /// Submits a signed, base64-encoded transaction and returns the signature.
+    pub async fn send_transaction(
+        &self,
+        tx_base64: &str,
+        skip_preflight: bool,
+    ) -> WalletResult<String> {
+        let result = self
+            .call(
+                "sendTransaction",
+                json!([
+                    tx_base64,
+                    {
+                        "encoding": "base64",
+                        "skipPreflight": skip_preflight,
+                        "preflightCommitment": self.commitment,
+                    }
+                ]),
+            )
+            .await?;
+
+        result
+            .as_str()
+            .map(str::to_owned)
+            .ok_or_else(|| WalletError::Rpc("sendTransaction: missing signature".into()))
+    }
+
     /// Simulates a pre-serialised, base64-encoded transaction.
     ///
     /// The caller is responsible for serialising the transaction into bytes and

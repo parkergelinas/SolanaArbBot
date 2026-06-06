@@ -256,7 +256,8 @@ impl StrategyController {
 
     fn plan_cycle_inner(&self, _for_transition: bool) -> CyclePlan {
         let active = active_strategy_names(&self.selection);
-        let runtime_mode = resolve_runtime_mode(self.running, &self.selection);
+        let dry_run = true;
+        let runtime_mode = resolve_runtime_mode(self.running, &self.selection, dry_run);
 
         let ingestion = match runtime_mode {
             RuntimeMode::Disabled | RuntimeMode::Paused => IngestionPlan {
@@ -307,18 +308,24 @@ impl CyclePlan {
         self.trade.min_confidence = cfg.signal_engine.signal_min_confidence;
         self.trade.min_strength = cfg.signal_engine.signal_min_strength;
         self.trade.dry_run = cfg.features.dry_run;
+        if self.runtime_mode == RuntimeMode::Paper
+            && (cfg.strategy.requires_live_ingestion()
+                || cfg.strategy.requires_live_arb(!cfg.features.dry_run))
+        {
+            self.runtime_mode = resolve_runtime_mode(true, &cfg.strategy, cfg.features.dry_run);
+        }
         self
     }
 }
 
-fn resolve_runtime_mode(running: bool, selection: &StrategyConfig) -> RuntimeMode {
+fn resolve_runtime_mode(running: bool, selection: &StrategyConfig, dry_run: bool) -> RuntimeMode {
     if !running {
         return RuntimeMode::Disabled;
     }
     if selection.all_disabled() {
         return RuntimeMode::Paused;
     }
-    if selection.requires_live_ingestion() {
+    if selection.requires_live_ingestion() || selection.requires_live_arb(!dry_run) {
         RuntimeMode::Active
     } else {
         RuntimeMode::Paper
@@ -332,6 +339,9 @@ fn active_strategy_names(sel: &StrategyConfig) -> Vec<String> {
     }
     if sel.arb {
         out.push("arb".to_owned());
+    }
+    if sel.quote_arb {
+        out.push("quote_arb".to_owned());
     }
     if sel.whale_copy {
         out.push("whale_copy".to_owned());

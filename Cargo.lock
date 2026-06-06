@@ -110,6 +110,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 name = "autonomous"
 version = "0.1.0"
 dependencies = [
+ "bs58",
  "common",
  "config",
  "decoder",
@@ -126,6 +127,7 @@ dependencies = [
  "tokio",
  "tokio-util 0.7.18",
  "tracing",
+ "wallet",
 ]
 
 [[package]]
@@ -349,6 +351,7 @@ dependencies = [
  "data-layer",
  "futures-util",
  "intelligence-api",
+ "pricing",
  "serde",
  "serde_json",
  "signal-bus",
@@ -360,6 +363,7 @@ dependencies = [
  "tower-http 0.5.2",
  "tracing",
  "tracing-subscriber",
+ "wallet",
 ]
 
 [[package]]
@@ -532,11 +536,15 @@ dependencies = [
  "execution",
  "graph",
  "pricing",
+ "prometheus",
+ "ratelimit",
  "risk",
  "routing",
  "rpc_client",
+ "signals",
  "stream",
  "tokio",
+ "tokio-util 0.7.18",
  "tracing",
 ]
 
@@ -571,12 +579,20 @@ dependencies = [
 name = "execution"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
+ "bs58",
  "common",
  "config",
  "crossbeam-channel",
  "graph",
+ "pricing",
+ "reqwest",
  "routing",
+ "serde",
+ "serde_json",
+ "tokio",
  "tracing",
+ "wallet",
 ]
 
 [[package]]
@@ -1023,7 +1039,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.4",
  "tokio",
  "tower-service",
  "tracing",
@@ -1087,8 +1103,10 @@ dependencies = [
  "anyhow",
  "common",
  "config",
+ "crossbeam-channel",
  "events",
  "futures-util",
+ "serde",
  "serde_json",
  "tokio",
  "tokio-tungstenite",
@@ -1485,6 +1503,7 @@ dependencies = [
  "events",
  "ratelimit",
  "reqwest",
+ "serde",
  "serde_json",
  "tokio",
  "tracing",
@@ -1497,6 +1516,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "prometheus"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d33c28a30771f7f96db69893f78b857f7450d7e0237e9c8fc6427a81bae7ed1"
+dependencies = [
+ "cfg-if",
+ "fnv",
+ "lazy_static",
+ "memchr",
+ "parking_lot",
+ "protobuf",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1576,6 +1610,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "protobuf"
+version = "2.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "106dd99e98437432fed6519dedecfade6a06a73bb7b2a1e019fdd2bee5778d94"
+
+[[package]]
 name = "quinn"
 version = "0.11.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1588,7 +1628,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.5.10",
+ "socket2 0.6.4",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -1625,7 +1665,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.4",
  "tracing",
  "windows-sys 0.52.0",
 ]
@@ -2075,16 +2115,21 @@ dependencies = [
 name = "signals"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "common",
  "config",
  "crossbeam-channel",
  "dashmap",
  "events",
+ "futures-util",
  "pricing",
  "ratelimit",
  "reqwest",
+ "serde",
  "serde_json",
  "tokio",
+ "tokio-tungstenite",
+ "tokio-util 0.7.18",
  "tracing",
 ]
 
@@ -2163,15 +2208,21 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "config",
  "crossbeam-channel",
  "dashmap",
  "data-layer",
+ "events",
+ "ingestion",
  "opentelemetry 0.20.0",
  "opentelemetry-otlp",
+ "pricing",
+ "ratelimit",
  "reqwest",
  "serde",
  "serde_json",
  "signal-bus",
+ "signals",
  "tokio",
  "tower 0.5.3",
  "tower-http 0.5.2",
@@ -2392,6 +2443,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]
@@ -3084,6 +3136,7 @@ dependencies = [
  "backtester",
  "common",
  "config",
+ "engine",
  "events",
  "scalper",
  "serde_json",

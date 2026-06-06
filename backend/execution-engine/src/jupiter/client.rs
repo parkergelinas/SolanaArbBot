@@ -102,7 +102,7 @@ impl JupiterClient {
     pub async fn prewarm(&self) -> Result<(), JupiterError> {
         let _ = self
             .http
-            .get(format!("{}/v6/quote", self.base_url))
+            .get(format!("{}/quote", self.base_url.trim_end_matches('/')))
             .timeout(self.timeout)
             .send()
             .await;
@@ -130,8 +130,8 @@ impl JupiterClient {
     pub async fn get_quote(&self, req: &QuoteRequest) -> Result<QuoteResponse, JupiterError> {
         self.retry(3, |attempt| async move {
             let url = format!(
-                "{}/v6/quote?inputMint={}&outputMint={}&amount={}&slippageBps={}&swapMode={}&onlyDirectRoutes={}&asLegacyTransaction={}",
-                self.base_url,
+                "{}/quote?inputMint={}&outputMint={}&amount={}&slippageBps={}&swapMode={}&onlyDirectRoutes={}&asLegacyTransaction={}",
+                self.base_url.trim_end_matches('/'),
                 req.input_mint,
                 req.output_mint,
                 req.amount,
@@ -171,7 +171,7 @@ impl JupiterClient {
         self.retry(3, |_attempt| async move {
             let resp = self
                 .http
-                .post(format!("{}/v6/swap", self.base_url))
+                .post(format!("{}/swap", self.base_url.trim_end_matches('/')))
                 .json(req)
                 .send()
                 .await?;

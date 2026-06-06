@@ -16,6 +16,7 @@ events  = { path = "../../crates/events" }
 signals = { path = "../../crates/signals" }
 scalper     = { path = "../../crates/scalper" }
 backtester  = { path = "../../crates/backtester" }
+engine      = { path = "../../crates/engine", features = ["prometheus"] }
 
 # ── Async runtime ─────────────────────────────────────────────────────────────
 tokio      = { workspace = true }

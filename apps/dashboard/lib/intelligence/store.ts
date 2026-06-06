@@ -40,7 +40,19 @@ class IntelligenceStore {
     } catch {
       return;
     }
-    if (!isIntelligenceBatch(parsed)) return;
+    if (!isIntelligenceBatch(parsed)) {
+      if (
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        Array.isArray((parsed as { messages?: unknown }).messages)
+      ) {
+        for (const msg of (parsed as { messages: IntelligenceMessage[] }).messages) {
+          this.apply(msg);
+        }
+        this.bump();
+      }
+      return;
+    }
 
     for (const msg of parsed.messages) {
       this.apply(msg);

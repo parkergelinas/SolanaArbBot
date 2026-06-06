@@ -1,17 +1,14 @@
 'use client';
 
 import { useEffect } from 'react';
+
 import { useStreamStore } from '@/stores/streamStore';
 
-/** Mount once to connect the stream client without coupling to React render. */
+/** Connects the terminal to stream-api; clears market state on reconnect. */
 export default function StreamBootstrap() {
-  const connect = useStreamStore((s) => s.connect);
-  const disconnect = useStreamStore((s) => s.disconnect);
+  const subscribe = useStreamStore((s) => s.subscribe);
 
-  useEffect(() => {
-    connect();
-    return () => disconnect();
-  }, [connect, disconnect]);
+  useEffect(() => subscribe(), [subscribe]);
 
   return null;
 }

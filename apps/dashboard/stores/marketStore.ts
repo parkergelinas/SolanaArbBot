@@ -1,5 +1,10 @@
 import { create } from 'zustand';
 
+import {
+  normalizeCandle,
+  refPriceForMint,
+  sanitizeTradePrice,
+} from '@/lib/terminal/candles';
 import type {
   Candle,
   CandleInterval,
@@ -10,9 +15,12 @@ import type {
   WSMessage,
 } from '@/lib/stream/types';
 
-const MAX_SWAPS = 500;
+export const MAX_SWAPS = 500;
 const MAX_SIGNALS = 80;
 const MAX_CANDLE_HISTORY = 120;
+
+/** Chart is DexScreener embed — skip candle history to save memory. */
+const STORE_CANDLES = false;
 
 export function candleKey(mint: string, interval: CandleInterval) {
   return `${mint}:${interval}`;
@@ -35,26 +43,28 @@ export interface TokenRow {
   timestamp_ms: number;
 }
 
+export type ArbSource = 'stream' | 'dexscreener' | 'jupiter';
+
 export interface ArbOpportunity {
   id: string;
   token: string;
+  symbol?: string;
   buyDex: Dex;
   sellDex: Dex;
   buyPrice: number;
   sellPrice: number;
   spreadBps: number;
   timestamp_ms: number;
+  source?: ArbSource;
+  estimatedProfitUsd?: number;
+  minLiquidityUsd?: number;
+  venueCount?: number;
+  winProbability?: number;
+  buyDexLabel?: string;
+  sellDexLabel?: string;
 }
 
-interface TokenAccumulator {
-  buyFlow: number;
-  sellFlow: number;
-  volume: number;
-  openPrice: number | null;
-  lastPrice: number;
-}
-
-interface MarketState {
+export interface MarketState {
   prices: Record<string, TokenPrice>;
   tokens: Record<string, TokenRow>;
   swaps: SwapEvent[];
@@ -67,10 +77,11 @@ interface MarketState {
   lastTsMs: number;
 
   applyMessages: (messages: WSMessage[], meta: { seq: number; ts_ms: number }) => void;
+  mergeArbOpportunities: (external: ArbOpportunity[]) => void;
   clear: () => void;
 }
 
-const empty = (): Omit<MarketState, 'applyMessages' | 'clear'> => ({
+const empty = (): Omit<MarketState, 'applyMessages' | 'mergeArbOpportunities' | 'clear'> => ({
   prices: {},
   tokens: {},
   swaps: [],
@@ -94,31 +105,20 @@ export function amountToHuman(mint: string, raw: string): number {
   return n / 10 ** tokenDecimals(mint);
 }
 
-function refPrice(mint: string): number {
-  if (mint.startsWith('So1111')) return 145;
-  return 1;
-}
-
 /** USD price per unit of `tokenOut` from a swap leg. */
 function swapPriceUsd(
   tokenIn: string,
   tokenOut: string,
   rawIn: string,
   rawOut: string,
+  prices: Record<string, TokenPrice>,
 ): number {
   const inHuman = amountToHuman(tokenIn, rawIn);
   const outHuman = amountToHuman(tokenOut, rawOut);
-  if (outHuman <= 0) return refPrice(tokenOut);
-  const usdIn = inHuman * refPrice(tokenIn);
+  if (outHuman <= 0) return refPriceForMint(tokenOut, prices[tokenOut]?.price_usd);
+  const usdIn = inHuman * refPriceForMint(tokenIn, prices[tokenIn]?.price_usd);
   const implied = usdIn / outHuman;
-  return sanitizePrice(tokenOut, implied);
-}
-
-function sanitizePrice(mint: string, price: number): number {
-  const ref = refPrice(mint);
-  if (!Number.isFinite(price) || price <= 0) return ref;
-  if (price > ref * 50 || price < ref / 50) return ref;
-  return price;
+  return sanitizeTradePrice(tokenOut, implied, prices[tokenOut]?.price_usd);
 }
 
 function pushCandleHistory(
@@ -131,8 +131,14 @@ function pushCandleHistory(
   let next: Candle[];
   if (last && last.ts_open_ms === candle.ts_open_ms) {
     next = [...prev.slice(0, -1), candle];
-  } else {
+  } else if (!last || candle.ts_open_ms >= last.ts_open_ms) {
     next = [...prev, candle];
+  } else {
+    const idx = prev.findIndex((c) => c.ts_open_ms > candle.ts_open_ms);
+    next =
+      idx === -1
+        ? [...prev, candle]
+        : [...prev.slice(0, idx), candle, ...prev.slice(idx)];
   }
   if (next.length > MAX_CANDLE_HISTORY) {
     next = next.slice(-MAX_CANDLE_HISTORY);
@@ -161,6 +167,7 @@ function recomputeArb(
   const spreadBps = ((bestSell[1] - bestBuy[1]) / bestBuy[1]) * 10_000;
   if (spreadBps < 5) return [];
 
+  const grossUsd = 250 * (spreadBps / 10_000);
   return [
     {
       id: `${token}-${ts}`,
@@ -171,8 +178,24 @@ function recomputeArb(
       sellPrice: bestSell[1],
       spreadBps,
       timestamp_ms: ts,
+      source: 'stream',
+      estimatedProfitUsd: Math.max(0, grossUsd - 0.58),
+      winProbability: Math.min(0.9, 0.4 + spreadBps / 120),
+      venueCount: entries.length,
     },
   ];
+}
+
+function dedupeArb(opps: ArbOpportunity[]): ArbOpportunity[] {
+  const byKey = new Map<string, ArbOpportunity>();
+  for (const o of opps) {
+    const key = `${o.token}:${o.buyDex}:${o.sellDex}`;
+    const prev = byKey.get(key);
+    if (!prev || o.spreadBps > prev.spreadBps) byKey.set(key, o);
+  }
+  return Array.from(byKey.values())
+    .sort((a, b) => b.spreadBps - a.spreadBps)
+    .slice(0, 40);
 }
 
 export const useMarketStore = create<MarketState>((set) => ({
@@ -188,15 +211,20 @@ export const useMarketStore = create<MarketState>((set) => ({
       let signals = state.signals;
       const dexPrices = { ...state.dexPrices };
       let arbOpportunities = state.arbOpportunities;
+      const swapSigs = new Set(swaps.map((x) => x.signature));
 
       for (const msg of messages) {
         switch (msg.type) {
           case 'swap': {
             const s = msg.payload;
-            swaps =
-              swaps.length >= MAX_SWAPS
-                ? [...swaps.slice(1), s]
-                : [...swaps, s];
+            if (swapSigs.has(s.signature)) break;
+            swapSigs.add(s.signature);
+            if (swaps.length >= MAX_SWAPS) {
+              swapSigs.delete(swaps[0].signature);
+              swaps = [...swaps.slice(1), s];
+            } else {
+              swaps = [...swaps, s];
+            }
 
             const amountIn = amountToHuman(s.token_in, s.amount_in);
             const amountOut = amountToHuman(s.token_out, s.amount_out);
@@ -206,51 +234,59 @@ export const useMarketStore = create<MarketState>((set) => ({
               s.token_out,
               s.amount_in,
               s.amount_out,
+              prices,
+            );
+            const priceIn = swapPriceUsd(
+              s.token_out,
+              s.token_in,
+              s.amount_out,
+              s.amount_in,
+              prices,
             );
 
-            const prev = tokens[s.token_out];
-            const openPrice = prev?.price_usd ?? refPrice(s.token_out);
-            const tokenAcc: TokenAccumulator = {
-              buyFlow: (prev?.buyFlow ?? 0) + vol,
-              sellFlow: prev?.sellFlow ?? 0,
-              volume: (prev?.volume ?? 0) + vol,
-              openPrice,
-              lastPrice: priceOut,
+            const upsertToken = (
+              mint: string,
+              price: number,
+              isBuy: boolean,
+              volAdd: number,
+            ) => {
+              const prev = tokens[mint];
+              const openPrice = prev?.price_usd ?? refPriceForMint(mint, prices[mint]?.price_usd);
+              const buyFlow = (prev?.buyFlow ?? 0) + (isBuy ? volAdd : 0);
+              const sellFlow = (prev?.sellFlow ?? 0) + (isBuy ? 0 : volAdd);
+              const imb =
+                buyFlow + sellFlow > 0 ? (buyFlow - sellFlow) / (buyFlow + sellFlow) : 0;
+              const changePct =
+                openPrice > 0 ? ((price - openPrice) / openPrice) * 100 : 0;
+              tokens[mint] = {
+                mint,
+                price_usd: price,
+                volume: (prev?.volume ?? 0) + volAdd,
+                buyFlow,
+                sellFlow,
+                flowImbalance: imb,
+                changePct,
+                slot: s.slot,
+                timestamp_ms: s.timestamp_ms,
+              };
+              if (!dexPrices[mint]) dexPrices[mint] = {} as Record<Dex, number>;
+              dexPrices[mint] = { ...dexPrices[mint], [s.dex]: price };
+              const newArb = recomputeArb(dexPrices, mint, s.timestamp_ms);
+              if (newArb.length > 0) {
+                arbOpportunities = [newArb[0], ...arbOpportunities].slice(0, 30);
+              }
             };
-            const imb =
-              tokenAcc.buyFlow + tokenAcc.sellFlow > 0
-                ? (tokenAcc.buyFlow - tokenAcc.sellFlow) /
-                  (tokenAcc.buyFlow + tokenAcc.sellFlow)
-                : 0;
-            const changePct =
-              openPrice > 0 ? ((priceOut - openPrice) / openPrice) * 100 : 0;
 
-            tokens[s.token_out] = {
-              mint: s.token_out,
-              price_usd: priceOut,
-              volume: tokenAcc.volume,
-              buyFlow: tokenAcc.buyFlow,
-              sellFlow: tokenAcc.sellFlow,
-              flowImbalance: imb,
-              changePct,
-              slot: s.slot,
-              timestamp_ms: s.timestamp_ms,
-            };
-
-            if (!dexPrices[s.token_out]) dexPrices[s.token_out] = {} as Record<Dex, number>;
-            dexPrices[s.token_out] = { ...dexPrices[s.token_out], [s.dex]: priceOut };
-            const newArb = recomputeArb(dexPrices, s.token_out, s.timestamp_ms);
-            if (newArb.length > 0) {
-              arbOpportunities = [newArb[0], ...arbOpportunities].slice(0, 30);
-            }
+            upsertToken(s.token_out, priceOut, true, vol);
+            upsertToken(s.token_in, priceIn, false, vol);
             break;
           }
           case 'token_price': {
             const p = msg.payload;
-            const priceUsd = sanitizePrice(p.mint, p.price_usd);
+            const priceUsd = sanitizeTradePrice(p.mint, p.price_usd, prices[p.mint]?.price_usd);
             prices[p.mint] = { ...p, price_usd: priceUsd };
             const existing = tokens[p.mint];
-            const open = existing?.price_usd ?? refPrice(p.mint);
+            const open = existing?.price_usd ?? refPriceForMint(p.mint, priceUsd);
             const changePct =
               open > 0 ? ((priceUsd - open) / open) * 100 : 0;
             tokens[p.mint] = {
@@ -266,20 +302,16 @@ export const useMarketStore = create<MarketState>((set) => ({
             };
             break;
           }
-          case 'candle': {
-            const raw = msg.payload;
-            const c = {
-              ...raw,
-              open: sanitizePrice(raw.mint, raw.open),
-              high: sanitizePrice(raw.mint, raw.high),
-              low: sanitizePrice(raw.mint, raw.low),
-              close: sanitizePrice(raw.mint, raw.close),
-            };
-            const key = candleKey(c.mint, c.interval);
-            candles[key] = c;
-            candleHistory = pushCandleHistory(candleHistory, key, c);
+          case 'candle':
+            if (STORE_CANDLES) {
+              const raw = msg.payload;
+              const live = prices[raw.mint]?.price_usd ?? tokens[raw.mint]?.price_usd;
+              const c = normalizeCandle(raw, live);
+              const key = candleKey(c.mint, c.interval);
+              candles[key] = c;
+              candleHistory = pushCandleHistory(candleHistory, key, c);
+            }
             break;
-          }
           case 'signal':
             signals = [msg.payload, ...signals].slice(0, MAX_SIGNALS);
             break;
@@ -300,6 +332,11 @@ export const useMarketStore = create<MarketState>((set) => ({
       };
     });
   },
+
+  mergeArbOpportunities: (external) =>
+    set((state) => ({
+      arbOpportunities: dedupeArb([...external, ...state.arbOpportunities]),
+    })),
 
   clear: () => set(empty()),
 }));

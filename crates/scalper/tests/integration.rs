@@ -98,6 +98,7 @@ fn permissive_config() -> ScalerConfig {
         signal_max_age_secs: 3_600,
         base_fee_bps: 25,
         priority_fee_lamports: 100_000,
+        ..ScalerConfig::default()
     }
 }
 
