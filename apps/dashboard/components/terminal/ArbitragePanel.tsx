@@ -1,6 +1,7 @@
 'use client';
 
-import { useMarketStore, shortMint } from '@/stores/marketStore';
+import { tokenSymbol } from '@/lib/terminal/tokens';
+import { useMarketStore } from '@/stores/marketStore';
 
 export default function ArbitragePanel() {
   const opportunities = useMarketStore((s) => s.arbOpportunities);
@@ -25,7 +26,7 @@ export default function ArbitragePanel() {
             >
               <div className="flex justify-between items-center gap-2">
                 <span className="mono text-[11px] text-terminal-live">
-                  {shortMint(arb.token, 5, 4)}
+                  {tokenSymbol(arb.token)}
                 </span>
                 <span className="mono text-[11px] font-semibold text-flow-buy">
                   +{arb.spreadBps.toFixed(1)} bps

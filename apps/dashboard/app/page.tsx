@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import LiveDataStatusCard from '@/components/LiveDataStatusCard';
 import MetricCard from '@/components/MetricCard';
 import SystemStatusBadge from '@/components/SystemStatusBadge';
 import SignalCard from '@/components/SignalCard';
-import { useStreamLatest, useStreamSignals } from '@/lib/hooks';
+import { useStreamLatest, useStreamSignals, useFetch } from '@/lib/hooks';
 import { api } from '@/lib/api';
 import { formatUsd, type HealthStatus, type Portfolio, type Risk, type SignalEvent, type SystemStatus } from '@/lib/types';
 
@@ -15,6 +16,20 @@ export default function OverviewPage() {
   const risk      = useStreamLatest<Risk>('risk');
 
   const liveSignals = useStreamSignals<SignalEvent>(5);
+  const wsEmpty = liveSignals.length === 0;
+
+  const fetchFallback = useCallback(
+    () => api.liveSignals({ limit: 5 }),
+    [],
+  );
+  const { data: polledSignals } = useFetch(fetchFallback, wsEmpty ? 5_000 : null);
+
+  const displaySignals = useMemo(() => {
+    if (liveSignals.length > 0) return liveSignals;
+    return polledSignals ?? [];
+  }, [liveSignals, polledSignals]);
+
+  const signalSource = liveSignals.length > 0 ? 'WebSocket' : polledSignals ? 'API poll' : null;
 
   const [starting, setStarting] = useState(false);
 
@@ -57,6 +72,8 @@ export default function OverviewPage() {
           </div>
         </div>
       </div>
+
+      <LiveDataStatusCard />
 
       {/* KPI grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -108,19 +125,19 @@ export default function OverviewPage() {
       <div>
         <h2 className="text-sm font-medium text-slate-300 mb-3">
           Latest Signals
-          {liveSignals.length > 0 && (
+          {displaySignals.length > 0 && signalSource && (
             <span className="ml-2 text-xs text-slate-500">
-              ({liveSignals.length} new via WebSocket)
+              ({displaySignals.length} via {signalSource})
             </span>
           )}
         </h2>
-        {liveSignals.length === 0 ? (
+        {displaySignals.length === 0 ? (
           <div className="text-slate-500 text-sm bg-slate-800 border border-slate-700 rounded-xl p-6 text-center">
-            No live signals yet — start the engine to begin.
+            No live signals yet — start the engine or open the terminal for market data.
           </div>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {[...liveSignals].reverse().map((s, i) => (
+            {[...displaySignals].reverse().map((s, i) => (
               <SignalCard key={`${s.signal_id}-${i}`} signal={s} />
             ))}
           </div>

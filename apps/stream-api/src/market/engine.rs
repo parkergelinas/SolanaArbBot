@@ -168,6 +168,7 @@ fn process_swap(state: &MarketState, swap: &SwapEvent, signal_seq: &AtomicU64) -
         }));
     }
 
+    state.enforce_bounds();
     out
 }
 

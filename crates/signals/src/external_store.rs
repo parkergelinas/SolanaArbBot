@@ -57,7 +57,13 @@ impl ExternalSignalStore {
     }
 
     pub fn push_new_token(&self, signal: NewTokenSignal) {
-        self.inner.write().expect("lock").new_pairs.push(signal);
+        let mut g = self.inner.write().expect("lock");
+        g.new_pairs.push(signal);
+        const MAX_NEW_PAIRS: usize = 200;
+        if g.new_pairs.len() > MAX_NEW_PAIRS {
+            let drop = g.new_pairs.len() - MAX_NEW_PAIRS;
+            g.new_pairs.drain(0..drop);
+        }
     }
 
     pub fn set_rugcheck_blocked(&self, mint: &str, blocked: bool) {

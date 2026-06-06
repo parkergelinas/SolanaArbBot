@@ -23,7 +23,7 @@ use config::{ConfigHandle, SystemConfig};
 use events::{EventBus, EventSubscriber, MarketEvent, PoolUpdate, SwapEvent};
 use common::Pubkey;
 use scalper::ScalpEngine;
-use signals::{ComputedFeatures, SignalEngine, SignalInput, SignalReceiver};
+use signals::{ComputedFeatures, SignalEngine, SignalInput, SignalReceiver, LiveDataHandles};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
@@ -190,6 +190,34 @@ async fn main() {
     // ── 6. Init EventBus ──────────────────────────────────────────────────────
     let event_bus = EventBus::new();
     info!(subsystem = "event_bus", "initialized");
+
+    // ── 6b. Whale tracker + external pollers (when enabled) ───────────────────
+    let _live_data: Option<LiveDataHandles> = if config.whale_tracker.enabled {
+        let data_sources = Arc::new(config.data_sources.clone());
+        let whale_cfg = Arc::new(config.whale_tracker.clone());
+        let mints = Arc::new(vec![
+            signals::whale_watcher::SOL_MINT.to_owned(),
+            signals::whale_watcher::USDC_MINT.to_owned(),
+        ]);
+        info!(
+            subsystem = "whale_tracker",
+            dry_run = config.features.dry_run,
+            min_trade_usd = config.whale_tracker.min_trade_usd,
+            "starting whale watcher and discovery"
+        );
+        Some(
+            signals::spawn_live_data_pollers(
+                event_bus.clone(),
+                data_sources,
+                mints,
+                Some(whale_cfg),
+            )
+            .await,
+        )
+    } else {
+        info!(subsystem = "whale_tracker", "disabled in config");
+        None
+    };
 
     // Subscribe *before* spawning producers so no events are lost.
     let signal_subscriber = event_bus.subscribe();

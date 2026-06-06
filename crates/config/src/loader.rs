@@ -591,6 +591,33 @@ pub(crate) fn apply_env_overrides(config: &mut SystemConfig) {
     env_bool!("SOLANA_ARB_STRATEGY__WHALE_COPY", config.strategy.whale_copy);
     env_bool!("SOLANA_ARB_STRATEGY__MOMENTUM", config.strategy.momentum);
     env_bool!("SOLANA_ARB_STRATEGY__SNIPER", config.strategy.sniper);
+
+    // ── [whale_tracker] ───────────────────────────────────────────────────
+    env_bool!("SOLANA_ARB_WHALE_TRACKER__ENABLED", config.whale_tracker.enabled);
+    env_scalar!(
+        "SOLANA_ARB_WHALE_TRACKER__MIN_TRADE_USD",
+        config.whale_tracker.min_trade_usd,
+        f64
+    );
+    env_scalar!(
+        "SOLANA_ARB_WHALE_TRACKER__SIGNAL_TTL_SECONDS",
+        config.whale_tracker.signal_ttl_seconds,
+        u64
+    );
+    env_scalar!(
+        "SOLANA_ARB_WHALE_TRACKER__MAX_TRACKED_WALLETS",
+        config.whale_tracker.max_tracked_wallets,
+        usize
+    );
+    env_scalar!(
+        "SOLANA_ARB_WHALE_TRACKER__DISCOVERY_INTERVAL_S",
+        config.whale_tracker.discovery_interval_s,
+        u64
+    );
+    env_string!(
+        "SOLANA_ARB_WHALE_TRACKER__PERSIST_PATH",
+        config.whale_tracker.persist_path
+    );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

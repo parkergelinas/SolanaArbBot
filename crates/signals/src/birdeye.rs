@@ -8,6 +8,7 @@ use ratelimit::{ApiSource, RateLimiter};
 use tracing::{debug, warn};
 
 use crate::external_store::ExternalSignalStore;
+use crate::whale_watcher::short_wallet;
 
 /// Known whale / arb wallets to poll (public portfolio endpoint).
 pub const DEFAULT_WHALE_WALLETS: &[&str] = &[
@@ -81,7 +82,7 @@ pub fn spawn_birdeye_whale_poller(
                         break;
                     }
                     if resp.status().is_success() {
-                        debug!(wallet = %wallet, "birdeye whale portfolio snapshot fetched");
+                        debug!(wallet = %short_wallet(wallet), "birdeye whale portfolio snapshot fetched");
                     }
                 }
             }

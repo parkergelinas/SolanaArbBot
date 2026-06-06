@@ -59,6 +59,8 @@ pub mod live;
 pub mod processor;
 pub mod processors;
 pub mod types;
+pub mod whale_discovery;
+pub mod whale_watcher;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Flat re-exports — everything a caller needs at the crate root
@@ -67,13 +69,16 @@ pub mod types;
 pub use aggregator::SignalAggregator;
 pub use birdeye::{
     load_jupiter_verified, spawn_birdeye_top_movers_poller, spawn_birdeye_whale_poller,
-    DEFAULT_WHALE_WALLETS,
 };
 pub use bus::{SignalReceiver, SignalSender, signal_channel};
 pub use dexscreener::{rugcheck_passes, spawn_dexscreener_poller, spawn_volume_spike_poller};
 pub use engine::SignalEngine;
 pub use external_store::{ExternalSignalStore, NewTokenSignal, WhaleActivitySignal};
-pub use live::spawn_live_data_pollers;
+pub use live::{spawn_live_data_pollers, LiveDataHandles};
+pub use whale_discovery::{build_tracked_wallet_set, load_discovered_wallets, spawn_whale_discovery};
+pub use whale_watcher::{
+    spawn_whale_watcher, short_wallet, DexSource, WhaleSignalStore, WhaleSwapSignal, WHALE_WALLETS,
+};
 pub use feature_store::{ComputedFeatures, FeatureStore};
 pub use processor::SignalProcessor;
 pub use processors::{MomentumProcessor, SmartMoneyProcessor, WhaleFlowProcessor};

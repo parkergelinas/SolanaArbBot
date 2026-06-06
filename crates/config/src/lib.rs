@@ -51,7 +51,7 @@ pub use schema::{
     DataSourcesConfig, ExecutionConfig, FeatureFlags, IngestionConfig, MonitoringConfig,
     OrchestratorConfig, PipelineConfig, PortfolioConfig, RetryConfig, RiskConfig, RpcConfig,
     ScalerConfig, HotPathConfig, SignalEngineConfig, StrategyConfig, SystemConfig, WalletConfig,
-    WebSocketConfig,
+    WebSocketConfig, WhaleTrackerConfig,
 };
 
 use std::path::PathBuf;

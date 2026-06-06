@@ -5,6 +5,7 @@ import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 
 import WhaleFeed from '@/components/intelligence/WhaleFeed';
+import LiveDataStatusCard from '@/components/LiveDataStatusCard';
 import { api } from '@/lib/api';
 import { useFetch, useLatestTrade } from '@/lib/hooks';
 import { intelligenceToSignals } from '@/lib/intelligence/bridge';
@@ -141,6 +142,8 @@ export default function BotPage() {
           </div>
         )}
       </header>
+
+      <LiveDataStatusCard />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div

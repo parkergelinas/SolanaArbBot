@@ -12,7 +12,7 @@ pub mod router {
     use common::{Error, Result, Token};
     use graph::{Edge, MarketGraph};
     use pricing::PricingEngine;
-    use signals::ExternalSignalStore;
+    use signals::{ExternalSignalStore, WhaleSignalStore};
     use tracing::{debug, trace};
 
     use crate::score_adjust::apply_score_multipliers;
@@ -92,6 +92,8 @@ pub mod router {
         pricing: PricingEngine,
         config: RoutingConfig,
         external: Option<ExternalSignalStore>,
+        whale: Option<WhaleSignalStore>,
+        whale_ttl_secs: u64,
     }
 
     impl Router {
@@ -113,6 +115,8 @@ pub mod router {
                 pricing,
                 config,
                 external: None,
+                whale: None,
+                whale_ttl_secs: 60,
             }
         }
 
@@ -120,6 +124,14 @@ pub mod router {
         #[must_use]
         pub fn with_external_signals(mut self, store: ExternalSignalStore) -> Self {
             self.external = Some(store);
+            self
+        }
+
+        /// Attach whale swap signal cache for route score boosts.
+        #[must_use]
+        pub fn with_whale_signals(mut self, store: WhaleSignalStore, ttl_secs: u64) -> Self {
+            self.whale = Some(store);
+            self.whale_ttl_secs = ttl_secs;
             self
         }
 
@@ -167,9 +179,20 @@ pub mod router {
                     if next_depth >= 2 {
                         path.push(edge.clone());
                         let mut score = score_path(path, self.config.depth_penalty_bps());
-                        if let Some(store) = &self.external {
+                        if self.external.is_some() || self.whale.is_some() {
                             let mint = mint_str(&start);
-                            score = apply_score_multipliers(score, &mint, store);
+                            let ext = self
+                                .external
+                                .as_ref()
+                                .cloned()
+                                .unwrap_or_default();
+                            score = apply_score_multipliers(
+                                score,
+                                &mint,
+                                &ext,
+                                self.whale.as_ref(),
+                                self.whale_ttl_secs,
+                            );
                         }
                         if score <= 0.0 {
                             path.pop();
@@ -243,7 +266,7 @@ pub mod router {
 }
 
 pub use router::{Route, Router, RoutingConfig};
-pub use score_adjust::apply_score_multipliers;
+pub use score_adjust::{apply_score_multipliers, apply_whale_boosts};
 
 #[cfg(test)]
 mod tests {

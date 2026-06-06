@@ -34,7 +34,7 @@ function LatBar({
 }
 
 export default function LatencyMonitor() {
-  const connected = useStreamStore((s) => s.connected);
+  const connectionMode = useStreamStore((s) => s.connectionMode);
   const latency = useStreamStore((s) => s.latency);
   const batches = useStreamStore((s) => s.batchesFlushed);
 
@@ -51,8 +51,16 @@ export default function LatencyMonitor() {
       </div>
       <div className="text-[10px] text-terminal-muted mono shrink-0 hidden sm:block">
         seq {latency.seq} · {batches} batches ·{' '}
-        <span className={connected ? 'text-terminal-live' : 'text-flow-sell'}>
-          {connected ? 'LIVE' : 'DOWN'}
+        <span
+          className={
+            connectionMode === 'live'
+              ? 'text-terminal-live'
+              : connectionMode === 'degraded'
+                ? 'text-terminal-warn'
+                : 'text-flow-sell'
+          }
+        >
+          {connectionMode.toUpperCase()}
         </span>
       </div>
     </div>

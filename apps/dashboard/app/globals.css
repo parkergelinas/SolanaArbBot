@@ -164,3 +164,31 @@ body {
 .data-table tbody tr.selected {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
+
+/* Wallet adapter modal above terminal overflow layers */
+.wallet-adapter-modal-wrapper {
+  z-index: 10000 !important;
+}
+
+.wallet-adapter-dropdown {
+  z-index: 9999 !important;
+}
+
+/* Watchlist price flash on live tick */
+@keyframes price-flash-up {
+  0% { background-color: color-mix(in srgb, var(--flow-buy) 35%, transparent); }
+  100% { background-color: transparent; }
+}
+
+@keyframes price-flash-down {
+  0% { background-color: color-mix(in srgb, var(--flow-sell) 35%, transparent); }
+  100% { background-color: transparent; }
+}
+
+.price-flash-up {
+  animation: price-flash-up 0.6s ease-out;
+}
+
+.price-flash-down {
+  animation: price-flash-down 0.6s ease-out;
+}

@@ -10,6 +10,10 @@ const DEMO_ENABLED =
   typeof process !== 'undefined' &&
   process.env.NEXT_PUBLIC_TERMINAL_DEMO !== '0';
 
+const CLEAR_ON_LIVE =
+  typeof process !== 'undefined' &&
+  process.env.NEXT_PUBLIC_TERMINAL_CLEAR_ON_LIVE !== '0';
+
 /**
  * Seeds and simulates market data when the live stream is offline.
  * Live stream takes priority — demo pauses while connected.
@@ -17,6 +21,7 @@ const DEMO_ENABLED =
 export default function DemoBootstrap() {
   const connected = useStreamStore((s) => s.connected);
   const applyMessages = useMarketStore((s) => s.applyMessages);
+  const clearMarket = useMarketStore((s) => s.clear);
 
   useEffect(() => {
     if (!DEMO_ENABLED) return;
@@ -38,13 +43,14 @@ export default function DemoBootstrap() {
       grace = setTimeout(start, 400);
     } else {
       stop();
+      if (CLEAR_ON_LIVE) clearMarket();
     }
 
     return () => {
       if (grace) clearTimeout(grace);
       stop();
     };
-  }, [connected, applyMessages]);
+  }, [connected, applyMessages, clearMarket]);
 
   return null;
 }

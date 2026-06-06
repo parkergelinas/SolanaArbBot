@@ -2,10 +2,35 @@
 
 import { useEffect, useState } from 'react';
 
+import WalletConnectButton from '@/components/wallet/WalletConnectButton';
 import { tokenMeta, tokenSymbol } from '@/lib/terminal/tokens';
 import { useMarketStore } from '@/stores/marketStore';
-import { useStreamStore } from '@/stores/streamStore';
+import { type ConnectionMode, useStreamStore } from '@/stores/streamStore';
 import { useUiStore } from '@/stores/uiStore';
+
+const MODE_STYLE: Record<
+  ConnectionMode,
+  { label: string; border: string; text: string; dot: string }
+> = {
+  live: {
+    label: 'LIVE',
+    border: 'border-terminal-accent/50 text-terminal-accent bg-terminal-accent/8',
+    text: 'text-terminal-accent',
+    dot: 'bg-terminal-accent live-pulse',
+  },
+  degraded: {
+    label: 'DEGRADED',
+    border: 'border-terminal-warn/40 text-terminal-warn bg-terminal-warn/8',
+    text: 'text-terminal-warn',
+    dot: 'bg-terminal-warn',
+  },
+  sim: {
+    label: 'SIM',
+    border: 'border-terminal-warn/40 text-terminal-warn bg-terminal-warn/8',
+    text: 'text-terminal-warn',
+    dot: 'bg-terminal-warn',
+  },
+};
 
 export default function TerminalHeader() {
   const [now, setNow] = useState('');
@@ -23,7 +48,8 @@ export default function TerminalHeader() {
     return () => clearInterval(id);
   }, []);
 
-  const connected = useStreamStore((s) => s.connected);
+  const connectionMode = useStreamStore((s) => s.connectionMode);
+  const refreshConnectionMode = useStreamStore((s) => s.refreshConnectionMode);
   const url = useStreamStore((s) => s.url);
   const messagesApplied = useStreamStore((s) => s.messagesApplied);
   const lastSeq = useStreamStore((s) => s.lastSeq);
@@ -31,6 +57,13 @@ export default function TerminalHeader() {
   const price = useMarketStore((s) => (selectedMint ? s.tokens[selectedMint] : undefined));
   const meta = selectedMint ? tokenMeta(selectedMint) : undefined;
   const symbol = selectedMint ? tokenSymbol(selectedMint) : 'SOL';
+
+  useEffect(() => {
+    const id = setInterval(refreshConnectionMode, 3_000);
+    return () => clearInterval(id);
+  }, [refreshConnectionMode]);
+
+  const mode = MODE_STYLE[connectionMode];
 
   return (
     <header className="terminal-header flex items-center justify-between px-3 py-2 border-b border-terminal-border shrink-0">
@@ -44,16 +77,10 @@ export default function TerminalHeader() {
           </div>
         </div>
         <div
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[10px] mono font-medium ${
-            connected
-              ? 'border-terminal-accent/50 text-terminal-accent bg-terminal-accent/8'
-              : 'border-terminal-warn/40 text-terminal-warn bg-terminal-warn/8'
-          }`}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[10px] mono font-medium ${mode.border}`}
         >
-          <span
-            className={`w-2 h-2 rounded-full ${connected ? 'bg-terminal-accent live-pulse' : 'bg-terminal-warn'}`}
-          />
-          {connected ? 'LIVE' : 'SIM'}
+          <span className={`w-2 h-2 rounded-full ${mode.dot}`} />
+          {mode.label}
         </div>
         <div className="hidden md:flex items-center gap-3 text-[10px] mono text-terminal-muted">
           <span>Seq {lastSeq}</span>
@@ -84,10 +111,13 @@ export default function TerminalHeader() {
         )}
       </div>
 
-      <div className="text-right text-[10px] mono">
-        <div className="text-slate-300 tabular-nums">{now}</div>
-        <div className="text-terminal-muted truncate max-w-[10rem] mt-0.5" title={url}>
-          {connected ? url.replace('ws://', '') : 'demo · local sim'}
+      <div className="flex items-center gap-3 text-right text-[10px] mono">
+        <WalletConnectButton />
+        <div>
+          <div className="text-slate-300 tabular-nums">{now}</div>
+          <div className="text-terminal-muted truncate max-w-[10rem] mt-0.5" title={url}>
+            {connectionMode !== 'sim' ? url.replace('ws://', '').replace('wss://', '') : 'demo · local sim'}
+          </div>
         </div>
       </div>
     </header>

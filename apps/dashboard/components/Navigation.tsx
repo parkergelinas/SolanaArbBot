@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 import { useIntelConnected } from '@/lib/intelligence/hooks';
-import { useStreamStore } from '@/stores/streamStore';
+import { type ConnectionMode, useStreamStore } from '@/stores/streamStore';
 
 import { useWsContext } from './WebSocketProvider';
 import WalletConnectButton from './wallet/WalletConnectButton';
@@ -29,10 +29,29 @@ function StatusDot({ live, label }: { live: boolean; label: string }) {
   );
 }
 
+const MODE_DOT: Record<ConnectionMode, { dot: string; label: string }> = {
+  live: { dot: 'bg-platform-accent live-pulse', label: 'Market · LIVE' },
+  degraded: { dot: 'bg-amber-400', label: 'Market · DEGRADED' },
+  sim: { dot: 'bg-slate-500', label: 'Market · SIM' },
+};
+
+function StreamModeDot({ mode, connected }: { mode: ConnectionMode; connected: boolean }) {
+  const style = MODE_DOT[mode];
+  const dotClass = connected ? style.dot : 'bg-red-500/80';
+  const label = connected ? style.label : 'Market · offline';
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`} />
+      <span className="text-[10px] text-platform-muted">{label}</span>
+    </div>
+  );
+}
+
 export default function Navigation() {
   const pathname = usePathname();
   const { connected: controlConnected } = useWsContext();
   const streamConnected = useStreamStore((s) => s.connected);
+  const connectionMode = useStreamStore((s) => s.connectionMode);
   const intelConnected = useIntelConnected();
   const onTerminal = pathname.startsWith('/terminal');
 
@@ -74,7 +93,11 @@ export default function Navigation() {
         <WalletConnectButton />
         <div className="space-y-1.5 px-1">
           <StatusDot live={onTerminal ? streamConnected : controlConnected} label="Control" />
-          <StatusDot live={streamConnected} label="Market" />
+          {onTerminal ? (
+            <StreamModeDot mode={connectionMode} connected={streamConnected} />
+          ) : (
+            <StatusDot live={streamConnected} label="Market" />
+          )}
           <StatusDot live={intelConnected} label="Whale intel" />
         </div>
       </div>

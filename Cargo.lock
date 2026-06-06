@@ -2075,16 +2075,20 @@ dependencies = [
 name = "signals"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "common",
  "config",
  "crossbeam-channel",
  "dashmap",
  "events",
+ "futures-util",
  "pricing",
  "ratelimit",
  "reqwest",
+ "serde",
  "serde_json",
  "tokio",
+ "tokio-tungstenite",
  "tracing",
 ]
 
@@ -2163,15 +2167,19 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "config",
  "crossbeam-channel",
  "dashmap",
  "data-layer",
+ "events",
  "opentelemetry 0.20.0",
  "opentelemetry-otlp",
+ "pricing",
  "reqwest",
  "serde",
  "serde_json",
  "signal-bus",
+ "signals",
  "tokio",
  "tower 0.5.3",
  "tower-http 0.5.2",

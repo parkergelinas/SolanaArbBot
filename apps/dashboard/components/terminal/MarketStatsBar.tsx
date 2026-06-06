@@ -1,6 +1,6 @@
 'use client';
 
-import { useDexScreenerPair } from '@/lib/hooks/useDexScreenerPair';
+import { useDexScreenerContext } from '@/components/terminal/DexScreenerProvider';
 import { tokenMeta, tokenSymbol } from '@/lib/terminal/tokens';
 import { useMarketStore } from '@/stores/marketStore';
 import { useUiStore } from '@/stores/uiStore';
@@ -14,7 +14,7 @@ function fmt(n: number, digits = 4): string {
 export default function MarketStatsBar() {
   const selectedMint = useUiStore((s) => s.selectedMint);
   const token = useMarketStore((s) => (selectedMint ? s.tokens[selectedMint] : undefined));
-  const { snapshot: dex } = useDexScreenerPair(selectedMint);
+  const { snapshot: dex } = useDexScreenerContext();
 
   const symbol = selectedMint ? tokenSymbol(selectedMint) : '—';
   const meta = selectedMint ? tokenMeta(selectedMint) : undefined;

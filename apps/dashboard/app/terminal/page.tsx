@@ -1,6 +1,7 @@
 'use client';
 
 import ArbitragePanel from '@/components/terminal/ArbitragePanel';
+import DataFeedsBar from '@/components/terminal/DataFeedsBar';
 import DexScreenerChart from '@/components/terminal/DexScreenerChart';
 import DepthPanel from '@/components/terminal/DepthPanel';
 import LatencyMonitor from '@/components/terminal/LatencyMonitor';
@@ -19,6 +20,7 @@ export default function TerminalPage() {
     <div className="terminal-shell flex flex-col flex-1 min-h-0 overflow-hidden">
       <TerminalHeader />
       <LatencyMonitor />
+      <DataFeedsBar />
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <Watchlist />

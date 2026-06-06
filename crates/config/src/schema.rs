@@ -88,6 +88,10 @@ pub struct SystemConfig {
     /// Free / cheap external data API endpoints (Helius, Jupiter, DexScreener, etc.).
     #[serde(default)]
     pub data_sources: DataSourcesConfig,
+
+    /// Whale wallet tracker — Helius swap watcher + GMGN discovery.
+    #[serde(default)]
+    pub whale_tracker: WhaleTrackerConfig,
 }
 
 impl Default for SystemConfig {
@@ -110,6 +114,7 @@ impl Default for SystemConfig {
             hotpath: HotPathConfig::default(),
             strategy: StrategyConfig::default(),
             data_sources: DataSourcesConfig::default(),
+            whale_tracker: WhaleTrackerConfig::default(),
         }
     }
 }
@@ -134,6 +139,7 @@ impl SystemConfig {
         self.wallet.validate_warn();
         self.hotpath.validate()?;
         self.data_sources.validate()?;
+        self.whale_tracker.validate()?;
 
         if (self.risk.min_liquidity_usd - self.pipeline.routing_min_liquidity).abs()
             > f64::EPSILON
@@ -816,6 +822,61 @@ impl DataSourcesConfig {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Whale tracker
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Whale wallet swap watcher and dynamic discovery settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WhaleTrackerConfig {
+    /// Master toggle for Helius watcher + GMGN discovery pollers.
+    pub enabled: bool,
+    /// Minimum USD notional to emit a [`WhaleSwapSignal`].
+    pub min_trade_usd: f64,
+    /// How long (seconds) a whale buy boosts route scoring.
+    pub signal_ttl_seconds: u64,
+    /// Cap on dynamically discovered + seed wallets.
+    pub max_tracked_wallets: usize,
+    /// GMGN / discovery poll interval in seconds.
+    pub discovery_interval_s: u64,
+    /// JSON file for discovered wallet persistence.
+    pub persist_path: String,
+}
+
+impl Default for WhaleTrackerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            min_trade_usd: 10_000.0,
+            signal_ttl_seconds: 60,
+            max_tracked_wallets: 200,
+            discovery_interval_s: 300,
+            persist_path: "data/discovered_whales.json".to_owned(),
+        }
+    }
+}
+
+impl WhaleTrackerConfig {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.min_trade_usd <= 0.0 {
+            return Err("whale_tracker.min_trade_usd must be positive".to_owned());
+        }
+        if self.signal_ttl_seconds == 0 {
+            return Err("whale_tracker.signal_ttl_seconds must be greater than zero".to_owned());
+        }
+        if self.max_tracked_wallets == 0 {
+            return Err("whale_tracker.max_tracked_wallets must be greater than zero".to_owned());
+        }
+        if self.discovery_interval_s == 0 {
+            return Err("whale_tracker.discovery_interval_s must be greater than zero".to_owned());
+        }
+        if self.persist_path.trim().is_empty() {
+            return Err("whale_tracker.persist_path must not be empty".to_owned());
+        }
+        Ok(())
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Monitoring
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1333,6 +1394,20 @@ mod tests {
     fn signal_engine_config_rejects_out_of_range_strength() {
         let mut cfg = SignalEngineConfig::default();
         cfg.signal_min_strength = 1.5;
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn whale_tracker_config_defaults_are_valid() {
+        WhaleTrackerConfig::default()
+            .validate()
+            .expect("default whale_tracker config is valid");
+    }
+
+    #[test]
+    fn whale_tracker_config_rejects_zero_ttl() {
+        let mut cfg = WhaleTrackerConfig::default();
+        cfg.signal_ttl_seconds = 0;
         assert!(cfg.validate().is_err());
     }
 }

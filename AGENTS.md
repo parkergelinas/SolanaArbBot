@@ -60,3 +60,20 @@ Copy `config.example.toml` → `config.toml`. Capital is defined once in `[portf
 2. Run `cargo test -p <affected-crate>` before finishing.
 3. Do not log key material; wallet `Debug` shows pubkey only.
 4. Do not enable live trading in example config.
+
+## Project stage
+
+| Layer | Status |
+|-------|--------|
+| Worker | **Paper only** — `--mode live` is always rejected at startup |
+| Execution | **dry_run default** — `PAPER_MODE=true`, `EXECUTION_LIVE` unset |
+| Dashboard | Terminal + overview wired to stream-api, DexScreener, signal hub |
+| Live data | Three tiers: **mock/sim** (offline demo) → **data-layer + Jupiter** (degraded) → **full stack** (stream-api + control-api + intel) |
+
+**Live data maturity**
+
+- **Mock / sim**: `DemoBootstrap` fills watchlist, swaps, candles when stream-api is down.
+- **Data-layer + Jupiter**: Real quotes via data-layer RPC; stream-api may run in degraded mode.
+- **Full stack**: stream-api WS, control-api `/api/live-signals`, DexScreener polls, intelligence-api whales.
+
+**Not implemented yet**: pump.fun ingestion, Yellowstone Geyser, on-chain live trading submission.

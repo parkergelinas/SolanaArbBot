@@ -3,14 +3,14 @@
 import { useMemo } from 'react';
 
 import { dexScreenerEmbedUrl, dexScreenerPairPageUrl } from '@/lib/dexscreener/client';
-import { useDexScreenerPair } from '@/lib/hooks/useDexScreenerPair';
+import { useDexScreenerContext } from '@/components/terminal/DexScreenerProvider';
 import { tokenSymbol } from '@/lib/terminal/tokens';
 import { useUiStore } from '@/stores/uiStore';
 
 export default function DexScreenerChart() {
   const selectedMint = useUiStore((s) => s.selectedMint);
   const symbol = selectedMint ? tokenSymbol(selectedMint) : '—';
-  const { snapshot, loading, error } = useDexScreenerPair(selectedMint);
+  const { snapshot, loading, error } = useDexScreenerContext();
 
   const embedUrl = useMemo(
     () => (snapshot ? dexScreenerEmbedUrl(snapshot.pairAddress) : null),

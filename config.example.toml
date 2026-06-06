@@ -258,3 +258,14 @@ log_level = "info"
 
 # Emit structured JSON logs instead of human-readable format.
 json_logs = false
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [whale_tracker] — Helius swap watcher + GMGN whale discovery
+# ─────────────────────────────────────────────────────────────────────────────
+[whale_tracker]
+enabled              = true
+min_trade_usd        = 10_000.0   # ignore small whale trades
+signal_ttl_seconds   = 60         # how long a whale signal boosts a route
+max_tracked_wallets  = 200        # cap on dynamic discovery list
+discovery_interval_s = 300        # how often to poll GMGN for new whales
+persist_path         = "data/discovered_whales.json"

@@ -19,6 +19,9 @@ const MAX_SWAPS = 500;
 const MAX_SIGNALS = 80;
 const MAX_CANDLE_HISTORY = 120;
 
+/** Chart is DexScreener embed — skip candle history to save memory. */
+const STORE_CANDLES = false;
+
 export function candleKey(mint: string, interval: CandleInterval) {
   return `${mint}:${interval}`;
 }
@@ -51,7 +54,7 @@ export interface ArbOpportunity {
   timestamp_ms: number;
 }
 
-interface MarketState {
+export interface MarketState {
   prices: Record<string, TokenPrice>;
   tokens: Record<string, TokenRow>;
   swaps: SwapEvent[];
@@ -266,15 +269,16 @@ export const useMarketStore = create<MarketState>((set) => ({
             };
             break;
           }
-          case 'candle': {
-            const raw = msg.payload;
-            const live = prices[raw.mint]?.price_usd ?? tokens[raw.mint]?.price_usd;
-            const c = normalizeCandle(raw, live);
-            const key = candleKey(c.mint, c.interval);
-            candles[key] = c;
-            candleHistory = pushCandleHistory(candleHistory, key, c);
+          case 'candle':
+            if (STORE_CANDLES) {
+              const raw = msg.payload;
+              const live = prices[raw.mint]?.price_usd ?? tokens[raw.mint]?.price_usd;
+              const c = normalizeCandle(raw, live);
+              const key = candleKey(c.mint, c.interval);
+              candles[key] = c;
+              candleHistory = pushCandleHistory(candleHistory, key, c);
+            }
             break;
-          }
           case 'signal':
             signals = [msg.payload, ...signals].slice(0, MAX_SIGNALS);
             break;

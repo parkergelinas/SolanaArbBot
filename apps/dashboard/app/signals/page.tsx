@@ -34,7 +34,7 @@ export default function SignalsPage() {
   const [dirFilter, setDirFilter] = useState<SignalFilterDirection>('All');
   const [sortKey, setSortKey] = useState<SignalSortKey>('time');
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [showIntel, setShowIntel] = useState(false);
+  const [showIntel, setShowIntel] = useState(true);
 
   const fetcher = useCallback(async () => {
     const live = await api.liveSignals({ limit: 200 });
@@ -100,6 +100,13 @@ export default function SignalsPage() {
       {error && (
         <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 max-w-xl">
           Historical API: {error}. Live feeds may still work.
+        </p>
+      )}
+
+      {!intelConnected && (
+        <p className="text-xs text-slate-400 bg-slate-800/60 border border-platform-border rounded-lg px-3 py-2 max-w-xl">
+          Intelligence WebSocket offline — whale / smart-money signals hidden unless you start{' '}
+          <code className="text-platform-accent">intelligence-api</code> on :8090.
         </p>
       )}
 

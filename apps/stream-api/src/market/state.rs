@@ -62,6 +62,20 @@ pub struct MarketState {
     pub flow: DashMap<String, FlowTracker>,
 }
 
+/// Max tracked mints / pools — prevents unbounded growth on high-cardinality streams.
+const MAX_TRACKED_KEYS: usize = 512;
+
+fn trim_map<K: std::hash::Hash + Eq + Clone, V>(map: &DashMap<K, V>, max: usize) {
+    let excess = map.len().saturating_sub(max);
+    if excess == 0 {
+        return;
+    }
+    let keys: Vec<K> = map.iter().take(excess).map(|e| e.key().clone()).collect();
+    for k in keys {
+        map.remove(&k);
+    }
+}
+
 impl MarketState {
     pub fn new() -> Self {
         Self {
@@ -70,6 +84,14 @@ impl MarketState {
             candles: DashMap::new(),
             flow: DashMap::new(),
         }
+    }
+
+    /// Evict oldest entries when maps exceed [`MAX_TRACKED_KEYS`].
+    pub fn enforce_bounds(&self) {
+        trim_map(&self.prices, MAX_TRACKED_KEYS);
+        trim_map(&self.pools, MAX_TRACKED_KEYS);
+        trim_map(&self.flow, MAX_TRACKED_KEYS);
+        trim_map(&self.candles, MAX_TRACKED_KEYS * 6);
     }
 }
 
