@@ -34,15 +34,23 @@ pub struct ThresholdTable {
     pub max_trades_per_window: u32,
     /// Width of the velocity window in slots (≈150 slots ≈ 1 minute).
     pub velocity_window_slots: u64,
+
+    // ── Signal quality ────────────────────────────────────────────────────────
+    /// Reject signals whose slot is more than this many slots behind `current_slot`.
+    /// Prevents trading on stale price data. 0 = disabled. Default: 3 (~1.2s).
+    pub max_signal_staleness_slots: u64,
+    /// Actual trade size in lamports used for impact and worst-case cost estimates.
+    /// Must match the size passed to the executor. Default: 100_000_000 (0.1 SOL).
+    pub trade_size_lamports: u64,
 }
 
 impl ThresholdTable {
     /// Build from `SystemConfig` — called once at startup, never in hot loop.
     #[must_use]
     pub fn from_config(cfg: &HotPathConfig, max_exposure_usd_x100: u64) -> Self {
-        const DEFAULT_TRADE_LAMPORTS: u64 = 100_000_000; // 0.1 SOL
         // ~150 slots per minute at 400ms/slot.
         const SLOTS_PER_MINUTE: u64 = 150;
+        let trade_lamports = cfg.trade_size_lamports;
         Self {
             min_edge_bps: cfg.min_edge_bps,
             max_slippage_bps: cfg.max_slippage_bps,
@@ -52,13 +60,15 @@ impl ThresholdTable {
             cooldown_slots: 75, // ~30s at 400ms/slot
             global_cooldown_slots: cfg.global_cooldown_slots,
             max_exposure_x100: max_exposure_usd_x100,
-            default_trade_lamports: DEFAULT_TRADE_LAMPORTS,
+            default_trade_lamports: trade_lamports,
             default_trade_usd_x100: 200_00, // $200 notional
-            max_loss_lamports: DEFAULT_TRADE_LAMPORTS * cfg.max_loss_bps as u64 / 10_000,
+            max_loss_lamports: trade_lamports * cfg.max_loss_bps as u64 / 10_000,
             max_consecutive_losses: cfg.max_consecutive_losses,
             max_session_loss_lamports: cfg.max_session_loss_lamports,
             max_trades_per_window: cfg.max_trades_per_minute,
             velocity_window_slots: SLOTS_PER_MINUTE,
+            max_signal_staleness_slots: cfg.max_signal_staleness_slots,
+            trade_size_lamports: trade_lamports,
         }
     }
 }

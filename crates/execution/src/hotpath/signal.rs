@@ -76,6 +76,8 @@ mod tests {
             max_session_loss_lamports: 1_000_000_000,
             max_trades_per_window: 30,
             velocity_window_slots: 150,
+            max_signal_staleness_slots: 3,
+            trade_size_lamports: 100_000_000,
         }
     }
 

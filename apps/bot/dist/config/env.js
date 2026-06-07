@@ -39,7 +39,7 @@ export function loadEnv() {
         pairsPerScan: Number(env('BOT_PAIRS_PER_SCAN', '10')),
         pairQuoteMint: env('BOT_PAIR_QUOTE_MINT', 'USDC'),
         cmcTopN: Number(env('BOT_CMC_TOP_N', '100')),
-        enablePumpEdge: env('BOT_ENABLE_PUMP_EDGE', '1') === '1',
+        enablePumpEdge: env('BOT_ENABLE_PUMP_EDGE', '0') === '1',
         heliusApiKey: process.env.HELIUS_API_KEY?.trim() ||
             process.env.SOLANA_ARB_DATA_SOURCES__HELIUS_API_KEY?.trim(),
         jitoEnabled: env('JITO_ENABLED', '0') === '1',
@@ -48,6 +48,10 @@ export function loadEnv() {
         monitorPort: Number(env('MONITOR_PORT', '3333')),
         logLevel: env('LOG_LEVEL', 'info'),
         sqlitePath: env('SQLITE_PATH', './trades.db'),
+        enableCrossDexArb: env('BOT_ENABLE_CROSS_DEX_ARB', '0') === '1',
+        crossDexSpreadBps: Number(env('BOT_CROSS_DEX_SPREAD_BPS', '35')),
+        pumpSpreadBps: Number(env('BOT_PUMP_SPREAD_BPS', '80')),
+        enablePumpSpreads: env('BOT_ENABLE_PUMP_SPREADS', '1') === '1',
         alertPnlThresholdSol: Number(env('ALERT_PNL_THRESHOLD_SOL', '-0.1')),
         orcaPoolAddresses: (process.env.ORCA_POOL_ADDRESSES ?? '')
             .split(',')

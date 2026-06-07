@@ -73,6 +73,7 @@ export class JupiterClient {
       restrictIntermediateTokens: String(req.restrictIntermediateTokens ?? false),
     });
     if (req.swapMode) params.set('swapMode', req.swapMode);
+    if (req.dexes) params.set('dexes', req.dexes);
     return `${this.env.jupiterSwapBase}/quote?${params}`;
   }
 

@@ -24,22 +24,36 @@
  * USD value at which a sandwich becomes profitable for the attacker.
  * Below this, the tip cost to acquire a leader slot exceeds the extractable value.
  * Derived from observed Solana MEV bot economics at typical block times.
+ *
+ * Conservative: kept at $0.50 so the MEV-safe ceiling shrinks earlier as spread widens.
+ * Do NOT raise this — a higher value permits larger sizes that are more attractive targets.
  */
 const MEV_THRESHOLD_USD = 0.50;
 
 /**
- * Hard ceiling when Jito bundle protection is active.
+ * Hard ceiling when Jito bundle protection is confirmed active (last bundle landed).
  * Sandwiching a Jito bundle requires bribing the leader at a cost that typically
- * exceeds the extractable value — making this ceiling effectively MEV-proof.
+ * exceeds the extractable value.
+ *
+ * NOTE: `jitoActive` reflects config, not real-time bundle success. The engine
+ * should track `jitoLandingRate` and set `jitoActive=false` when it degrades.
  */
 const JITO_CEILING_SOL = 0.80;
 
 /**
- * Fallback ceiling without Jito. Conservative enough that even at the minimum
- * detected spread (36 bps) and a $180 SOL price the MEV-safe limit is ~0.77 SOL,
- * so this floor never overrides the equation.
+ * Hard ceiling without Jito. Reduced from 0.42 → 0.25 SOL.
+ * At $170 SOL + 36 bps spread the MEV-safe equation gives ~0.82 SOL, so this
+ * constant is the tighter bound — keeping non-Jito trades under $42.5 notional
+ * where sandwiching is almost never economical.
  */
-const NO_JITO_CEILING_SOL = 0.42;
+const NO_JITO_CEILING_SOL = 0.25;
+
+/**
+ * When `requireJito` is true and Jito is not active, sizing returns this
+ * sub-minimum amount to effectively skip the trade rather than exposing it
+ * to the mempool unprotected.
+ */
+const JITO_REQUIRED_SKIP_SOL = 0;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -64,6 +78,11 @@ export interface SizingInput {
   solPriceUsd: number;
   /** True when a Jito block-engine URL is configured and last submission succeeded. */
   jitoActive: boolean;
+  /**
+   * When true, skip the trade entirely if Jito is not active rather than falling
+   * back to direct RPC. Set this whenever allow_direct_rpc_fallback=false in config.
+   */
+  requireJito?: boolean;
   /**
    * Recent network priority fee in micro-lamports per CU.
    * High values indicate congestion and elevated MEV activity.
@@ -99,9 +118,22 @@ export function computeDynamicSize(input: SizingInput): SizingResult {
     priorityFeeMicroLamports,
     solPriceUsd,
     jitoActive,
+    requireJito = false,
     minAmountUi,
     maxAmountUi,
   } = input;
+
+  // ── 0. Jito guard ─────────────────────────────────────────────────────────
+  // When the caller requires Jito (no naked RPC fallback) and Jito is not
+  // confirmed active, return zero so the engine skips the trade entirely.
+  if (requireJito && !jitoActive) {
+    return {
+      amountUi: 0,
+      ceiling: 'min_clamp',
+      mevSafeSol: 0,
+      rationale: 'jito_required but not active — trade skipped to prevent naked RPC exposure',
+    };
+  }
 
   // ── 1. MEV sandwich ceiling ───────────────────────────────────────────────
   //

@@ -26,9 +26,12 @@ import {
   PumpEdgeStrategy,
   RouteDivergenceArbStrategy,
   RoundTripQuoteArbStrategy,
+  CrossDexArbStrategy,
+  DEFAULT_CROSS_DEX_CONFIG,
   StrategyRegistry,
   type ScannableStrategy,
 } from '../signals/index.js';
+import { PumpTokenRegistry } from '../market/pump-token-registry.js';
 
 import type { Strategy } from '../signals/types.js';
 
@@ -131,9 +134,14 @@ export class BotEngine {
       { pairsPerScan: this.env.pairsPerScan, scanConcurrency: 3 },
     );
 
-    this.scannable.push(routeDiv, roundTrip);
-    this.registry.register(routeDiv);
-    this.registry.register(roundTrip);
+    // Only activate route-divergence / round-trip scanners when cross-dex arb
+    // is NOT the primary strategy — they compete for the same Jupiter API quota
+    // and route-divergence is proven to have no real edge on native Solana pairs.
+    if (!this.env.enableCrossDexArb) {
+      this.scannable.push(routeDiv, roundTrip);
+      this.registry.register(routeDiv);
+      this.registry.register(roundTrip);
+    }
 
     if (this.env.enableMeanReversion) {
       const meanRev = new MeanReversionStrategy({
@@ -152,6 +160,27 @@ export class BotEngine {
       );
       this.scannable.push(this.pumpStrategy);
       this.registry.register(this.pumpStrategy);
+    }
+
+    if (this.env.enableCrossDexArb) {
+      // Pump token registry — discovers high-spread memecoin pairs via DexScreener
+      const pumpRegistry = this.env.enablePumpSpreads ? new PumpTokenRegistry() : null;
+      pumpRegistry?.start();
+
+      const crossDex = new CrossDexArbStrategy(
+        this.stack.client,
+        this.env.tradeAmountUi,
+        {
+          ...DEFAULT_CROSS_DEX_CONFIG,
+          coreSpreadThresholdBps: this.env.crossDexSpreadBps,
+          pumpSpreadThresholdBps: this.env.pumpSpreadBps,
+          enablePumpPairs: this.env.enablePumpSpreads,
+          pairsPerScan: this.env.pairsPerScan,
+        },
+        pumpRegistry,
+      );
+      this.scannable.push(crossDex);
+      this.registry.register(crossDex);
     }
 
     this.executor = new LiveExecutor(this.env, this.stack.client, this.journal);
@@ -319,10 +348,20 @@ export class BotEngine {
       maxAmountUi: Math.min(1.0, this.env.tradeAmountUi * 2), // hard cap: 1 SOL
       solPriceUsd: state.solPriceUsd,
       jitoActive: this.env.jitoEnabled,
+      // Skip trade if Jito is required but not active — prevents naked RPC exposure.
+      requireJito: this.env.jitoEnabled && !this.env.paperMode,
       priorityFeeMicroLamports: this.lastPriorityFeeMicroLamports,
     });
     this.tradeAmountUi = sizing.amountUi;
     logger.debug({ sizing: sizing.rationale, pair: decision.pairLabel }, 'bot: trade size computed');
+
+    // Sizer returns 0 when requireJito is set but Jito is unavailable — skip
+    // to avoid naked RPC exposure (sandwich risk).
+    if (sizing.amountUi <= 0) {
+      logger.warn({ pair: decision.pairLabel }, 'bot: trade skipped — Jito required but not active');
+      this.stats.rejected += 1;
+      return;
+    }
 
     // Use hardened executor in live mode, paper executor otherwise
     this.inFlightCount += 1;
@@ -402,12 +441,18 @@ export class BotEngine {
       maxAmountUi: Math.min(1.0, this.env.tradeAmountUi * 2),
       solPriceUsd: this.lastSolPriceUsd,
       jitoActive: this.env.jitoEnabled,
+      requireJito: this.env.jitoEnabled && !this.env.paperMode,
       priorityFeeMicroLamports: this.lastPriorityFeeMicroLamports,
     });
     logger.debug(
       { sizing: extSizing.rationale, opp: `${opp.dex1}→${opp.dex2}` },
       'bot: cross-dex trade size computed',
     );
+
+    if (extSizing.amountUi <= 0) {
+      logger.warn({ opp: `${opp.dex1}→${opp.dex2}` }, 'bot: cross-dex trade skipped — Jito required but not active');
+      return;
+    }
 
     const decision: import('../strategy/types.js').TradeDecision = {
       strategyId: 'cross_dex_arb',

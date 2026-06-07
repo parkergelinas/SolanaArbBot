@@ -71,6 +71,8 @@ pub enum RiskVerdict {
     RejectedCircuitBreaker,
     /// Velocity cap: too many trades submitted within the rolling time window.
     RejectedVelocityLimit,
+    /// Signal slot is too far behind `current_slot` — price data is stale.
+    RejectedStale,
 }
 
 impl RiskVerdict {

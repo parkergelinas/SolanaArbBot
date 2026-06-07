@@ -40,6 +40,14 @@ export interface BotEnv {
     enablePumpEdge: boolean;
     /** Helius API key for pump launch monitoring. */
     heliusApiKey?: string;
+    /** Enable cross-DEX arb strategy (Raydium vs Orca price comparison). */
+    enableCrossDexArb: boolean;
+    /** Min spread bps between Raydium and Orca to signal a core-pair trade. */
+    crossDexSpreadBps: number;
+    /** Min spread bps for pump.fun/memecoin pairs (wider threshold = higher edge). */
+    pumpSpreadBps: number;
+    /** Enable pump.fun memecoin spread scanning via DexScreener. */
+    enablePumpSpreads: boolean;
     /** Enable Jito bundle submission for MEV protection. */
     jitoEnabled: boolean;
     /** Jito tip in lamports added to arb bundles. */

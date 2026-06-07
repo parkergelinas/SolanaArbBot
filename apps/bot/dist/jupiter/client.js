@@ -60,6 +60,8 @@ export class JupiterClient {
         });
         if (req.swapMode)
             params.set('swapMode', req.swapMode);
+        if (req.dexes)
+            params.set('dexes', req.dexes);
         return `${this.env.jupiterSwapBase}/quote?${params}`;
     }
     async getQuote(req) {

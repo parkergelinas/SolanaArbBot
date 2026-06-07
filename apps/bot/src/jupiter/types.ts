@@ -7,6 +7,12 @@ export interface SwapQuoteRequest {
   slippageBps?: number;
   restrictIntermediateTokens?: boolean;
   swapMode?: 'ExactIn' | 'ExactOut';
+  /**
+   * Comma-separated list of DEX labels to restrict routing to.
+   * Examples: 'Raydium,Raydium CLMM,Raydium CP'  |  'Orca,Whirlpool'
+   * When set, Jupiter only routes through these DEXes.
+   */
+  dexes?: string;
 }
 
 export interface RoutePlanStep {

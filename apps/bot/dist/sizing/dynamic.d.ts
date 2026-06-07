@@ -39,6 +39,11 @@ export interface SizingInput {
     /** True when a Jito block-engine URL is configured and last submission succeeded. */
     jitoActive: boolean;
     /**
+     * When true, skip the trade entirely if Jito is not active rather than falling
+     * back to direct RPC. Set this whenever allow_direct_rpc_fallback=false in config.
+     */
+    requireJito?: boolean;
+    /**
      * Recent network priority fee in micro-lamports per CU.
      * High values indicate congestion and elevated MEV activity.
      */
