@@ -27,6 +27,7 @@ export function loadEnv() {
         tradeAmountUi: Number(env('BOT_TRADE_AMOUNT_UI', '1')),
         scanIntervalMs: Number(env('BOT_SCAN_INTERVAL_MS', '2000')),
         paperMode: env('BOT_PAPER_MODE', '1') !== '0',
+        liveQuotes: env('BOT_LIVE_QUOTES', '0') === '1',
         walletPublicKey: process.env.BOT_WALLET_PUBKEY?.trim(),
         primaryStrategy: env('BOT_PRIMARY_STRATEGY', 'route_divergence_arb'),
         enableMeanReversion: env('BOT_ENABLE_MEAN_REVERSION', '0') === '1',
@@ -41,6 +42,18 @@ export function loadEnv() {
         enablePumpEdge: env('BOT_ENABLE_PUMP_EDGE', '1') === '1',
         heliusApiKey: process.env.HELIUS_API_KEY?.trim() ||
             process.env.SOLANA_ARB_DATA_SOURCES__HELIUS_API_KEY?.trim(),
+        jitoEnabled: env('JITO_ENABLED', '0') === '1',
+        jitoTipLamports: Number(env('JITO_TIP_LAMPORTS', '10000')),
+        minProfitLamports: Number(env('MIN_PROFIT_LAMPORTS', '0')),
+        monitorPort: Number(env('MONITOR_PORT', '3333')),
+        logLevel: env('LOG_LEVEL', 'info'),
+        sqlitePath: env('SQLITE_PATH', './trades.db'),
+        alertPnlThresholdSol: Number(env('ALERT_PNL_THRESHOLD_SOL', '-0.1')),
+        orcaPoolAddresses: (process.env.ORCA_POOL_ADDRESSES ?? '')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean),
+        spreadThresholdBps: Number(env('SPREAD_THRESHOLD_BPS', '80')),
     };
 }
 /** Well-known mints used by default scanners. */

@@ -11,6 +11,12 @@ export interface BotEnv {
   tradeAmountUi: number;
   scanIntervalMs: number;
   paperMode: boolean;
+  /**
+   * Live-quotes mode — use real Jupiter quote API for divergence measurement
+   * while keeping execution simulated (paperMode=true required).
+   * Validates real route divergence before committing capital on mainnet.
+   */
+  liveQuotes: boolean;
   walletPublicKey?: string;
   /** Primary strategy id — `route_divergence_arb` | `round_trip_quote_arb` */
   primaryStrategy: string;
@@ -98,6 +104,7 @@ export function loadEnv(): BotEnv {
     tradeAmountUi: Number(env('BOT_TRADE_AMOUNT_UI', '1')),
     scanIntervalMs: Number(env('BOT_SCAN_INTERVAL_MS', '2000')),
     paperMode: env('BOT_PAPER_MODE', '1') !== '0',
+    liveQuotes: env('BOT_LIVE_QUOTES', '0') === '1',
     walletPublicKey: process.env.BOT_WALLET_PUBKEY?.trim(),
     primaryStrategy: env('BOT_PRIMARY_STRATEGY', 'route_divergence_arb'),
     enableMeanReversion: env('BOT_ENABLE_MEAN_REVERSION', '0') === '1',

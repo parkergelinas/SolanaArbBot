@@ -1,5 +1,30 @@
+// ── SEC-3: Runtime response validators ───────────────────────────────────────
+// Jupiter returns JSON whose types are not verified at the network boundary.
+// A compromised/misconfigured endpoint could return outAmount: -1 or a truncated
+// swapTransaction; these guards abort before poisoned data reaches execution logic.
+function validateQuoteResponse(json, label) {
+    const r = json;
+    if (typeof r.outAmount !== 'string' || !/^\d+$/.test(r.outAmount)) {
+        throw new Error(`Jupiter quote (${label}): outAmount is missing or not a numeric string`);
+    }
+    if (typeof r.inAmount !== 'string') {
+        throw new Error(`Jupiter quote (${label}): inAmount is missing`);
+    }
+    if (Number(r.outAmount) < 0 || Number(r.inAmount) < 0) {
+        throw new Error(`Jupiter quote (${label}): negative amount received`);
+    }
+    return r;
+}
+function validateSwapResponse(json) {
+    const r = json;
+    if (typeof r.swapTransaction !== 'string' || r.swapTransaction.length < 100) {
+        throw new Error('Jupiter swap: swapTransaction field missing or suspiciously short');
+    }
+    return r;
+}
 export class JupiterClient {
     env;
+    _429BackoffUntil = 0; // epoch ms — shared across all calls on this client
     constructor(env) {
         this.env = env;
     }
@@ -9,6 +34,21 @@ export class JupiterClient {
             h['x-api-key'] = this.env.jupiterApiKey;
         }
         return h;
+    }
+    /** Throws `RateLimited` error class when 429 backoff is active. */
+    async fetchWithBackoff(url, init) {
+        const now = Date.now();
+        if (now < this._429BackoffUntil) {
+            throw new Error(`Jupiter rate-limited — retry after ${Math.ceil((this._429BackoffUntil - now) / 1000)}s`);
+        }
+        const resp = await fetch(url, init);
+        if (resp.status === 429) {
+            // Back off 20s + up to 10s jitter before retrying
+            this._429BackoffUntil = Date.now() + 20_000 + Math.random() * 10_000;
+            const body = await resp.text().catch(() => '');
+            throw new Error(`Jupiter quote HTTP 429: ${body.slice(0, 120)}`);
+        }
+        return resp;
     }
     buildQuoteUrl(req) {
         const params = new URLSearchParams({
@@ -24,12 +64,13 @@ export class JupiterClient {
     }
     async getQuote(req) {
         const url = this.buildQuoteUrl(req);
-        const resp = await fetch(url, { headers: this.headers() });
+        const resp = await this.fetchWithBackoff(url, { headers: this.headers() });
         if (!resp.ok) {
             const body = await resp.text().catch(() => '');
             throw new Error(`Jupiter quote HTTP ${resp.status}: ${body.slice(0, 200)}`);
         }
-        return (await resp.json());
+        const json = await resp.json();
+        return validateQuoteResponse(json, `${req.inputMint}→${req.outputMint}`);
     }
     async getSwapTransaction(req) {
         const resp = await fetch(`${this.env.jupiterSwapBase}/swap`, {
@@ -41,13 +82,14 @@ export class JupiterClient {
             const body = await resp.text().catch(() => '');
             throw new Error(`Jupiter swap HTTP ${resp.status}: ${body.slice(0, 200)}`);
         }
-        return (await resp.json());
+        const json = await resp.json();
+        return validateSwapResponse(json);
     }
     async getPrices(mints) {
         if (mints.length === 0)
             return {};
         const url = `${this.env.jupiterPriceUrl}?ids=${mints.join(',')}`;
-        const resp = await fetch(url, { headers: this.headers() });
+        const resp = await this.fetchWithBackoff(url, { headers: this.headers() });
         if (!resp.ok) {
             throw new Error(`Jupiter price HTTP ${resp.status}`);
         }
@@ -55,7 +97,9 @@ export class JupiterClient {
     }
     async fetchVerifiedTokens(limit = 500) {
         const url = `${this.env.jupiterTokensBase}/tag?query=verified&limit=${limit}`;
-        const resp = await fetch(url, { headers: this.headers() });
+        // Use fetchWithBackoff so tokens-API 429s share the same backoff state as
+        // quote/price calls — prevents hammering after the public rate limit fires.
+        const resp = await this.fetchWithBackoff(url, { headers: this.headers() });
         if (!resp.ok) {
             throw new Error(`Jupiter tokens HTTP ${resp.status}`);
         }
@@ -63,7 +107,7 @@ export class JupiterClient {
     }
     async fetchStrictTokens(limit = 500) {
         const url = `${this.env.jupiterTokensBase}/tag?query=strict&limit=${limit}`;
-        const resp = await fetch(url, { headers: this.headers() });
+        const resp = await this.fetchWithBackoff(url, { headers: this.headers() });
         if (!resp.ok) {
             throw new Error(`Jupiter strict tokens HTTP ${resp.status}`);
         }

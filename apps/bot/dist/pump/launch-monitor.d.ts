@@ -6,19 +6,17 @@ export interface PumpLaunchEvent {
     detectedAtMs: number;
 }
 type LaunchHandler = (event: PumpLaunchEvent) => void;
-/**
- * Monitor Pump.fun `Create` instructions via Helius logsSubscribe.
- * Docs: pump-public-docs — `create(user, name, symbol, uri, creator)`.
- */
 export declare class PumpLaunchMonitor {
     private readonly heliusWsUrl;
     private readonly onLaunch;
     private ws;
     private reconnectTimer;
     private running;
+    private reconnectAttempts;
     constructor(heliusWsUrl: string, onLaunch: LaunchHandler);
     start(): void;
     stop(): void;
+    private scheduleReconnect;
     private connect;
 }
 /** Parse Helius logsNotification for Pump.fun Create instruction. */

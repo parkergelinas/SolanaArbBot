@@ -19,8 +19,22 @@ export declare class RouteDivergenceArbStrategy implements ScannableStrategy {
     private readonly tradeAmountUi;
     private readonly pairRegistry;
     private readonly cfg;
+    private readonly paperMode;
+    /**
+     * liveQuotes=true: use real Jupiter quote API even in paper mode.
+     * Measures actual route divergence on mainnet before committing capital.
+     * Execution remains simulated when paperMode=true.
+     */
+    private readonly liveQuotes;
     readonly id = "route_divergence_arb";
-    constructor(client: JupiterClient, tradeAmountUi: number, pairRegistry?: PairRegistry | null, cfg?: RouteDivergenceConfig);
+    private scanTick;
+    constructor(client: JupiterClient, tradeAmountUi: number, pairRegistry?: PairRegistry | null, cfg?: RouteDivergenceConfig, paperMode?: boolean, 
+    /**
+     * liveQuotes=true: use real Jupiter quote API even in paper mode.
+     * Measures actual route divergence on mainnet before committing capital.
+     * Execution remains simulated when paperMode=true.
+     */
+    liveQuotes?: boolean);
     scan(state: MarketState): Promise<MarketState>;
     evaluate(state: MarketState, ctx: StrategyContext): TradeDecision | null;
     private evaluateOne;

@@ -29,7 +29,11 @@ export function checkStrategyRisk(decision, state, limits = DEFAULT_RISK_LIMITS,
         decision.rejectionReason?.includes('stale')) {
         return { verdict: 'reject', reason: 'spread_compression' };
     }
-    if (decision.rejectionReason && !decision.rejectionReason.startsWith('below_')) {
+    // Hard-block any decision that the strategy already flagged as unprofitable.
+    // Previously `below_min_profit` was excluded from this gate (startsWith check),
+    // allowing sub-threshold trades to execute. All strategy rejection reasons are
+    // now treated as hard stops — the strategy's evaluator is the authoritative filter.
+    if (decision.rejectionReason) {
         return { verdict: 'reject', reason: decision.rejectionReason };
     }
     return { verdict: 'allow' };

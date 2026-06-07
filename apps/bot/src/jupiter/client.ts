@@ -113,7 +113,9 @@ export class JupiterClient {
 
   async fetchVerifiedTokens(limit = 500): Promise<JupiterTokenMeta[]> {
     const url = `${this.env.jupiterTokensBase}/tag?query=verified&limit=${limit}`;
-    const resp = await fetch(url, { headers: this.headers() });
+    // Use fetchWithBackoff so tokens-API 429s share the same backoff state as
+    // quote/price calls — prevents hammering after the public rate limit fires.
+    const resp = await this.fetchWithBackoff(url, { headers: this.headers() });
     if (!resp.ok) {
       throw new Error(`Jupiter tokens HTTP ${resp.status}`);
     }
@@ -122,7 +124,7 @@ export class JupiterClient {
 
   async fetchStrictTokens(limit = 500): Promise<JupiterTokenMeta[]> {
     const url = `${this.env.jupiterTokensBase}/tag?query=strict&limit=${limit}`;
-    const resp = await fetch(url, { headers: this.headers() });
+    const resp = await this.fetchWithBackoff(url, { headers: this.headers() });
     if (!resp.ok) {
       throw new Error(`Jupiter strict tokens HTTP ${resp.status}`);
     }

@@ -120,7 +120,8 @@ export class BotEngine {
         pairsPerScan: this.env.pairsPerScan,
         scanConcurrency: 2,
       },
-      this.env.paperMode, // enable paper-mode quote simulator fallback
+      this.env.paperMode,    // paper execution (no on-chain txns)
+      this.env.liveQuotes,   // live-quotes validation: real Jupiter quotes, paper execution
     );
 
     const roundTrip = new RoundTripQuoteArbStrategy(
@@ -485,7 +486,9 @@ export class BotEngine {
     const pairMints = [...new Set(
       this.pairRegistry.allPairs.map((p) => p.baseMint),
     )];
-    if (!this.env.paperMode) {
+    // Start Jupiter price polling when running live quotes or live mode.
+    // Pure paper mode skips this to avoid hammering the rate-limited public API.
+    if (!this.env.paperMode || this.env.liveQuotes) {
       this.opportunityDetector.startJupiterPolling(
         async (mints) => {
           const resp = await this.stack.client.getPrices(mints);
@@ -503,10 +506,11 @@ export class BotEngine {
     logger.info(
       {
         paperMode: this.env.paperMode,
+        liveQuotes: this.env.liveQuotes,
         jito: this.env.jitoEnabled,
         monitor: this.env.monitorPort,
         scanInterval: this.env.scanIntervalMs,
-        jupiterPollMints: this.env.paperMode ? 0 : pairMints.length,
+        jupiterPollMints: (!this.env.paperMode || this.env.liveQuotes) ? pairMints.length : 0,
       },
       'bot: run loop started',
     );

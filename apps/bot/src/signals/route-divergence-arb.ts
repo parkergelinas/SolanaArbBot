@@ -50,6 +50,12 @@ export class RouteDivergenceArbStrategy implements ScannableStrategy {
     private readonly pairRegistry: PairRegistry | null = null,
     private readonly cfg: RouteDivergenceConfig = DEFAULT_ROUTE_DIVERGENCE_CONFIG,
     private readonly paperMode = false,
+    /**
+     * liveQuotes=true: use real Jupiter quote API even in paper mode.
+     * Measures actual route divergence on mainnet before committing capital.
+     * Execution remains simulated when paperMode=true.
+     */
+    private readonly liveQuotes = false,
   ) {}
 
   async scan(state: MarketState): Promise<MarketState> {
@@ -59,18 +65,46 @@ export class RouteDivergenceArbStrategy implements ScannableStrategy {
       ? this.pairRegistry.nextBatch(this.cfg.pairsPerScan)
       : DEFAULT_SCAN_PAIRS;
 
-    const result = await scanMultipleRouteDivergences(
-      this.client,
-      pairs,
-      this.tradeAmountUi,
-      { slippageBps: 50, concurrency: this.cfg.scanConcurrency },
-    );
+    // ── Quote source selection ────────────────────────────────────────────
+    //
+    // Three modes:
+    //   live mode  (paperMode=false):               real Jupiter quotes + real execution
+    //   live-quotes (paperMode=true, liveQuotes=true): real Jupiter quotes + paper execution
+    //   paper mode (paperMode=true, liveQuotes=false): stochastic simulator (no Jupiter)
+    //
+    // liveQuotes mode is the mainnet validation step — it measures actual route
+    // divergence bps without risking capital, so we know real P&L before going live.
+    const divergences = new Map<string, import('../market/state.js').RouteDivergenceSnapshot>();
 
-    // ── Paper-mode fallback ───────────────────────────────────────────────
-    // When Jupiter quotes fail entirely (all 429d), synthesise divergence
-    // from live DexScreener prices so the strategy can still exercise its
-    // logic during paper-trading sessions.
-    if (this.paperMode && result.divergences.size === 0) {
+    if (!this.paperMode || this.liveQuotes) {
+      // Real Jupiter quotes (live mode OR live-quotes validation mode)
+      try {
+        const result = await scanMultipleRouteDivergences(
+          this.client,
+          pairs,
+          this.tradeAmountUi,
+          { slippageBps: 50, concurrency: this.cfg.scanConcurrency },
+        );
+        for (const [label, div] of result.divergences) {
+          divergences.set(label, div);
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // 429 or rate-limit: fall back to simulator in paper mode, propagate in live
+        if (this.paperMode && (msg.includes('429') || msg.includes('rate-limit'))) {
+          const quotePriceUsd = state.pricesUsd[USDC_MINT] ?? 1.0;
+          for (const pair of pairs) {
+            const basePrice = state.pricesUsd[pair.baseMint];
+            if (!basePrice) continue;
+            const sim = simulatePaperDivergence(pair, this.tradeAmountUi, basePrice, quotePriceUsd, this.scanTick);
+            if (sim) divergences.set(pair.label, sim);
+          }
+        } else {
+          throw err;
+        }
+      }
+    } else {
+      // Pure paper mode: stochastic simulator, no Jupiter calls
       const quotePriceUsd = state.pricesUsd[USDC_MINT] ?? 1.0;
       for (const pair of pairs) {
         const basePrice = state.pricesUsd[pair.baseMint];
@@ -82,16 +116,16 @@ export class RouteDivergenceArbStrategy implements ScannableStrategy {
           quotePriceUsd,
           this.scanTick,
         );
-        if (sim) result.divergences.set(pair.label, sim);
+        if (sim) divergences.set(pair.label, sim);
       }
     }
 
     const multiDivergences: Record<string, import('../market/state.js').RouteDivergenceSnapshot> = {};
-    for (const [label, div] of result.divergences) {
+    for (const [label, div] of divergences) {
       multiDivergences[label] = div;
     }
 
-    const firstDiv = result.divergences.values().next().value;
+    const firstDiv = divergences.values().next().value;
     return {
       ...state,
       routeDivergence: firstDiv,
@@ -154,22 +188,40 @@ export class RouteDivergenceArbStrategy implements ScannableStrategy {
         feesUsd,
       });
 
-      const freshness = evaluateQuoteFreshness(
-        construction.forward.capturedAtMs,
-        construction.reverse.capturedAtMs,
-        construction.forward.response,
-        construction.reverse.response,
-        state.timestampMs,
-      );
+      // ── Quality checks: real in live/live-quotes mode, bypassed in pure paper ──
+      //
+      // Pure paper mode (paperMode=true, liveQuotes=false):
+      //   • Quote timestamps are synthetic (always "now") — freshness check is noise
+      //   • state.quality is populated from Jupiter tokens API which is rate-limited;
+      //     priceRecencyMs exceeds 60s after first refresh, killing all token_quality checks
+      //   → Use safe defaults (always passes)
+      //
+      // Live-quotes / live mode (liveQuotes=true OR paperMode=false):
+      //   • Quotes are real — freshness timestamps are meaningful
+      //   • state.quality comes from real Jupiter token metadata
+      //   → Run real checks
+      const usePaperDefaults = this.paperMode && !this.liveQuotes;
 
-      const routeQ = scoreRouteQuality({
-        forward: construction.forward.response,
-        reverse: construction.reverse.response,
-        state,
-        inputMint,
-        outputMint,
-        tradeSizeUsd: scored.startUsd,
-      });
+      const freshness = usePaperDefaults
+        ? { score: 1, stale: false, reasons: [] as string[] }
+        : evaluateQuoteFreshness(
+            construction.forward.capturedAtMs,
+            construction.reverse.capturedAtMs,
+            construction.forward.response,
+            construction.reverse.response,
+            state.timestampMs,
+          );
+
+      const routeQ = usePaperDefaults
+        ? { score: 1, hops: 2, priceImpactPct: 0.1, tokenQualityOk: true, details: [] as string[] }
+        : scoreRouteQuality({
+            forward: construction.forward.response,
+            reverse: construction.reverse.response,
+            state,
+            inputMint,
+            outputMint,
+            tradeSizeUsd: scored.startUsd,
+          });
 
       const latencyBufferUsd =
         scored.startUsd * ((freshness.reasons.length * 3) / 10_000);

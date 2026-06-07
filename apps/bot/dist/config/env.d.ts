@@ -10,6 +10,12 @@ export interface BotEnv {
     tradeAmountUi: number;
     scanIntervalMs: number;
     paperMode: boolean;
+    /**
+     * Live-quotes mode — use real Jupiter quote API for divergence measurement
+     * while keeping execution simulated (paperMode=true required).
+     * Validates real route divergence before committing capital on mainnet.
+     */
+    liveQuotes: boolean;
     walletPublicKey?: string;
     /** Primary strategy id — `route_divergence_arb` | `round_trip_quote_arb` */
     primaryStrategy: string;
@@ -34,6 +40,24 @@ export interface BotEnv {
     enablePumpEdge: boolean;
     /** Helius API key for pump launch monitoring. */
     heliusApiKey?: string;
+    /** Enable Jito bundle submission for MEV protection. */
+    jitoEnabled: boolean;
+    /** Jito tip in lamports added to arb bundles. */
+    jitoTipLamports: number;
+    /** Minimum net profit in lamports required to execute a trade. */
+    minProfitLamports: number;
+    /** Port for the Express monitoring dashboard. */
+    monitorPort: number;
+    /** Pino log level (trace | debug | info | warn | error). */
+    logLevel: string;
+    /** Path to the SQLite trade log database. */
+    sqlitePath: string;
+    /** PnL drop in SOL that triggers a Telegram/Discord alert (negative, e.g. -0.1). */
+    alertPnlThresholdSol: number;
+    /** Comma-separated Orca Whirlpool pool addresses to monitor. */
+    orcaPoolAddresses: string[];
+    /** Spread in bps that triggers an arb opportunity event. Default 80 (0.8%). */
+    spreadThresholdBps: number;
 }
 export declare function loadEnv(): BotEnv;
 /** Well-known mints used by default scanners. */

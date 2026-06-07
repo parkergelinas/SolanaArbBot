@@ -1,46 +1,60 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { motion } from 'framer-motion';
+import { cn } from '@/lib/cn';
 
 interface PanelProps {
-  title: string;
-  subtitle?: string;
+  title?: string;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
-  bodyClassName?: string;
-  noPadding?: boolean;
+  compact?: boolean;
+  flush?: boolean;
+  /** Subtle left-edge accent bar colour (Tailwind bg class). */
+  accent?: string;
+  animate?: boolean;
 }
 
-export default function Panel({
+export function Panel({
   title,
-  subtitle,
   action,
   children,
   className = '',
-  bodyClassName = '',
-  noPadding = false,
+  compact,
+  flush,
+  accent,
+  animate = true,
 }: PanelProps) {
+  const bodyPad = flush ? '' : compact ? 'p-2' : 'p-4';
+
   return (
-    <section
-      className={`flex flex-col min-h-0 min-w-0 bg-ds-surface border-ds-border ${className}`}
+    <motion.section
+      initial={animate ? { opacity: 0, y: 6 } : false}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.22, ease: 'easeOut' }}
+      className={cn(
+        'relative bg-ds-surface border border-ds-border rounded-terminal overflow-hidden flex flex-col min-h-0',
+        className,
+      )}
     >
-      <header className="flex items-center justify-between h-8 px-3 border-b border-ds-border shrink-0 gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-[11px] font-medium uppercase tracking-[0.1em] text-ds-text-secondary truncate">
+      {accent && (
+        <span className={cn('absolute inset-y-0 left-0 w-[2px]', accent)} />
+      )}
+      {title && (
+        <div
+          className={cn(
+            'flex items-center justify-between border-b border-ds-border shrink-0',
+            compact ? 'px-3 py-2' : 'px-4 py-2.5',
+          )}
+        >
+          <span className="text-[10px] uppercase tracking-[0.14em] text-ds-text-muted font-semibold">
             {title}
           </span>
-          {subtitle && (
-            <span className="text-[11px] font-mono text-ds-text-muted truncate hidden sm:inline">
-              {subtitle}
-            </span>
-          )}
+          {action}
         </div>
-        {action && <div className="shrink-0">{action}</div>}
-      </header>
-      <div className={`flex-1 min-h-0 min-w-0 ${noPadding ? '' : ''} ${bodyClassName}`}>
-        {children}
-      </div>
-    </section>
+      )}
+      {flush ? children : <div className={bodyPad}>{children}</div>}
+    </motion.section>
   );
 }
