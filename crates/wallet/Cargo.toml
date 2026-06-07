@@ -26,7 +26,8 @@ rand          = "0.8"
 zeroize = { version = "1", features = ["derive"] }
 
 # Encoding
-bs58 = "0.5"
+bs58    = "0.5"
+base64  = "0.22"
 
 # Async HTTP JSON-RPC (rustls — avoids openssl in the wallet crate).
 reqwest = { workspace = true }

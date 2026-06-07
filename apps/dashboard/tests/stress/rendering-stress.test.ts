@@ -51,7 +51,7 @@ describe('rendering stress', () => {
 
     expect(received).toHaveLength(0);
     while (rafCb) {
-      const cb = rafCb;
+      const cb = rafCb as FrameRequestCallback;
       rafCb = null;
       cb(0);
       if (received.length < BATCHES) {

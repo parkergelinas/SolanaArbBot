@@ -15,13 +15,25 @@ pub struct ThresholdTable {
     pub momentum_accel_x1000: u32,
     pub min_strength_x1000: u32,
     pub cooldown_slots: u64,
-    /// Minimum slots between any two globally queued intents (item 5).
+    /// Minimum slots between any two globally queued intents (global rate limiter).
     pub global_cooldown_slots: u64,
     pub max_exposure_x100: u64,
     pub default_trade_lamports: u64,
     pub default_trade_usd_x100: u64,
-    /// Maximum acceptable loss in lamports per trade (item 7).
+    /// Maximum acceptable loss in lamports per trade (per-trade circuit breaker).
     pub max_loss_lamports: u64,
+
+    // ── Circuit breaker thresholds ────────────────────────────────────────────
+    /// Halt if `consecutive_losses` reaches this many in a row. 0 = disabled.
+    pub max_consecutive_losses: u32,
+    /// Halt if `session_loss_lamports` reaches this total. 0 = disabled.
+    pub max_session_loss_lamports: u64,
+
+    // ── Velocity limiter thresholds ───────────────────────────────────────────
+    /// Maximum intents allowed within `velocity_window_slots`. 0 = no limit.
+    pub max_trades_per_window: u32,
+    /// Width of the velocity window in slots (≈150 slots ≈ 1 minute).
+    pub velocity_window_slots: u64,
 }
 
 impl ThresholdTable {
@@ -29,6 +41,8 @@ impl ThresholdTable {
     #[must_use]
     pub fn from_config(cfg: &HotPathConfig, max_exposure_usd_x100: u64) -> Self {
         const DEFAULT_TRADE_LAMPORTS: u64 = 100_000_000; // 0.1 SOL
+        // ~150 slots per minute at 400ms/slot.
+        const SLOTS_PER_MINUTE: u64 = 150;
         Self {
             min_edge_bps: cfg.min_edge_bps,
             max_slippage_bps: cfg.max_slippage_bps,
@@ -41,6 +55,10 @@ impl ThresholdTable {
             default_trade_lamports: DEFAULT_TRADE_LAMPORTS,
             default_trade_usd_x100: 200_00, // $200 notional
             max_loss_lamports: DEFAULT_TRADE_LAMPORTS * cfg.max_loss_bps as u64 / 10_000,
+            max_consecutive_losses: cfg.max_consecutive_losses,
+            max_session_loss_lamports: cfg.max_session_loss_lamports,
+            max_trades_per_window: cfg.max_trades_per_minute,
+            velocity_window_slots: SLOTS_PER_MINUTE,
         }
     }
 }

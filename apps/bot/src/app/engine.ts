@@ -1,3 +1,4 @@
+import { Connection } from '@solana/web3.js';
 import { loadEnv, SOL_MINT, USDC_MINT } from '../config/env.js';
 import { logger } from '../logger.js';
 import { getTotalPnlUsd } from '../db/sqlite.js';
@@ -92,13 +93,21 @@ export class BotEngine {
     cooldownUntilMs: 0,
   };
 
+  /** Dedicated Connection for priority-fee sampling (separate from JupiterClient internals). */
+  private readonly connection: Connection;
   private stats: EngineStats = { scans: 0, actionable: 0, executed: 0, rejected: 0, pairCount: 0 };
   private failureRate = 0;
   private running = false;
   private tradeAmountUi: number;
   private initialized = false;
+  /** Cached SOL price — refreshed every scan, used by event-driven arb handler. */
+  private lastSolPriceUsd = 170;
+  /** Cached priority fee — refreshed every N scans to avoid per-scan RPC overhead. */
+  private lastPriorityFeeMicroLamports = 50_000;
+  private priorityFeeRefreshAt = 0; // epoch ms
 
   constructor() {
+    this.connection = new Connection(this.env.rpcUrl, 'confirmed');
     this.tradeAmountUi = this.env.tradeAmountUi;
 
     const routeDiv = new RouteDivergenceArbStrategy(
@@ -238,6 +247,25 @@ export class BotEngine {
       tokenLimit: 200,
     });
 
+    // Cache SOL price for event-driven handler (no access to state there).
+    this.lastSolPriceUsd = state.solPriceUsd;
+
+    // Refresh priority fee estimate every 60 s (10 scans at default 6-s interval).
+    // Avoids adding a synchronous RPC call on every scan while keeping the value fresh.
+    const now = Date.now();
+    if (now > this.priorityFeeRefreshAt) {
+      this.connection
+        .getRecentPrioritizationFees()
+        .then((fees: Array<{ prioritizationFee: number; slot: number }>) => {
+          if (!fees.length) return;
+          const sorted = fees.map((f) => f.prioritizationFee).sort((a, b) => a - b);
+          const p75 = sorted[Math.floor(sorted.length * 0.75)] ?? 50_000;
+          this.lastPriorityFeeMicroLamports = Math.max(5_000, Math.min(500_000, p75));
+        })
+        .catch(() => undefined);
+      this.priorityFeeRefreshAt = now + 60_000;
+    }
+
     // Keep the cross-DEX detector's fee math current with live SOL price
     this.opportunityDetector.updateSolPrice(state.solPriceUsd);
 
@@ -276,7 +304,7 @@ export class BotEngine {
     this.stats.actionable += 1;
 
     const liq = state.quality[decision.inputMint]?.liquidityUsd ?? 0;
-    this.tradeAmountUi = computeDynamicSize({
+    const sizing = computeDynamicSize({
       baseAmountUi: this.env.tradeAmountUi,
       spreadBps: decision.grossSpreadBps,
       liquidityUsd: liq,
@@ -284,8 +312,13 @@ export class BotEngine {
       routeQualityScore: decision.routeQualityScore,
       recentFailureRate: this.failureRate,
       minAmountUi: 0.1,
-      maxAmountUi: 10,
+      maxAmountUi: Math.min(1.0, this.env.tradeAmountUi * 2), // hard cap: 1 SOL
+      solPriceUsd: state.solPriceUsd,
+      jitoActive: this.env.jitoEnabled,
+      priorityFeeMicroLamports: this.lastPriorityFeeMicroLamports,
     });
+    this.tradeAmountUi = sizing.amountUi;
+    logger.debug({ sizing: sizing.rationale, pair: decision.pairLabel }, 'bot: trade size computed');
 
     // Use hardened executor in live mode, paper executor otherwise
     this.inFlightCount += 1;
@@ -352,13 +385,32 @@ export class BotEngine {
     if (!this.running) return;
     if (this.hardenedExecutor.deadManSwitch.isHalted()) return;
 
+    // Compute a fresh size for this specific opportunity — the event fires
+    // independently of the scan loop so we can't rely on this.tradeAmountUi.
+    const extSizing = computeDynamicSize({
+      baseAmountUi: this.env.tradeAmountUi,
+      spreadBps: opp.grossSpreadBps,
+      liquidityUsd: 500_000, // Orca SOL/USDC is deep; conservative floor for unknowns
+      volatilityPct: 2,
+      routeQualityScore: 0.8,
+      recentFailureRate: this.failureRate,
+      minAmountUi: 0.1,
+      maxAmountUi: Math.min(1.0, this.env.tradeAmountUi * 2),
+      solPriceUsd: this.lastSolPriceUsd,
+      jitoActive: this.env.jitoEnabled,
+      priorityFeeMicroLamports: this.lastPriorityFeeMicroLamports,
+    });
+    logger.debug(
+      { sizing: extSizing.rationale, opp: `${opp.dex1}→${opp.dex2}` },
+      'bot: cross-dex trade size computed',
+    );
+
     const decision: import('../strategy/types.js').TradeDecision = {
       strategyId: 'cross_dex_arb',
       pairLabel: `${opp.dex1}→${opp.dex2}:${opp.tokenIn.slice(0, 6)}`,
       inputMint: opp.tokenIn,
       outputMint: opp.tokenOut,
-      // Size using current dynamic trade amount (SOL-denominated pairs assumed)
-      amountInAtomic: String(Math.floor(this.tradeAmountUi * 1e9)),
+      amountInAtomic: String(Math.floor(extSizing.amountUi * 1e9)),
       expectedOutAtomic: '0',
       netProfitUsd: opp.profitUsd,
       grossSpreadBps: opp.grossSpreadBps,

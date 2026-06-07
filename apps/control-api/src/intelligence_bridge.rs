@@ -56,6 +56,7 @@ fn dispatch_intelligence_message(
     bus: &SignalBus,
     state: &AppState,
     msg: IntelligenceMessage,
+    rt: &tokio::runtime::Handle,
 ) {
     let live = match msg {
         IntelligenceMessage::WhaleAlert(a) => whale_contract_to_live(&a),
@@ -65,7 +66,9 @@ fn dispatch_intelligence_message(
     if let Some(accepted) = bus.publish_blocking(live) {
         let dto = SignalEventDto::from(&accepted);
         let state = state.clone();
-        tokio::spawn(async move {
+        // Use the captured tokio Handle — `tokio::spawn` would panic here because
+        // this runs on a bare `std::thread`, outside any async context.
+        rt.spawn(async move {
             state.ingest_signal(dto).await;
         });
     }
@@ -81,10 +84,15 @@ pub fn spawn_in_process_intelligence_bridge(
     let (msg_tx, msg_rx) = crossbeam_channel::unbounded();
     spawn_intelligence_pipeline(pipeline_rx, msg_tx, whale_threshold_sol);
 
+    // Capture the tokio Handle from the current async context BEFORE spawning
+    // the OS thread — the thread itself has no runtime and cannot call
+    // `tokio::spawn` or `Handle::current()` directly.
+    let rt = tokio::runtime::Handle::current();
+
     std::thread::spawn(move || {
         info!("intelligence in-process bridge online (whale threshold {whale_threshold_sol} SOL)");
         while let Ok(msg) = msg_rx.recv() {
-            dispatch_intelligence_message(&bus, &state, msg);
+            dispatch_intelligence_message(&bus, &state, msg, &rt);
         }
     });
 }

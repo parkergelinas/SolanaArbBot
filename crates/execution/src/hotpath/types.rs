@@ -66,6 +66,11 @@ pub enum RiskVerdict {
     RejectedTradingDisabled,
     /// Fired when estimated cost in lamports exceeds `max_loss_lamports` (per-trade circuit breaker).
     RejectedMaxLoss,
+    /// Circuit breaker tripped: consecutive losses or session loss cap exceeded.
+    /// All trading halts until manually reset or the process restarts.
+    RejectedCircuitBreaker,
+    /// Velocity cap: too many trades submitted within the rolling time window.
+    RejectedVelocityLimit,
 }
 
 impl RiskVerdict {

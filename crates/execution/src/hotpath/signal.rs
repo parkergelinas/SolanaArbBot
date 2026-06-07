@@ -72,6 +72,10 @@ mod tests {
             default_trade_lamports: 100_000_000,
             default_trade_usd_x100: 200_00,
             max_loss_lamports: 1_000_000,
+            max_consecutive_losses: 5,
+            max_session_loss_lamports: 1_000_000_000,
+            max_trades_per_window: 30,
+            velocity_window_slots: 150,
         }
     }
 

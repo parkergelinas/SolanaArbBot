@@ -34,6 +34,8 @@ pub mod error;
 pub mod guard;
 pub mod keypair;
 pub mod rpc;
+pub mod sub_account;
+pub mod transfer;
 pub mod types;
 
 // ── Flat re-exports ───────────────────────────────────────────────────────────
@@ -47,4 +49,6 @@ pub use guard::{
 };
 pub use keypair::WalletKeypair;
 pub use rpc::{make_rpc, Network, RpcClientWrapper, SimulationResult};
+pub use sub_account::TradingSubAccount;
+pub use transfer::{build_signed_transfer_tx, build_transfer_message, send_sol_transfer, RENT_EXEMPT_MIN_LAMPORTS};
 pub use types::Blockhash;

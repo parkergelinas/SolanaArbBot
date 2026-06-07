@@ -157,7 +157,11 @@ impl WalletKeypair {
         self.sign_message(tx_bytes)
     }
 
-    fn from_64_bytes(bytes: &[u8]) -> WalletResult<Self> {
+    /// Parse a 64-byte Solana keypair (32-byte secret || 32-byte pubkey).
+    ///
+    /// `pub(crate)` so the sub-account loader can reuse this without going
+    /// through the dry_run gate (sub-accounts always have their own key).
+    pub(crate) fn from_64_bytes(bytes: &[u8]) -> WalletResult<Self> {
         if bytes.len() != 64 {
             return Err(WalletError::InvalidKeyFormat(format!(
                 "expected 64 bytes, got {}",
