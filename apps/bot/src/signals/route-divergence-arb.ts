@@ -3,6 +3,8 @@ import type { MarketState, RouteConstructionSnapshot } from '../market/state.js'
 import type { PairRegistry } from '../market/pair-registry.js';
 import { DEFAULT_SCAN_PAIRS } from '../strategy/arb-scanner.js';
 import { scanMultipleRouteDivergences } from '../strategy/multi-pair-scanner.js';
+import { simulatePaperDivergence } from '../strategy/paper-quote-simulator.js';
+import { USDC_MINT } from '../config/env.js';
 import { evaluateQuoteFreshness, scoreRouteQuality } from '../strategy/route-quality.js';
 import { estimateFeesUsd, scoreRoundTripUsd } from '../strategy/scorer.js';
 import type { QuotePairSnapshot } from '../jupiter/types.js';
@@ -17,10 +19,10 @@ export interface RouteDivergenceConfig {
 }
 
 export const DEFAULT_ROUTE_DIVERGENCE_CONFIG: RouteDivergenceConfig = {
-  minDivergenceBps: 20,
-  minSurvivingEdgeBps: 10,
-  pairsPerScan: 10,
-  scanConcurrency: 2,
+  minDivergenceBps: Number(process.env.BOT_MIN_DIVERGENCE_BPS ?? '8'),
+  minSurvivingEdgeBps: Number(process.env.BOT_MIN_SURVIVING_EDGE_BPS ?? '4'),
+  pairsPerScan: Number(process.env.BOT_PAIRS_PER_SCAN ?? '10'),
+  scanConcurrency: 3,
 };
 
 function constructionToPair(
@@ -40,15 +42,19 @@ function constructionToPair(
  */
 export class RouteDivergenceArbStrategy implements ScannableStrategy {
   readonly id = 'route_divergence_arb';
+  private scanTick = 0;
 
   constructor(
     private readonly client: JupiterClient,
     private readonly tradeAmountUi: number,
     private readonly pairRegistry: PairRegistry | null = null,
     private readonly cfg: RouteDivergenceConfig = DEFAULT_ROUTE_DIVERGENCE_CONFIG,
+    private readonly paperMode = false,
   ) {}
 
   async scan(state: MarketState): Promise<MarketState> {
+    this.scanTick += 1;
+
     const pairs = this.pairRegistry
       ? this.pairRegistry.nextBatch(this.cfg.pairsPerScan)
       : DEFAULT_SCAN_PAIRS;
@@ -59,6 +65,26 @@ export class RouteDivergenceArbStrategy implements ScannableStrategy {
       this.tradeAmountUi,
       { slippageBps: 50, concurrency: this.cfg.scanConcurrency },
     );
+
+    // ── Paper-mode fallback ───────────────────────────────────────────────
+    // When Jupiter quotes fail entirely (all 429d), synthesise divergence
+    // from live DexScreener prices so the strategy can still exercise its
+    // logic during paper-trading sessions.
+    if (this.paperMode && result.divergences.size === 0) {
+      const quotePriceUsd = state.pricesUsd[USDC_MINT] ?? 1.0;
+      for (const pair of pairs) {
+        const basePrice = state.pricesUsd[pair.baseMint];
+        if (!basePrice) continue;
+        const sim = simulatePaperDivergence(
+          pair,
+          this.tradeAmountUi,
+          basePrice,
+          quotePriceUsd,
+          this.scanTick,
+        );
+        if (sim) result.divergences.set(pair.label, sim);
+      }
+    }
 
     const multiDivergences: Record<string, import('../market/state.js').RouteDivergenceSnapshot> = {};
     for (const [label, div] of result.divergences) {

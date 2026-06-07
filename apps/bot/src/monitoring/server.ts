@@ -10,6 +10,8 @@ import express, { type Request, type Response } from 'express';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { getRecentTrades, getTotalPnlUsd, getTradeSummary } from '../db/sqlite.js';
 import { logger } from '../logger.js';
+import type { TradeJournal } from '../state/journal.js';
+import type { EngineStats } from '../app/engine.js';
 
 export interface MonitoringServerOptions {
   port?: number;
@@ -17,6 +19,10 @@ export interface MonitoringServerOptions {
   walletPublicKey?: string;
   /** Returns true if the bot is currently running and not halted. */
   isHealthy?: () => boolean;
+  /** Live journal for /journal endpoint. */
+  journal?: TradeJournal;
+  /** Live engine stats for /scan-stats endpoint. */
+  getStats?: () => EngineStats;
 }
 
 const STARTED_AT = Date.now();
@@ -94,6 +100,23 @@ export function startMonitoringServer(opts: MonitoringServerOptions = {}): () =>
       logger.error({ err }, 'GET /trades error');
       res.status(500).json({ error: 'internal_error' });
     }
+  });
+
+  // ── GET /journal ───────────────────────────────────────────────────────────
+  app.get('/journal', (req: Request, res: Response) => {
+    if (!opts.journal) { res.json({ events: [] }); return; }
+    const type = req.query['type'] as string | undefined;
+    const limit = Math.min(Number(req.query['limit'] ?? '100'), 500);
+    const events = type
+      ? opts.journal.byType(type as Parameters<TradeJournal['byType']>[0])
+      : [...opts.journal.all()];
+    res.json({ count: events.length, events: events.slice(-limit) });
+  });
+
+  // ── GET /scan-stats ────────────────────────────────────────────────────────
+  app.get('/scan-stats', (_req: Request, res: Response) => {
+    const stats = opts.getStats?.() ?? null;
+    res.json(stats ?? { error: 'stats_unavailable' });
   });
 
   const server = app.listen(port, () => {

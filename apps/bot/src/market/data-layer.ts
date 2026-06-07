@@ -7,6 +7,21 @@ import {
   type MarketState,
   tokenQualityFromMeta,
 } from './state.js';
+import { STATIC_SOLANA_TOKENS } from './solana-mint-map.js';
+import { fetchDexScreenerPrices } from './dexscreener-client.js';
+
+/** Minimal JupiterTokenMeta stubs from the static list — used as 429 fallback. */
+function staticFallbackTokens(): JupiterTokenMeta[] {
+  return STATIC_SOLANA_TOKENS.map((t) => ({
+    id: t.mint,
+    symbol: t.symbol,
+    name: t.name,
+    decimals: t.decimals,
+    organicScore: 80,
+    liquidity: 1_000_000,
+    tags: ['verified', 'strict'],
+  }));
+}
 
 export interface UniverseOptions {
   filter?: MarketFilterConfig;
@@ -23,7 +38,7 @@ export class TokenUniverse {
 
   constructor(
     private readonly client: JupiterClient,
-    ttlMs = 300_000,
+    ttlMs = 900_000, // 15 min — avoids 429 on rapid restarts
   ) {
     this.ttlMs = ttlMs;
   }
@@ -33,8 +48,22 @@ export class TokenUniverse {
     if (!force && this.cache.length > 0 && now - this.loadedAtMs < this.ttlMs) {
       return this.cache;
     }
-    this.cache = await this.client.fetchVerifiedTokens(5000);
-    this.loadedAtMs = now;
+    try {
+      this.cache = await this.client.fetchVerifiedTokens(5000);
+      this.loadedAtMs = now;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (this.cache.length === 0) {
+        // First load failed — seed from static list so the bot can still run
+        this.cache = staticFallbackTokens();
+        this.loadedAtMs = now;
+        if (!msg.includes('429')) throw err; // Non-429 errors still surface
+      } else if (msg.includes('429')) {
+        // Rate-limited on refresh — extend TTL and keep stale cache
+        this.loadedAtMs = now;
+      }
+      // Non-429 refresh errors: keep stale cache, let next tick retry
+    }
     return this.cache;
   }
 
@@ -101,6 +130,22 @@ export class MarketDataLayer {
       decimals[mint] = meta?.decimals ?? (mint === 'So11111111111111111111111111111111111111112' ? 9 : 6);
       if (meta) {
         quality[mint] = tokenQualityFromMeta(meta, 0, now);
+      }
+    }
+
+    // ── DexScreener price fallback ────────────────────────────────────────
+    // When Jupiter prices are unavailable (429/offline), fetch from DexScreener.
+    // This keeps state.pricesUsd and state.solPriceUsd populated so strategies
+    // can run in paper mode without depending on Jupiter's price API.
+    const missingPrices = priceMints.filter((m) => !pricesUsd[m]);
+    if (missingPrices.length > 0) {
+      try {
+        const dsPrices = await fetchDexScreenerPrices(missingPrices);
+        for (const [mint, price] of Object.entries(dsPrices)) {
+          if (price > 0) pricesUsd[mint] = price;
+        }
+      } catch {
+        // Silent — partial prices are fine; bot will use whatever is available
       }
     }
 

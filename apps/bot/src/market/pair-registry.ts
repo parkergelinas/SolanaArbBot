@@ -171,11 +171,14 @@ export class PairRegistry {
   > {
     const jupiterTokens = await this.client.fetchVerifiedTokens(5000).catch(() => []);
     const verifiedMints = new Set(jupiterTokens.map((t) => t.id));
+    // When the token API is unavailable (429/offline), trust the pre-curated static list
+    // entirely rather than silently shrinking the pair universe.
+    const useVerified = verifiedMints.size > 0;
 
     return STATIC_SOLANA_TOKENS.filter(
       (t) => t.symbol !== 'SOL' && t.symbol !== 'USDC' && t.symbol !== 'USDT',
     )
-      .filter((t) => verifiedMints.has(t.mint) || t.cmcRankHint !== undefined)
+      .filter((t) => !useVerified || verifiedMints.has(t.mint) || t.cmcRankHint !== undefined)
       .map((t) => ({
         symbol: t.symbol,
         mint: t.mint,

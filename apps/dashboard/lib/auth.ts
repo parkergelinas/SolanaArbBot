@@ -31,10 +31,13 @@ function fromBase64Url(s: string): ArrayBuffer {
 }
 
 async function getHmacKey(): Promise<CryptoKey> {
-  const secret = process.env.AUTH_SECRET ?? 'dev-secret-change-me-in-production';
+  const secret = process.env.AUTH_SECRET;
+  if (!secret && process.env.NODE_ENV === 'production') {
+    throw new Error('AUTH_SECRET env var must be set in production (generate: openssl rand -hex 32)');
+  }
   return globalThis.crypto.subtle.importKey(
     'raw',
-    new TextEncoder().encode(secret),
+    new TextEncoder().encode(secret ?? 'dev-secret-change-me-in-production'),
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign', 'verify'],
@@ -63,11 +66,14 @@ const DEFAULT_APPROVED_WALLETS = ['127fFEvPQ4FtaLQGmNC9MNQBPA6UJ9HftndJNxJNDVJE'
 
 export function isApprovedWallet(walletAddress: string): boolean {
   const approved = process.env.APPROVED_WALLETS ?? '';
-  // If env var is not set, fall back to the default list.
-  // If env var is set to "disabled" or "*", allow any wallet.
-  if (!approved || approved === '*' || approved === 'disabled') {
-    return DEFAULT_APPROVED_WALLETS.includes(walletAddress) || !approved;
-  }
+
+  // Wildcard / open mode — any wallet can log in (dev/staging only).
+  if (approved === '*' || approved === 'disabled') return true;
+
+  // Env var unset: fall back to the built-in default list.
+  if (!approved) return DEFAULT_APPROVED_WALLETS.includes(walletAddress);
+
+  // Explicit allowlist — comma-separated base58 pubkeys.
   return approved
     .split(',')
     .map((s) => s.trim())

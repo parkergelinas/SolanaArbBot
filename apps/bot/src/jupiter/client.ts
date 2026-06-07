@@ -36,6 +36,8 @@ function validateSwapResponse(json: unknown): SwapTransactionResponse {
 }
 
 export class JupiterClient {
+  private _429BackoffUntil = 0; // epoch ms — shared across all calls on this client
+
   constructor(private readonly env: BotEnv) {}
 
   private headers(): Record<string, string> {
@@ -44,6 +46,22 @@ export class JupiterClient {
       h['x-api-key'] = this.env.jupiterApiKey;
     }
     return h;
+  }
+
+  /** Throws `RateLimited` error class when 429 backoff is active. */
+  private async fetchWithBackoff(url: string, init?: RequestInit): Promise<Response> {
+    const now = Date.now();
+    if (now < this._429BackoffUntil) {
+      throw new Error(`Jupiter rate-limited — retry after ${Math.ceil((this._429BackoffUntil - now) / 1000)}s`);
+    }
+    const resp = await fetch(url, init);
+    if (resp.status === 429) {
+      // Back off 20s + up to 10s jitter before retrying
+      this._429BackoffUntil = Date.now() + 20_000 + Math.random() * 10_000;
+      const body = await resp.text().catch(() => '');
+      throw new Error(`Jupiter quote HTTP 429: ${body.slice(0, 120)}`);
+    }
+    return resp;
   }
 
   buildQuoteUrl(req: SwapQuoteRequest): string {
@@ -60,7 +78,7 @@ export class JupiterClient {
 
   async getQuote(req: SwapQuoteRequest): Promise<SwapQuoteResponse> {
     const url = this.buildQuoteUrl(req);
-    const resp = await fetch(url, { headers: this.headers() });
+    const resp = await this.fetchWithBackoff(url, { headers: this.headers() });
     if (!resp.ok) {
       const body = await resp.text().catch(() => '');
       throw new Error(`Jupiter quote HTTP ${resp.status}: ${body.slice(0, 200)}`);
@@ -86,7 +104,7 @@ export class JupiterClient {
   async getPrices(mints: string[]): Promise<PriceV3Response> {
     if (mints.length === 0) return {};
     const url = `${this.env.jupiterPriceUrl}?ids=${mints.join(',')}`;
-    const resp = await fetch(url, { headers: this.headers() });
+    const resp = await this.fetchWithBackoff(url, { headers: this.headers() });
     if (!resp.ok) {
       throw new Error(`Jupiter price HTTP ${resp.status}`);
     }
