@@ -12,6 +12,7 @@ import { getRecentTrades, getTotalPnlUsd, getTradeSummary } from '../db/sqlite.j
 import { logger } from '../logger.js';
 import type { TradeJournal } from '../state/journal.js';
 import type { EngineStats } from '../app/engine.js';
+import { computeAnalytics } from '../analytics/metrics.js';
 
 export interface MonitoringServerOptions {
   port?: number;
@@ -117,6 +118,39 @@ export function startMonitoringServer(opts: MonitoringServerOptions = {}): () =>
   app.get('/scan-stats', (_req: Request, res: Response) => {
     const stats = opts.getStats?.() ?? null;
     res.json(stats ?? { error: 'stats_unavailable' });
+  });
+
+  // ── GET /analytics ─────────────────────────────────────────────────────────
+  // Full session analytics: hit rate, avg profit, rejection breakdown, per-pair win rates.
+  app.get('/analytics', (_req: Request, res: Response) => {
+    if (!opts.journal) { res.json({ error: 'journal_unavailable' }); return; }
+    const events = [...opts.journal.all()];
+    const snap = computeAnalytics(events);
+
+    // Extra fields useful for post-session review
+    const executions = events.filter((e) => e.type === 'execution');
+    const realized = executions.map((e) => e.realizedProfitUsd ?? 0).filter(Number.isFinite);
+    const sessionPnl = realized.reduce((a, b) => a + b, 0);
+    const uptimeSec = (Date.now() - STARTED_AT) / 1000;
+    const tradesPerHour = executions.length / (uptimeSec / 3600);
+
+    // Profit distribution buckets
+    const buckets: Record<string, number> = {
+      'loss':      realized.filter((v) => v < 0).length,
+      '$0-$0.10':  realized.filter((v) => v >= 0 && v < 0.10).length,
+      '$0.10-$0.25': realized.filter((v) => v >= 0.10 && v < 0.25).length,
+      '$0.25-$0.50': realized.filter((v) => v >= 0.25 && v < 0.50).length,
+      '$0.50-$1':  realized.filter((v) => v >= 0.50 && v < 1.00).length,
+      '$1+':       realized.filter((v) => v >= 1.00).length,
+    };
+
+    res.json({
+      ...snap,
+      sessionPnlUsd: Number(sessionPnl.toFixed(6)),
+      tradesPerHour: Number(tradesPerHour.toFixed(1)),
+      uptimeMinutes: Number((uptimeSec / 60).toFixed(1)),
+      profitDistribution: buckets,
+    });
   });
 
   const server = app.listen(port, () => {

@@ -2,8 +2,11 @@ import type { BotEnv } from '../config/env.js';
 import type { JupiterTokenMeta, PriceV3Response, SwapQuoteRequest, SwapQuoteResponse, SwapTransactionRequest, SwapTransactionResponse } from './types.js';
 export declare class JupiterClient {
     private readonly env;
+    private _429BackoffUntil;
     constructor(env: BotEnv);
     private headers;
+    /** Throws `RateLimited` error class when 429 backoff is active. */
+    private fetchWithBackoff;
     buildQuoteUrl(req: SwapQuoteRequest): string;
     getQuote(req: SwapQuoteRequest): Promise<SwapQuoteResponse>;
     getSwapTransaction(req: SwapTransactionRequest): Promise<SwapTransactionResponse>;

@@ -1,5 +1,6 @@
 import type { JupiterTokenMeta, QuotePairSnapshot, QuoteSnapshot } from '../jupiter/types.js';
 import type { PumpEdgeSignal } from '../pump/edge-scorer.js';
+import type { CrossDexQuote } from '../strategy/cross-dex-scanner.js';
 
 /** One round-trip quote capture under a specific route construction policy. */
 export interface RouteConstructionSnapshot {
@@ -47,6 +48,8 @@ export interface MarketState {
   multiDivergences?: Record<string, RouteDivergenceSnapshot>;
   /** Pump.fun edge signals ranked by score. */
   pumpEdges?: PumpEdgeSignal[];
+  /** Cross-DEX (Raydium vs Orca) spread opportunities, sorted by spreadBps desc. */
+  crossDexOpportunities?: CrossDexQuote[];
   solPriceUsd: number;
 }
 

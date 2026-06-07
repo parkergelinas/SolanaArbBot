@@ -1627,7 +1627,9 @@ impl Default for ArbitrageConfig {
             min_spread_bps: 10,
             max_route_hops: 3,
             jito_tip_pct: 0.50,
-            jito_tip_min_lamports: 5_000,
+            // 50_000 lamports (~$0.0085 at $170 SOL) is the practical floor for
+            // competitive bundle landing. 5_000 lamports never wins a slot.
+            jito_tip_min_lamports: 50_000,
             jito_tip_max_pct: 0.65,
             bundle_acceptance_target: 0.70,
             parallel_endpoints: true,
@@ -1884,16 +1886,28 @@ pub struct HotPathConfig {
 
     // ── Circuit breaker ───────────────────────────────────────────────────────
     /// Trip the circuit breaker after this many consecutive losing trades.
-    /// 0 = disabled. Recommended mainnet value: 5.
+    /// 0 = disabled. Recommended mainnet value: 3–5.
     pub max_consecutive_losses: u32,
     /// Trip the circuit breaker when total session loss exceeds this many
-    /// lamports. 0 = disabled. Recommended mainnet value: 1_000_000_000 (1 SOL).
+    /// lamports. 0 = disabled.
+    /// Default: 250_000_000 (0.25 SOL) — conservative starting value for a
+    /// 2–3 SOL sub-account. Raise only after validating positive edge in paper.
     pub max_session_loss_lamports: u64,
 
     // ── Velocity limiter ──────────────────────────────────────────────────────
     /// Maximum trades submitted per rolling one-minute window.
-    /// 0 = no limit. Recommended mainnet value: 30.
+    /// 0 = no limit. Recommended mainnet value: 20–30.
     pub max_trades_per_minute: u32,
+
+    // ── Signal quality / sandwich defence ────────────────────────────────────
+    /// Reject signals whose slot age exceeds this many slots behind
+    /// `current_slot`. Prevents acting on stale price data which leads to bad
+    /// fills and sand-wich risk. 0 = disabled. Default: 3 (~1.2 s).
+    pub max_signal_staleness_slots: u64,
+    /// Actual trade size in lamports; used for price-impact and worst-case loss
+    /// estimates in the risk gate. Must match your execution sizing.
+    /// Default: 100_000_000 (0.1 SOL).
+    pub trade_size_lamports: u64,
 }
 
 impl Default for HotPathConfig {
@@ -1908,16 +1922,26 @@ impl Default for HotPathConfig {
             min_signal_strength_x1000: 400,
             prefer_jito: true,
             max_jito_tip_lamports: 50_000,
-            allow_direct_rpc_fallback: true,
+            // SANDWICH DEFENCE: default OFF — naked RPC is mempool-visible.
+            // Enable only after confirming Jito is unavailable AND trade size
+            // stays below the MEV-safe ceiling for your spread range.
+            allow_direct_rpc_fallback: false,
             execution_queue_capacity: 256,
             paper_mode: true,
             global_cooldown_slots: 5,
             max_loss_bps: 100,
             // Circuit breaker — conservative mainnet defaults.
-            max_consecutive_losses: 5,
-            max_session_loss_lamports: 1_000_000_000, // 1 SOL
-            // Velocity — 30 trades/minute is generous for arb but safe.
-            max_trades_per_minute: 30,
+            // Halt on 3 losses in a row.
+            max_consecutive_losses: 3,
+            // 0.25 SOL session loss cap — suitable for a 2–3 SOL sub-account.
+            // Raise only after validating positive edge in paper mode.
+            max_session_loss_lamports: 250_000_000,
+            // Velocity — 20 trades/minute; reduces footprint during volatile periods.
+            max_trades_per_minute: 20,
+            // Signal staleness: reject price data > 3 slots old (~1.2 s).
+            max_signal_staleness_slots: 3,
+            // Matches default 0.1 SOL trade size; update if you change sizing.
+            trade_size_lamports: 100_000_000,
         }
     }
 }
@@ -1939,6 +1963,17 @@ impl HotPathConfig {
         }
         if self.max_trades_per_minute > 600 {
             return Err("hotpath.max_trades_per_minute must be ≤ 600 (10/s)".into());
+        }
+        if self.trade_size_lamports == 0 {
+            return Err("hotpath.trade_size_lamports must be > 0".into());
+        }
+        // Sandwich guard: direct RPC exposes txs to the mempool.
+        // Reject this combination when not in paper mode.
+        if !self.paper_mode && self.allow_direct_rpc_fallback && !self.prefer_jito {
+            return Err(
+                "hotpath: allow_direct_rpc_fallback=true with prefer_jito=false is unsafe in live mode — \
+                 all trades are mempool-visible and sandwichable".into(),
+            );
         }
         Ok(())
     }

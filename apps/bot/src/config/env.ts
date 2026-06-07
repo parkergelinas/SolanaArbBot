@@ -11,6 +11,12 @@ export interface BotEnv {
   tradeAmountUi: number;
   scanIntervalMs: number;
   paperMode: boolean;
+  /**
+   * Live-quotes mode — use real Jupiter quote API for divergence measurement
+   * while keeping execution simulated (paperMode=true required).
+   * Validates real route divergence before committing capital on mainnet.
+   */
+  liveQuotes: boolean;
   walletPublicKey?: string;
   /** Primary strategy id — `route_divergence_arb` | `round_trip_quote_arb` */
   primaryStrategy: string;
@@ -35,6 +41,14 @@ export interface BotEnv {
   enablePumpEdge: boolean;
   /** Helius API key for pump launch monitoring. */
   heliusApiKey?: string;
+  /** Enable cross-DEX arb strategy (Raydium vs Orca price comparison). */
+  enableCrossDexArb: boolean;
+  /** Min spread bps between Raydium and Orca to signal a core-pair trade. */
+  crossDexSpreadBps: number;
+  /** Min spread bps for pump.fun/memecoin pairs (wider threshold = higher edge). */
+  pumpSpreadBps: number;
+  /** Enable pump.fun memecoin spread scanning via DexScreener. */
+  enablePumpSpreads: boolean;
 
   // ── Execution hardening ──────────────────────────────────────────────────
   /** Enable Jito bundle submission for MEV protection. */
@@ -98,6 +112,7 @@ export function loadEnv(): BotEnv {
     tradeAmountUi: Number(env('BOT_TRADE_AMOUNT_UI', '1')),
     scanIntervalMs: Number(env('BOT_SCAN_INTERVAL_MS', '2000')),
     paperMode: env('BOT_PAPER_MODE', '1') !== '0',
+    liveQuotes: env('BOT_LIVE_QUOTES', '0') === '1',
     walletPublicKey: process.env.BOT_WALLET_PUBKEY?.trim(),
     primaryStrategy: env('BOT_PRIMARY_STRATEGY', 'route_divergence_arb'),
     enableMeanReversion: env('BOT_ENABLE_MEAN_REVERSION', '0') === '1',
@@ -109,7 +124,7 @@ export function loadEnv(): BotEnv {
     pairsPerScan: Number(env('BOT_PAIRS_PER_SCAN', '10')),
     pairQuoteMint: (env('BOT_PAIR_QUOTE_MINT', 'USDC') as 'USDC' | 'SOL'),
     cmcTopN: Number(env('BOT_CMC_TOP_N', '100')),
-    enablePumpEdge: env('BOT_ENABLE_PUMP_EDGE', '1') === '1',
+    enablePumpEdge: env('BOT_ENABLE_PUMP_EDGE', '0') === '1',
     heliusApiKey:
       process.env.HELIUS_API_KEY?.trim() ||
       process.env.SOLANA_ARB_DATA_SOURCES__HELIUS_API_KEY?.trim(),
@@ -121,6 +136,11 @@ export function loadEnv(): BotEnv {
     monitorPort: Number(env('MONITOR_PORT', '3333')),
     logLevel: env('LOG_LEVEL', 'info'),
     sqlitePath: env('SQLITE_PATH', './trades.db'),
+
+    enableCrossDexArb: env('BOT_ENABLE_CROSS_DEX_ARB', '0') === '1',
+    crossDexSpreadBps: Number(env('BOT_CROSS_DEX_SPREAD_BPS', '35')),
+    pumpSpreadBps: Number(env('BOT_PUMP_SPREAD_BPS', '80')),
+    enablePumpSpreads: env('BOT_ENABLE_PUMP_SPREADS', '1') === '1',
 
     alertPnlThresholdSol: Number(env('ALERT_PNL_THRESHOLD_SOL', '-0.1')),
 

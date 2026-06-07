@@ -15,6 +15,8 @@
     "test:ci": "vitest run && next build"
   },
   "dependencies": {
+    "@radix-ui/react-progress": "^1.1.9",
+    "@radix-ui/react-slot": "^1.2.5",
     "@solana/wallet-adapter-base": "^0.9.27",
     "@solana/wallet-adapter-phantom": "^0.9.29",
     "@solana/wallet-adapter-react": "^0.15.39",
@@ -22,11 +24,15 @@
     "@solana/web3.js": "^1.98.4",
     "@tanstack/react-virtual": "^3.14.2",
     "bs58": "^5.0.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.40.0",
     "lucide-react": "^1.17.0",
     "next": "14.2.29",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "recharts": "^2.12.7",
+    "tailwind-merge": "^3.6.0",
     "tweetnacl": "^1.0.3",
     "zustand": "^5.0.14"
   },

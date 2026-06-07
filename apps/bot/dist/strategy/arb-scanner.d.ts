@@ -14,5 +14,7 @@ export interface ArbScanOptions {
 }
 /**
  * Capture forward + reverse Jupiter Swap v1 quotes for round-trip arb analysis.
+ * Each quote call is wrapped in an 8 s timeout so a stalled RPC cannot freeze
+ * the engine scan loop.
  */
 export declare function scanRoundTripQuotes(client: JupiterClient, pair: ScanPair, tradeAmountUi: number, opts?: ArbScanOptions): Promise<QuotePairSnapshot>;

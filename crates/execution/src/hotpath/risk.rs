@@ -43,6 +43,15 @@ pub fn check_risk(
         return RiskVerdict::RejectedCircuitBreaker;
     }
 
+    // ── Signal freshness ──────────────────────────────────────────────────────
+    // Reject stale signals before any market-quality work — cheap O(1) check.
+    // Acts as a front-line sandwich guard: stale price data → bad fills.
+    if t.max_signal_staleness_slots > 0
+        && state.current_slot.saturating_sub(signal.slot) > t.max_signal_staleness_slots
+    {
+        return RiskVerdict::RejectedStale;
+    }
+
     // ── Market quality ────────────────────────────────────────────────────────
 
     if pool.liquidity_usd_x100 < t.min_liquidity_usd_x100 {
@@ -112,7 +121,9 @@ mod tests {
         let mut state = HotState::new();
         state.trading_enabled = true;
         state.current_slot = 1000;
-        let table = PrecomputeTable::build(&HotPathConfig::default(), 1);
+        let mut cfg = HotPathConfig::default();
+        cfg.max_signal_staleness_slots = 3;
+        let table = PrecomputeTable::build(&cfg, 1);
         let pool = PoolSlot {
             active: true,
             slot: 1000,
@@ -205,6 +216,30 @@ mod tests {
         assert_eq!(
             check_risk(&signal, &pool, &state, &table),
             RiskVerdict::RejectedVelocityLimit
+        );
+    }
+
+    #[test]
+    fn rejects_stale_signal() {
+        let (mut state, table, mut signal, pool) = setup();
+        // Signal is 10 slots old; staleness threshold is 3 → reject.
+        state.current_slot = 1010;
+        signal.slot = 1000;
+        assert_eq!(
+            check_risk(&signal, &pool, &state, &table),
+            RiskVerdict::RejectedStale
+        );
+    }
+
+    #[test]
+    fn approves_fresh_signal_at_staleness_boundary() {
+        let (mut state, table, mut signal, pool) = setup();
+        state.current_slot = 1003;
+        signal.slot = 1000;
+        // Exactly at the boundary (1003 - 1000 = 3, not > 3) → approved.
+        assert_eq!(
+            check_risk(&signal, &pool, &state, &table),
+            RiskVerdict::Approved
         );
     }
 
