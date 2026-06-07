@@ -8,6 +8,33 @@ import type {
   SwapTransactionResponse,
 } from './types.js';
 
+// ── SEC-3: Runtime response validators ───────────────────────────────────────
+// Jupiter returns JSON whose types are not verified at the network boundary.
+// A compromised/misconfigured endpoint could return outAmount: -1 or a truncated
+// swapTransaction; these guards abort before poisoned data reaches execution logic.
+
+function validateQuoteResponse(json: unknown, label: string): SwapQuoteResponse {
+  const r = json as Record<string, unknown>;
+  if (typeof r.outAmount !== 'string' || !/^\d+$/.test(r.outAmount)) {
+    throw new Error(`Jupiter quote (${label}): outAmount is missing or not a numeric string`);
+  }
+  if (typeof r.inAmount !== 'string') {
+    throw new Error(`Jupiter quote (${label}): inAmount is missing`);
+  }
+  if (Number(r.outAmount) < 0 || Number(r.inAmount) < 0) {
+    throw new Error(`Jupiter quote (${label}): negative amount received`);
+  }
+  return r as unknown as SwapQuoteResponse;
+}
+
+function validateSwapResponse(json: unknown): SwapTransactionResponse {
+  const r = json as Record<string, unknown>;
+  if (typeof r.swapTransaction !== 'string' || r.swapTransaction.length < 100) {
+    throw new Error('Jupiter swap: swapTransaction field missing or suspiciously short');
+  }
+  return r as unknown as SwapTransactionResponse;
+}
+
 export class JupiterClient {
   constructor(private readonly env: BotEnv) {}
 
@@ -38,7 +65,8 @@ export class JupiterClient {
       const body = await resp.text().catch(() => '');
       throw new Error(`Jupiter quote HTTP ${resp.status}: ${body.slice(0, 200)}`);
     }
-    return (await resp.json()) as SwapQuoteResponse;
+    const json = await resp.json();
+    return validateQuoteResponse(json, `${req.inputMint}→${req.outputMint}`);
   }
 
   async getSwapTransaction(req: SwapTransactionRequest): Promise<SwapTransactionResponse> {
@@ -51,7 +79,8 @@ export class JupiterClient {
       const body = await resp.text().catch(() => '');
       throw new Error(`Jupiter swap HTTP ${resp.status}: ${body.slice(0, 200)}`);
     }
-    return (await resp.json()) as SwapTransactionResponse;
+    const json = await resp.json();
+    return validateSwapResponse(json);
   }
 
   async getPrices(mints: string[]): Promise<PriceV3Response> {

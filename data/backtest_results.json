@@ -1,5 +1,5 @@
 {
-  "generated_at": "1780717933",
+  "generated_at": "1780792726",
   "baseline": {
     "kind": "Combined",
     "metrics": {
@@ -25,17 +25,17 @@
         "winning_trades": 1728,
         "losing_trades": 0,
         "rejected_trades": 0,
-        "gross_pnl_usd": 11436.869791308667,
-        "net_pnl_usd": 9622.469791308753,
+        "gross_pnl_usd": 11436.86979130867,
+        "net_pnl_usd": 9622.469791308751,
         "total_fees_usd": 1814.3999999999476,
         "win_rate": 1.0,
-        "avg_net_per_trade_usd": 5.56855890700738,
+        "avg_net_per_trade_usd": 5.568558907007379,
         "trades_per_hour": 288.0,
         "trades_per_day": 6912.0,
         "max_drawdown_usd": 0.0,
-        "sharpe_approx": 57.009255996954025
+        "sharpe_approx": 57.0092559969541
       },
-      "combined_net_pnl_usd": 10450.469791308751,
+      "combined_net_pnl_usd": 10450.46979130875,
       "combined_trades": 2328,
       "combined_trades_per_day": 9312.0,
       "duration_hours": 6.0
@@ -79,12 +79,12 @@
   "optimization": {
     "best": {
       "min_edge_bps": 25.0,
-      "trade_cooldown_secs": 20,
-      "min_profit_threshold_usd": 0.12,
+      "trade_cooldown_secs": 15,
+      "min_profit_threshold_usd": 0.08,
       "simulation_initial_amount_usd": 250.0,
       "min_position_usd": 250.0,
       "max_trades_per_hour_global": 120,
-      "signal_cooldown_secs": 3
+      "signal_cooldown_secs": 5
     },
     "best_score": 7329.979108719,
     "candidates_evaluated": 108,
@@ -92,12 +92,12 @@
       {
         "params": {
           "min_edge_bps": 25.0,
-          "trade_cooldown_secs": 20,
-          "min_profit_threshold_usd": 0.12,
+          "trade_cooldown_secs": 15,
+          "min_profit_threshold_usd": 0.08,
           "simulation_initial_amount_usd": 250.0,
           "min_position_usd": 250.0,
           "max_trades_per_hour_global": 120,
-          "signal_cooldown_secs": 3
+          "signal_cooldown_secs": 5
         },
         "score": 7329.979108719,
         "net_pnl_usd": 7059.592797334621,
@@ -107,8 +107,8 @@
       },
       {
         "params": {
-          "min_edge_bps": 30.0,
-          "trade_cooldown_secs": 15,
+          "min_edge_bps": 25.0,
+          "trade_cooldown_secs": 20,
           "min_profit_threshold_usd": 0.08,
           "simulation_initial_amount_usd": 250.0,
           "min_position_usd": 250.0,
@@ -126,22 +126,6 @@
           "min_edge_bps": 30.0,
           "trade_cooldown_secs": 15,
           "min_profit_threshold_usd": 0.12,
-          "simulation_initial_amount_usd": 250.0,
-          "min_position_usd": 250.0,
-          "max_trades_per_hour_global": 120,
-          "signal_cooldown_secs": 5
-        },
-        "score": 7329.979108719,
-        "net_pnl_usd": 7059.592797334621,
-        "trades_per_day": 5856.0,
-        "avg_net_per_trade": 4.8221262276875825,
-        "verification_passed": false
-      },
-      {
-        "params": {
-          "min_edge_bps": 30.0,
-          "trade_cooldown_secs": 20,
-          "min_profit_threshold_usd": 0.08,
           "simulation_initial_amount_usd": 250.0,
           "min_position_usd": 250.0,
           "max_trades_per_hour_global": 120,
@@ -157,7 +141,7 @@
         "params": {
           "min_edge_bps": 35.0,
           "trade_cooldown_secs": 20,
-          "min_profit_threshold_usd": 0.1,
+          "min_profit_threshold_usd": 0.08,
           "simulation_initial_amount_usd": 250.0,
           "min_position_usd": 250.0,
           "max_trades_per_hour_global": 120,
@@ -177,22 +161,6 @@
           "simulation_initial_amount_usd": 250.0,
           "min_position_usd": 250.0,
           "max_trades_per_hour_global": 120,
-          "signal_cooldown_secs": 5
-        },
-        "score": 7329.979108718999,
-        "net_pnl_usd": 7059.59279733462,
-        "trades_per_day": 5856.0,
-        "avg_net_per_trade": 4.822126227687582,
-        "verification_passed": false
-      },
-      {
-        "params": {
-          "min_edge_bps": 25.0,
-          "trade_cooldown_secs": 15,
-          "min_profit_threshold_usd": 0.1,
-          "simulation_initial_amount_usd": 250.0,
-          "min_position_usd": 250.0,
-          "max_trades_per_hour_global": 120,
           "signal_cooldown_secs": 3
         },
         "score": 7329.979108718999,
@@ -206,22 +174,6 @@
           "min_edge_bps": 25.0,
           "trade_cooldown_secs": 15,
           "min_profit_threshold_usd": 0.1,
-          "simulation_initial_amount_usd": 250.0,
-          "min_position_usd": 250.0,
-          "max_trades_per_hour_global": 120,
-          "signal_cooldown_secs": 5
-        },
-        "score": 7329.979108718999,
-        "net_pnl_usd": 7059.59279733462,
-        "trades_per_day": 5856.0,
-        "avg_net_per_trade": 4.822126227687582,
-        "verification_passed": false
-      },
-      {
-        "params": {
-          "min_edge_bps": 25.0,
-          "trade_cooldown_secs": 15,
-          "min_profit_threshold_usd": 0.12,
           "simulation_initial_amount_usd": 250.0,
           "min_position_usd": 250.0,
           "max_trades_per_hour_global": 120,
@@ -237,11 +189,59 @@
         "params": {
           "min_edge_bps": 25.0,
           "trade_cooldown_secs": 20,
+          "min_profit_threshold_usd": 0.12,
+          "simulation_initial_amount_usd": 250.0,
+          "min_position_usd": 250.0,
+          "max_trades_per_hour_global": 120,
+          "signal_cooldown_secs": 3
+        },
+        "score": 7329.979108718999,
+        "net_pnl_usd": 7059.59279733462,
+        "trades_per_day": 5856.0,
+        "avg_net_per_trade": 4.822126227687582,
+        "verification_passed": false
+      },
+      {
+        "params": {
+          "min_edge_bps": 30.0,
+          "trade_cooldown_secs": 15,
           "min_profit_threshold_usd": 0.08,
           "simulation_initial_amount_usd": 250.0,
           "min_position_usd": 250.0,
           "max_trades_per_hour_global": 120,
           "signal_cooldown_secs": 3
+        },
+        "score": 7329.979108718999,
+        "net_pnl_usd": 7059.59279733462,
+        "trades_per_day": 5856.0,
+        "avg_net_per_trade": 4.822126227687582,
+        "verification_passed": false
+      },
+      {
+        "params": {
+          "min_edge_bps": 30.0,
+          "trade_cooldown_secs": 15,
+          "min_profit_threshold_usd": 0.1,
+          "simulation_initial_amount_usd": 250.0,
+          "min_position_usd": 250.0,
+          "max_trades_per_hour_global": 120,
+          "signal_cooldown_secs": 3
+        },
+        "score": 7329.979108718999,
+        "net_pnl_usd": 7059.59279733462,
+        "trades_per_day": 5856.0,
+        "avg_net_per_trade": 4.822126227687582,
+        "verification_passed": false
+      },
+      {
+        "params": {
+          "min_edge_bps": 30.0,
+          "trade_cooldown_secs": 15,
+          "min_profit_threshold_usd": 0.1,
+          "simulation_initial_amount_usd": 250.0,
+          "min_position_usd": 250.0,
+          "max_trades_per_hour_global": 120,
+          "signal_cooldown_secs": 5
         },
         "score": 7329.979108718999,
         "net_pnl_usd": 7059.59279733462,
@@ -276,17 +276,17 @@
         "winning_trades": 216,
         "losing_trades": 0,
         "rejected_trades": 0,
-        "gross_pnl_usd": 1822.646381179273,
-        "net_pnl_usd": 1541.8463811792715,
+        "gross_pnl_usd": 1822.646381179272,
+        "net_pnl_usd": 1541.846381179271,
         "total_fees_usd": 280.80000000000115,
         "win_rate": 1.0,
-        "avg_net_per_trade_usd": 7.138177690644775,
+        "avg_net_per_trade_usd": 7.138177690644773,
         "trades_per_hour": 36.0,
         "trades_per_day": 864.0,
         "max_drawdown_usd": 0.0,
-        "sharpe_approx": 60.07444281239685
+        "sharpe_approx": 60.074442812396796
       },
-      "combined_net_pnl_usd": 1955.846381179273,
+      "combined_net_pnl_usd": 1955.8463811792726,
       "combined_trades": 456,
       "combined_trades_per_day": 1824.0,
       "duration_hours": 6.0
@@ -328,28 +328,28 @@
     ]
   },
   "simulation": {
-    "net_pnl_usd": 736.4752653620207,
+    "net_pnl_usd": 736.4752653620203,
     "trades_executed": 192,
     "trades_per_hour": 32.0,
-    "avg_net_per_trade_usd": 3.8358086737605244,
+    "avg_net_per_trade_usd": 3.8358086737605226,
     "win_rate": 1.0,
     "scalp_pnl_usd": 206.99999999999957,
-    "arb_pnl_usd": 529.4752653620211,
+    "arb_pnl_usd": 529.4752653620208,
     "duration_hours": 6.0
   },
   "quote_arb_holdout": {
     "strategy": "quote_arb",
     "total_trades": 325,
-    "winning_trades": 281,
+    "winning_trades": 325,
     "losing_trades": 0,
-    "rejected_trades": 44,
+    "rejected_trades": 0,
     "gross_pnl_usd": 291.79374950371306,
     "net_pnl_usd": 95.41593717741333,
     "total_fees_usd": 94.2500000000005,
     "win_rate": 1.0,
-    "avg_net_per_trade_usd": 0.33955849529328586,
-    "trades_per_hour": 46.833333333333336,
-    "trades_per_day": 1124.0,
+    "avg_net_per_trade_usd": 0.29358749900742565,
+    "trades_per_hour": 54.166666666666664,
+    "trades_per_day": 1300.0,
     "max_drawdown_usd": 0.0,
     "sharpe_approx": 4.939401378893157
   },
@@ -360,9 +360,9 @@
       "description": "Scalping + DEX arb running together on holdout data.",
       "win_probability": 1.0,
       "pass_probability": 0.95,
-      "expected_usd_per_trade": 4.289136800831739,
-      "net_pnl_usd": 1955.846381179273,
-      "sharpe_approx": 31.688965014313872,
+      "expected_usd_per_trade": 4.289136800831738,
+      "net_pnl_usd": 1955.8463811792726,
+      "sharpe_approx": 31.688965014313844,
       "trades_per_day": 1824.0,
       "max_drawdown_usd": 0.0,
       "confidence_score": 98.5,
@@ -379,9 +379,9 @@
       "description": "Cross-venue spread capture on synthetic pool replay.",
       "win_probability": 1.0,
       "pass_probability": 0.45499999999999996,
-      "expected_usd_per_trade": 7.138177690644775,
-      "net_pnl_usd": 1541.8463811792715,
-      "sharpe_approx": 60.07444281239685,
+      "expected_usd_per_trade": 7.138177690644773,
+      "net_pnl_usd": 1541.846381179271,
+      "sharpe_approx": 60.074442812396796,
       "trades_per_day": 864.0,
       "max_drawdown_usd": 0.0,
       "confidence_score": 83.65,
@@ -415,12 +415,12 @@
       "description": "Jupiter route divergence — restricted vs unrestricted paths.",
       "win_probability": 1.0,
       "pass_probability": 0.45499999999999996,
-      "expected_usd_per_trade": 0.33955849529328586,
+      "expected_usd_per_trade": 0.29358749900742565,
       "net_pnl_usd": 95.41593717741333,
       "sharpe_approx": 4.939401378893157,
-      "trades_per_day": 1124.0,
+      "trades_per_day": 1300.0,
       "max_drawdown_usd": 0.0,
-      "confidence_score": 68.71555761658489,
+      "confidence_score": 67.33642772800908,
       "verified": true,
       "rank": 4,
       "bot_store_keys": [
@@ -458,7 +458,7 @@
     "execution": {
       "max_slippage_bps": 50,
       "priority_fee_lamports": 5000,
-      "min_profit_threshold_usd": 0.12,
+      "min_profit_threshold_usd": 0.08,
       "simulation_initial_amount_usd": 250.0,
       "max_input_ratio": 0.25,
       "clmm_slippage_multiplier": 0.35,
@@ -522,7 +522,7 @@
       "smart_money_min_score": 0.7,
       "signal_min_strength": 0.05,
       "signal_min_confidence": 0.05,
-      "cooldown_secs": 3,
+      "cooldown_secs": 5,
       "feature_store_max_age_secs": 300,
       "signal_channel_capacity": 65536
     },
@@ -535,7 +535,7 @@
       "mev_haircut_bps": 5.0,
       "max_trades_per_hour_per_asset": 30,
       "max_trades_per_hour_global": 120,
-      "trade_cooldown_secs": 20,
+      "trade_cooldown_secs": 15,
       "min_edge_bps": 25.0,
       "base_position_pct": 0.02,
       "strength_scaling_exponent": 1.5,
@@ -554,7 +554,8 @@
       "commitment": "confirmed",
       "expected_network": "devnet",
       "min_sol_balance": 0.1,
-      "validate_network_on_start": true
+      "validate_network_on_start": true,
+      "expected_pubkey": null
     },
     "orchestrator": {
       "regression_pnl_threshold_pct": 10.0,
@@ -575,7 +576,9 @@
       "max_jito_tip_lamports": 50000,
       "allow_direct_rpc_fallback": true,
       "execution_queue_capacity": 256,
-      "paper_mode": true
+      "paper_mode": true,
+      "global_cooldown_slots": 5,
+      "max_loss_bps": 100
     },
     "strategy": {
       "scalp": true,

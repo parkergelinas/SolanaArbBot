@@ -21,9 +21,13 @@ async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
   fn: (item: T) => Promise<R>,
+  batchDelayMs = 0,
 ): Promise<R[]> {
   const results: R[] = [];
   for (let i = 0; i < items.length; i += concurrency) {
+    if (i > 0 && batchDelayMs > 0) {
+      await new Promise((r) => setTimeout(r, batchDelayMs));
+    }
     const chunk = items.slice(i, i + concurrency);
     const chunkResults = await Promise.all(chunk.map(fn));
     results.push(...chunkResults);
@@ -54,7 +58,7 @@ export async function scanMultipleRoundTrips(
         error: err instanceof Error ? err.message : String(err),
       };
     }
-  });
+  }, opts.batchDelayMs ?? 0);
 
   for (const r of results) {
     if (r.quote) quotes.set(r.pair.label, r.quote);
@@ -87,7 +91,7 @@ export async function scanMultipleRouteDivergences(
         error: err instanceof Error ? err.message : String(err),
       };
     }
-  });
+  }, opts.batchDelayMs ?? 0);
 
   for (const r of results) {
     if (r.div) divergences.set(r.pair.label, r.div);

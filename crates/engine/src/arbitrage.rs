@@ -603,11 +603,20 @@ mod tests {
 
     #[test]
     fn calculate_spread_detects_profitable_cross_dex_gap() {
-        let cheap = pool(DexVenue::RaydiumAmmV4, "SOL", "USDC", 100.0, 10_000.0, 1_000_000.0, 80_000.0);
-        let rich = pool(DexVenue::OrcaWhirlpool, "SOL", "USDC", 102.0, 10_000.0, 1_020_000.0, 80_000.0);
+        // Reserves are in lamport-scale units so amount_in (also in lamports) does not
+        // exhaust the pool and create runaway slippage.
+        // Profitable direction: sell SOL where it is expensive (rich), buy where cheap.
+        let cheap = pool(
+            DexVenue::RaydiumAmmV4, "SOL", "USDC", 100.0,
+            10_000.0 * LAMPORTS_PER_SOL, 1_000_000.0 * 1_000_000.0, 80_000.0,
+        );
+        let rich = pool(
+            DexVenue::OrcaWhirlpool, "SOL", "USDC", 102.0,
+            10_000.0 * LAMPORTS_PER_SOL, 1_020_000.0 * 1_000_000.0, 80_000.0,
+        );
         let calibrator = TipCalibrator::new(0.70);
 
-        let opp = calculate_spread(&cheap, &rich, 1.0 * LAMPORTS_PER_SOL, &cfg(), 150.0, &calibrator)
+        let opp = calculate_spread(&rich, &cheap, 1.0 * LAMPORTS_PER_SOL, &cfg(), 150.0, &calibrator)
             .expect("opportunity");
 
         assert!(opp.gross_profit_lamports > 0.0);
@@ -647,11 +656,14 @@ mod tests {
         let mut skewed = token_sol.clone();
         skewed.reserve_b = 2_200.0;
 
+        // Use natural-unit amount (0.5 SOL) so it is consistent with the
+        // natural-unit reserves defined above. LAMPORTS_PER_SOL would dwarf
+        // the shallow reserves and cause runaway slippage.
         let opp = simulate_triangular_route(
             &sol_usdc,
             &usdc_token,
             &skewed,
-            0.5 * LAMPORTS_PER_SOL,
+            0.5,
             &cfg(),
             150.0,
             &calibrator,

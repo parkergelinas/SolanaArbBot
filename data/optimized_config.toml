@@ -25,7 +25,7 @@ jitter = true
 [execution]
 max_slippage_bps = 50
 priority_fee_lamports = 5000
-min_profit_threshold_usd = 0.12
+min_profit_threshold_usd = 0.08
 simulation_initial_amount_usd = 250.0
 max_input_ratio = 0.25
 clmm_slippage_multiplier = 0.35
@@ -89,7 +89,7 @@ momentum_window_secs = 60
 smart_money_min_score = 0.7
 signal_min_strength = 0.05
 signal_min_confidence = 0.05
-cooldown_secs = 3
+cooldown_secs = 5
 feature_store_max_age_secs = 300
 signal_channel_capacity = 65536
 
@@ -102,7 +102,7 @@ max_slippage_bps = 150.0
 mev_haircut_bps = 5.0
 max_trades_per_hour_per_asset = 30
 max_trades_per_hour_global = 120
-trade_cooldown_secs = 20
+trade_cooldown_secs = 15
 min_edge_bps = 25.0
 base_position_pct = 0.02
 strength_scaling_exponent = 1.5
@@ -142,6 +142,8 @@ max_jito_tip_lamports = 50000
 allow_direct_rpc_fallback = true
 execution_queue_capacity = 256
 paper_mode = true
+global_cooldown_slots = 5
+max_loss_bps = 100
 
 [strategy]
 scalp = true

@@ -26,8 +26,21 @@ export interface ArbScanOptions {
   restrictIntermediateTokens?: boolean;
 }
 
+const QUOTE_TIMEOUT_MS = 8_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`timeout:${label}`)), ms),
+    ),
+  ]);
+}
+
 /**
  * Capture forward + reverse Jupiter Swap v1 quotes for round-trip arb analysis.
+ * Each quote call is wrapped in an 8 s timeout so a stalled RPC cannot freeze
+ * the engine scan loop.
  */
 export async function scanRoundTripQuotes(
   client: JupiterClient,
@@ -39,22 +52,30 @@ export async function scanRoundTripQuotes(
   const amountAtomic = uiToAtomic(tradeAmountUi, pair.baseDecimals);
 
   const forwardCaptured = Date.now();
-  const forward = await client.getQuote({
-    inputMint: pair.baseMint,
-    outputMint: pair.quoteMint,
-    amount: amountAtomic.toString(),
-    slippageBps,
-    restrictIntermediateTokens: opts.restrictIntermediateTokens ?? false,
-  });
+  const forward = await withTimeout(
+    client.getQuote({
+      inputMint: pair.baseMint,
+      outputMint: pair.quoteMint,
+      amount: amountAtomic.toString(),
+      slippageBps,
+      restrictIntermediateTokens: opts.restrictIntermediateTokens ?? false,
+    }),
+    QUOTE_TIMEOUT_MS,
+    `forward:${pair.label}`,
+  );
 
   const reverseCaptured = Date.now();
-  const reverse = await client.getQuote({
-    inputMint: pair.quoteMint,
-    outputMint: pair.baseMint,
-    amount: forward.outAmount,
-    slippageBps,
-    restrictIntermediateTokens: opts.restrictIntermediateTokens ?? false,
-  });
+  const reverse = await withTimeout(
+    client.getQuote({
+      inputMint: pair.quoteMint,
+      outputMint: pair.baseMint,
+      amount: forward.outAmount,
+      slippageBps,
+      restrictIntermediateTokens: opts.restrictIntermediateTokens ?? false,
+    }),
+    QUOTE_TIMEOUT_MS,
+    `reverse:${pair.label}`,
+  );
 
   return {
     pairLabel: pair.label,

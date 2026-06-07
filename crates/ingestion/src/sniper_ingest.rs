@@ -366,6 +366,10 @@ fn extract_liquidity_sol(logs: &str) -> Option<f64> {
                     if lower.contains("lamports") {
                         return Some(v / 1_000_000_000.0);
                     }
+                    // Values >= 1e9 on a "sol"-tagged line are almost certainly lamports.
+                    if v >= 1_000_000_000.0 {
+                        return Some(v / 1_000_000_000.0);
+                    }
                     if v > 0.0 && v < 1_000_000.0 {
                         return Some(v);
                     }

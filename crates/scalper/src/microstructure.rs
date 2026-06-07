@@ -110,9 +110,12 @@ mod tests {
 
     #[test]
     fn whirlpool_impact_lower_than_raydium_same_notional() {
-        // CLMM with 50 % of TVL in range should beat CPMM.
+        // CLMM beats CPMM when more than half the TVL is deployed in-range.
+        // formula: clmm = trade / (2*in_range + trade)
+        //          cpmm = trade / (tvl + trade)
+        // clmm < cpmm iff 2*in_range > tvl, i.e. in_range > tvl/2.
         let tvl = 200_000.0;
-        let in_range = tvl * 0.5;
+        let in_range = tvl; // all liquidity deployed in the active tick range
         let trade = 1_000.0;
         let cpmm = raydium_price_impact(trade, tvl);
         let clmm = whirlpool_price_impact(trade, in_range);
