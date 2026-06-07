@@ -140,6 +140,55 @@ body {
   border-bottom: 1px solid color-mix(in srgb, var(--amber) 35%, var(--bg-border));
 }
 
+/* ── Shared filter / toolbar row used across panels ─────────────────────── */
+.terminal-filterbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.375rem;               /* 6px — tighter than gap-2 */
+  padding: 0.25rem 0.5rem;     /* 4px 8px */
+  height: auto;
+  min-height: 30px;
+  border-bottom: 1px solid var(--bg-border);
+  background: color-mix(in srgb, var(--bg-elevated) 60%, var(--bg-surface));
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  height: 18px;
+  border: 1px solid var(--bg-border);
+  border-radius: 3px;
+  font-size: 9px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+  transition: color 80ms, background 80ms, border-color 80ms;
+  white-space: nowrap;
+}
+.filter-pill:hover { color: var(--text-primary); }
+.filter-pill.active {
+  background: color-mix(in srgb, var(--blue) 15%, var(--bg-elevated));
+  border-color: color-mix(in srgb, var(--blue) 50%, var(--bg-border));
+  color: var(--blue);
+}
+.filter-pill.active-green {
+  background: color-mix(in srgb, var(--green) 12%, var(--bg-elevated));
+  border-color: color-mix(in srgb, var(--green) 45%, var(--bg-border));
+  color: var(--green);
+}
+.filter-pill.active-amber {
+  background: color-mix(in srgb, var(--amber) 12%, var(--bg-elevated));
+  border-color: color-mix(in srgb, var(--amber) 45%, var(--bg-border));
+  color: var(--amber);
+}
+
 /* ── Trading desk grid ───────────────────────────────────────────────────── */
 .terminal-desk {
   display: flex;

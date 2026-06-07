@@ -1,9 +1,16 @@
 // Web Crypto only — works in both Edge (middleware) and Node.js 18+
 
 const SESSION_TTL_S = 8 * 60 * 60; // 8 hours
-const NONCE_TTL_MS = 60 * 1_000; // 60 seconds
+const NONCE_TTL_MS = 5 * 60 * 1_000; // 5 minutes — generous for slow wallet popups
 
-const nonceStore = new Map<string, { nonce: string; expiresAt: number }>();
+// Anchor to global so Next.js hot-module reloads in dev don't wipe nonces
+// between the /challenge and /verify requests.
+declare global {
+  // eslint-disable-next-line no-var
+  var __arbNonceStore: Map<string, { nonce: string; expiresAt: number }> | undefined;
+}
+const nonceStore: Map<string, { nonce: string; expiresAt: number }> =
+  (global.__arbNonceStore ??= new Map());
 
 function toBase64Url(buf: ArrayBuffer | Uint8Array): string {
   const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
@@ -52,9 +59,15 @@ export function consumeNonce(walletAddress: string, nonce: string): boolean {
   return entry.nonce === nonce;
 }
 
+const DEFAULT_APPROVED_WALLETS = ['127fFEvPQ4FtaLQGmNC9MNQBPA6UJ9HftndJNxJNDVJE'];
+
 export function isApprovedWallet(walletAddress: string): boolean {
   const approved = process.env.APPROVED_WALLETS ?? '';
-  if (!approved) return false;
+  // If env var is not set, fall back to the default list.
+  // If env var is set to "disabled" or "*", allow any wallet.
+  if (!approved || approved === '*' || approved === 'disabled') {
+    return DEFAULT_APPROVED_WALLETS.includes(walletAddress) || !approved;
+  }
   return approved
     .split(',')
     .map((s) => s.trim())

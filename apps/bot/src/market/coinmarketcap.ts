@@ -50,6 +50,13 @@ interface CmcInfoResponse {
 
 const CMC_BASE = 'https://pro-api.coinmarketcap.com';
 
+// SEC-3/SEC-4: validate mint address format before trusting it downstream.
+// CMC contract addresses are user-supplied data from the CMC database and should
+// not be passed to PublicKey() or used in PDAs without this check.
+function isValidSolanaMint(address: string): boolean {
+  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address);
+}
+
 export class CoinMarketCapClient {
   constructor(private readonly apiKey: string) {}
 
@@ -120,6 +127,8 @@ export class CoinMarketCapClient {
           c.platform?.coin?.symbol?.toUpperCase() === 'SOL',
       );
       if (!solContract?.contract_address) continue;
+      // Reject any address that doesn't look like a valid Solana pubkey.
+      if (!isValidSolanaMint(solContract.contract_address)) continue;
 
       out.push({
         cmcId: entry.id,

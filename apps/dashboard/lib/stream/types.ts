@@ -40,7 +40,7 @@ export interface Candle {
   ts_open_ms: number;
 }
 
-export type SignalKind = 'momentum' | 'whale_flow' | 'smart_money' | 'imbalance';
+export type SignalKind = 'momentum' | 'whale_flow' | 'smart_money' | 'imbalance' | 'arb' | 'route_divergence';
 
 export interface Signal {
   v: typeof SCHEMA_VERSION;

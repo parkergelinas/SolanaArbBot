@@ -14,10 +14,15 @@ type LaunchHandler = (event: PumpLaunchEvent) => void;
  * Monitor Pump.fun `Create` instructions via Helius logsSubscribe.
  * Docs: pump-public-docs — `create(user, name, symbol, uri, creator)`.
  */
+const RECONNECT_BASE_MS = 1_000;
+const RECONNECT_MAX_MS = 60_000;
+const RECONNECT_MAX_ATTEMPTS = 20;
+
 export class PumpLaunchMonitor {
   private ws: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private running = false;
+  private reconnectAttempts = 0;
 
   constructor(
     private readonly heliusWsUrl: string,
@@ -37,6 +42,25 @@ export class PumpLaunchMonitor {
     this.ws = null;
   }
 
+  private scheduleReconnect(): void {
+    if (!this.running) return;
+    if (this.reconnectAttempts >= RECONNECT_MAX_ATTEMPTS) {
+      console.warn(
+        `[PumpLaunchMonitor] giving up after ${RECONNECT_MAX_ATTEMPTS} reconnect attempts`,
+      );
+      return;
+    }
+    const delay = Math.min(
+      RECONNECT_BASE_MS * 2 ** this.reconnectAttempts,
+      RECONNECT_MAX_MS,
+    );
+    this.reconnectAttempts += 1;
+    console.warn(
+      `[PumpLaunchMonitor] reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${RECONNECT_MAX_ATTEMPTS})`,
+    );
+    this.reconnectTimer = setTimeout(() => this.connect(), delay);
+  }
+
   private connect(): void {
     if (!this.running) return;
 
@@ -44,6 +68,8 @@ export class PumpLaunchMonitor {
     this.ws = ws;
 
     ws.onopen = () => {
+      // Reset backoff counter on every successful connection
+      this.reconnectAttempts = 0;
       const sub = {
         jsonrpc: '2.0',
         id: 1,
@@ -62,13 +88,12 @@ export class PumpLaunchMonitor {
     };
 
     ws.onclose = () => {
-      if (this.running) {
-        this.reconnectTimer = setTimeout(() => this.connect(), 5000);
-      }
+      this.scheduleReconnect();
     };
 
-    ws.onerror = () => {
-      ws.close();
+    ws.onerror = (err) => {
+      console.warn('[PumpLaunchMonitor] WebSocket error:', err);
+      ws.close(); // triggers onclose → scheduleReconnect
     };
   }
 }

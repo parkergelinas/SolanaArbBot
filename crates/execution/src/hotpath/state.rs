@@ -100,6 +100,21 @@ pub struct HotState {
     pub open_exposure_x100: u64,
     /// Slot of the most recently queued intent across all pools (global rate limiter).
     pub last_any_intent_slot: u64,
+
+    // ── Circuit breaker ───────────────────────────────────────────────────────
+    /// Number of consecutive losing trades this session.
+    /// Incremented by the cold path when a loss is reported; reset on win.
+    pub consecutive_losses: u32,
+    /// Total realised loss (in lamports) accumulated this trading session.
+    pub session_loss_lamports: u64,
+    /// When `true`, all intent generation is blocked until manual reset.
+    pub circuit_breaker_tripped: bool,
+
+    // ── Velocity limiter ──────────────────────────────────────────────────────
+    /// Slot at which the current velocity window started.
+    pub velocity_window_start_slot: u64,
+    /// Number of intents queued within the current velocity window.
+    pub velocity_trades_this_window: u32,
 }
 
 impl Default for HotState {
@@ -111,6 +126,11 @@ impl Default for HotState {
             trading_enabled: false,
             open_exposure_x100: 0,
             last_any_intent_slot: 0,
+            consecutive_losses: 0,
+            session_loss_lamports: 0,
+            circuit_breaker_tripped: false,
+            velocity_window_start_slot: 0,
+            velocity_trades_this_window: 0,
         }
     }
 }

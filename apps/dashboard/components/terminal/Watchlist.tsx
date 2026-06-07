@@ -1,12 +1,14 @@
 'use client';
 
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useDexScreenerWatchlist } from '@/lib/hooks/useDexScreenerWatchlist';
 import { WATCHLIST, tokenMeta } from '@/lib/terminal/tokens';
 import { useMarketStore } from '@/stores/marketStore';
 import { useStreamStore } from '@/stores/streamStore';
 import { useUiStore } from '@/stores/uiStore';
+
+type SortMode = 'default' | 'change' | 'liquidity';
 
 function fmtPrice(price: number): string {
   if (price >= 100) return price.toFixed(2);
@@ -25,7 +27,6 @@ const WatchlistRow = memo(function WatchlistRow({
   mint,
   symbol,
   name,
-  refPrice,
   price,
   changePct,
   liquidityUsd,
@@ -85,7 +86,7 @@ const WatchlistRow = memo(function WatchlistRow({
         <span className="text-[9px] text-terminal-muted truncate">{name}</span>
         {liquidityUsd != null && liquidityUsd > 0 && (
           <span className="text-[8px] mono text-terminal-muted shrink-0">
-            Liq {fmtLiq(liquidityUsd)}
+            {fmtLiq(liquidityUsd)}
           </span>
         )}
       </div>
@@ -101,6 +102,17 @@ export default function Watchlist() {
   const tokens = useMarketStore((s) => s.tokens);
   const listRef = useRef<HTMLDivElement>(null);
 
+  // ── Search + sort ──────────────────────────────────────────────────────────
+  const [search, setSearch] = useState('');
+  const [sortMode, setSortMode] = useState<SortMode>('default');
+
+  const SORT_MODES: { key: SortMode; label: string }[] = [
+    { key: 'default', label: '—' },
+    { key: 'change',  label: '±%' },
+    { key: 'liquidity', label: 'Liq' },
+  ];
+
+  // ── Price flash ────────────────────────────────────────────────────────────
   const prevPrices = useRef<Record<string, number>>({});
   const flashRef = useRef<Record<string, 'up' | 'down' | null>>({});
   const [, bumpFlash] = useState(0);
@@ -123,6 +135,7 @@ export default function Watchlist() {
     }
   }, [tokens, dexSnapshots]);
 
+  // ── Keyboard navigation ────────────────────────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
@@ -143,22 +156,42 @@ export default function Watchlist() {
     return () => window.removeEventListener('keydown', onKey);
   }, [selectedMint, setSelectedMint]);
 
-  const rows = WATCHLIST.map((w) => {
-    const live = tokens[w.mint];
-    const dex = dexSnapshots[w.mint];
+  // ── Build rows ─────────────────────────────────────────────────────────────
+  const rows = useMemo(() => {
     const streamLive = connectionMode === 'live' || connectionMode === 'degraded';
-    const price = streamLive
-      ? (live?.price_usd ?? dex?.priceUsd ?? w.refPrice)
-      : (dex?.priceUsd ?? live?.price_usd ?? w.refPrice);
-    const changePct = dex?.changeH24Pct ?? live?.changePct ?? 0;
-    return {
-      ...w,
-      price,
-      changePct,
-      liquidityUsd: dex?.liquidityUsd,
-      hasLive: Boolean(live) || Boolean(dex),
-    };
-  });
+    let list = WATCHLIST.map((w) => {
+      const live = tokens[w.mint];
+      const dex = dexSnapshots[w.mint];
+      const price = streamLive
+        ? (live?.price_usd ?? dex?.priceUsd ?? w.refPrice)
+        : (dex?.priceUsd ?? live?.price_usd ?? w.refPrice);
+      const changePct = dex?.changeH24Pct ?? live?.changePct ?? 0;
+      return {
+        ...w,
+        price,
+        changePct,
+        liquidityUsd: dex?.liquidityUsd,
+        hasLive: Boolean(live) || Boolean(dex),
+      };
+    });
+
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (r) =>
+          r.symbol.toLowerCase().includes(q) ||
+          r.name.toLowerCase().includes(q),
+      );
+    }
+
+    if (sortMode === 'change') {
+      list = [...list].sort((a, b) => b.changePct - a.changePct);
+    } else if (sortMode === 'liquidity') {
+      list = [...list].sort((a, b) => (b.liquidityUsd ?? 0) - (a.liquidityUsd ?? 0));
+    }
+
+    return list;
+  }, [tokens, dexSnapshots, connectionMode, search, sortMode]);
 
   return (
     <aside
@@ -166,33 +199,79 @@ export default function Watchlist() {
       className="terminal-watchlist flex flex-col min-h-0 w-[11.5rem] shrink-0 border-r border-terminal-border bg-terminal-panel"
       tabIndex={0}
     >
-      <div className="px-2 py-1.5 border-b border-terminal-border flex items-center justify-between">
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      <div className="px-2 py-1.5 border-b border-terminal-border flex items-center justify-between shrink-0">
         <span className="text-[10px] font-semibold uppercase tracking-widest text-terminal-muted">
           Watchlist
         </span>
-        <span className="text-[9px] text-terminal-accent">{rows.length}</span>
+        <span className="text-[9px] text-terminal-accent">{rows.length}/{WATCHLIST.length}</span>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto terminal-scroll">
-        {rows.map((row) => (
-          <WatchlistRow
-            key={row.mint}
-            mint={row.mint}
-            symbol={row.symbol}
-            name={row.name}
-            refPrice={row.refPrice}
-            price={row.price}
-            changePct={row.changePct}
-            liquidityUsd={row.liquidityUsd}
-            hasLive={row.hasLive}
-            active={row.mint === selectedMint}
-            flash={flashRef.current[row.mint] ?? null}
-            onSelect={() => setSelectedMint(row.mint)}
-          />
+
+      {/* ── Search bar ─────────────────────────────────────────────────────── */}
+      <div className="px-1.5 py-1 border-b border-terminal-border shrink-0 flex items-center gap-1">
+        <input
+          type="text"
+          placeholder="search…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="flex-1 min-w-0 bg-transparent text-[10px] font-mono text-slate-200 placeholder-terminal-muted/50 outline-none"
+          spellCheck={false}
+        />
+        {search && (
+          <button
+            type="button"
+            onClick={() => setSearch('')}
+            className="text-[9px] text-terminal-muted/60 hover:text-terminal-muted shrink-0"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
+      {/* ── Sort pills ─────────────────────────────────────────────────────── */}
+      <div className="terminal-filterbar shrink-0 !border-t-0">
+        {SORT_MODES.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setSortMode(key)}
+            className={`filter-pill ${sortMode === key ? 'active' : ''}`}
+          >
+            {label}
+          </button>
         ))}
       </div>
+
+      {/* ── Rows ──────────────────────────────────────────────────────────── */}
+      <div className="flex-1 min-h-0 overflow-y-auto terminal-scroll">
+        {rows.length === 0 ? (
+          <p className="px-2 py-4 text-[10px] text-terminal-muted text-center">
+            No matches
+          </p>
+        ) : (
+          rows.map((row) => (
+            <WatchlistRow
+              key={row.mint}
+              mint={row.mint}
+              symbol={row.symbol}
+              name={row.name}
+              refPrice={row.refPrice}
+              price={row.price}
+              changePct={row.changePct}
+              liquidityUsd={row.liquidityUsd}
+              hasLive={row.hasLive}
+              active={row.mint === selectedMint}
+              flash={flashRef.current[row.mint] ?? null}
+              onSelect={() => setSelectedMint(row.mint)}
+            />
+          ))
+        )}
+      </div>
+
+      {/* ── Footer ──────────────────────────────────────────────────────────── */}
       {selectedMint && tokenMeta(selectedMint) && (
-        <div className="px-2 py-1.5 border-t border-terminal-border text-[9px] text-terminal-muted">
-          Selected · {tokenMeta(selectedMint)?.symbol}/USD · ↑↓ navigate
+        <div className="px-2 py-1.5 border-t border-terminal-border text-[9px] text-terminal-muted shrink-0">
+          {tokenMeta(selectedMint)?.symbol}/USD · ↑↓ navigate
         </div>
       )}
     </aside>

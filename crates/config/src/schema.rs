@@ -124,6 +124,10 @@ pub struct SystemConfig {
     /// Pump.fun bonding curve edge strategy.
     #[serde(default)]
     pub pump_fun: PumpFunConfig,
+
+    /// Trading sub-account (hot-wallet) settings.
+    #[serde(default)]
+    pub sub_account: SubAccountConfig,
 }
 
 impl Default for SystemConfig {
@@ -155,6 +159,7 @@ impl Default for SystemConfig {
             quote_arb: QuoteArbConfig::default(),
             coinmarketcap: CoinMarketCapConfig::default(),
             pump_fun: PumpFunConfig::default(),
+            sub_account: SubAccountConfig::default(),
         }
     }
 }
@@ -1876,6 +1881,19 @@ pub struct HotPathConfig {
     /// Trades where estimated cost exceeds this fraction are rejected.
     /// 100 bps = 1 %. Must be ≤ 10 000.
     pub max_loss_bps: u32,
+
+    // ── Circuit breaker ───────────────────────────────────────────────────────
+    /// Trip the circuit breaker after this many consecutive losing trades.
+    /// 0 = disabled. Recommended mainnet value: 5.
+    pub max_consecutive_losses: u32,
+    /// Trip the circuit breaker when total session loss exceeds this many
+    /// lamports. 0 = disabled. Recommended mainnet value: 1_000_000_000 (1 SOL).
+    pub max_session_loss_lamports: u64,
+
+    // ── Velocity limiter ──────────────────────────────────────────────────────
+    /// Maximum trades submitted per rolling one-minute window.
+    /// 0 = no limit. Recommended mainnet value: 30.
+    pub max_trades_per_minute: u32,
 }
 
 impl Default for HotPathConfig {
@@ -1895,6 +1913,11 @@ impl Default for HotPathConfig {
             paper_mode: true,
             global_cooldown_slots: 5,
             max_loss_bps: 100,
+            // Circuit breaker — conservative mainnet defaults.
+            max_consecutive_losses: 5,
+            max_session_loss_lamports: 1_000_000_000, // 1 SOL
+            // Velocity — 30 trades/minute is generous for arb but safe.
+            max_trades_per_minute: 30,
         }
     }
 }
@@ -1913,6 +1936,9 @@ impl HotPathConfig {
         }
         if self.max_loss_bps > 10_000 {
             return Err("hotpath.max_loss_bps must be ≤ 10 000".into());
+        }
+        if self.max_trades_per_minute > 600 {
+            return Err("hotpath.max_trades_per_minute must be ≤ 600 (10/s)".into());
         }
         Ok(())
     }
@@ -1985,6 +2011,49 @@ impl WalletConfig {
     pub fn validate_warn(&self) {
         // Nothing to validate in terms of hard errors.
         // Live-mode keypair checks are enforced at runtime by the wallet crate.
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub-account
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Configuration for the trading sub-account (hot-wallet).
+///
+/// The bot uses a *separate* keypair (loaded from `SOLANA_ARB_TRADING_KEY`)
+/// rather than the main wallet.  This limits blast-radius: even a full
+/// compromise of the trading environment exposes at most `max_sol_balance` SOL.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubAccountConfig {
+    /// Env var holding the base58-encoded 64-byte trading keypair.
+    /// Defaults to `"SOLANA_ARB_TRADING_KEY"`.
+    pub keypair_env_var: String,
+
+    /// Maximum SOL held in the sub-account at any time.
+    /// The `fund_if_needed` helper will never top up beyond this.
+    /// Recommended mainnet value: 2.0–5.0 SOL.
+    pub max_sol_balance: f64,
+
+    /// Automatically fund the sub-account from the main wallet at startup
+    /// if the sub-account balance is below 50 % of `max_sol_balance`.
+    pub auto_fund_on_start: bool,
+
+    /// Sweep sub-account back to main wallet when the circuit breaker trips.
+    pub sweep_on_circuit_break: bool,
+
+    /// Sweep sub-account back to main wallet on clean shutdown.
+    pub sweep_on_shutdown: bool,
+}
+
+impl Default for SubAccountConfig {
+    fn default() -> Self {
+        Self {
+            keypair_env_var: "SOLANA_ARB_TRADING_KEY".to_owned(),
+            max_sol_balance: 2.0,
+            auto_fund_on_start: true,
+            sweep_on_circuit_break: true,
+            sweep_on_shutdown: true,
+        }
     }
 }
 

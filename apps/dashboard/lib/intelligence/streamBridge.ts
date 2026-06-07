@@ -16,6 +16,8 @@ const KIND_TO_TYPE: Record<SignalKind, SignalType> = {
   smart_money: 'SmartMoney',
   momentum: 'Momentum',
   imbalance: 'Momentum',
+  arb: 'Momentum',
+  route_divergence: 'Momentum',
 };
 
 const EMPTY_FEATURES = {

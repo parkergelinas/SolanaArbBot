@@ -4,7 +4,9 @@ import { NextRequest, NextResponse } from 'next/server';
 export function controlApiBase(): string | null {
   const configured = process.env.CONTROL_API_URL?.trim().replace(/\/$/, '');
   if (configured) return configured;
-  if (process.env.NODE_ENV === 'development') return 'http://localhost:3001';
+  // Use 127.0.0.1 instead of localhost: Node 18+ resolves localhost to ::1
+  // (IPv6) but the control-api only binds 0.0.0.0 (IPv4), causing ECONNREFUSED.
+  if (process.env.NODE_ENV === 'development') return 'http://127.0.0.1:3001';
   return null;
 }
 

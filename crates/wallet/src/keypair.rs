@@ -84,13 +84,28 @@ impl WalletKeypair {
     }
 
     /// Loads from `SOLANA_ARB_WALLET_KEY` (canonical env var).
+    ///
+    /// If `wallet.expected_pubkey` is set in config, validates the loaded
+    /// keypair's pubkey matches — rejects mismatches to prevent wrong-wallet errors.
     pub fn load_wallet_key(cfg: &SystemConfig) -> WalletResult<Self> {
         let var = cfg
             .wallet
             .keypair_env_var
             .as_deref()
             .unwrap_or("SOLANA_ARB_WALLET_KEY");
-        Self::load_from_env(var, cfg)
+        let kp = Self::load_from_env(var, cfg)?;
+
+        if let Some(expected) = &cfg.wallet.expected_pubkey {
+            let actual = bs58::encode(kp.pubkey.as_bytes()).into_string();
+            if actual != expected.trim() {
+                return Err(WalletError::InvalidKeyFormat(format!(
+                    "pubkey mismatch: expected {expected}, got {actual}"
+                )));
+            }
+            tracing::info!(pubkey = %actual, "wallet pubkey verified against expected_pubkey");
+        }
+
+        Ok(kp)
     }
 
     /// Returns a non-functional sentinel keypair for paper/dry-run mode.
@@ -142,7 +157,11 @@ impl WalletKeypair {
         self.sign_message(tx_bytes)
     }
 
-    fn from_64_bytes(bytes: &[u8]) -> WalletResult<Self> {
+    /// Parse a 64-byte Solana keypair (32-byte secret || 32-byte pubkey).
+    ///
+    /// `pub(crate)` so the sub-account loader can reuse this without going
+    /// through the dry_run gate (sub-accounts always have their own key).
+    pub(crate) fn from_64_bytes(bytes: &[u8]) -> WalletResult<Self> {
         if bytes.len() != 64 {
             return Err(WalletError::InvalidKeyFormat(format!(
                 "expected 64 bytes, got {}",

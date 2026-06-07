@@ -17,8 +17,8 @@ export interface RouteDivergenceConfig {
 }
 
 export const DEFAULT_ROUTE_DIVERGENCE_CONFIG: RouteDivergenceConfig = {
-  minDivergenceBps: 12,
-  minSurvivingEdgeBps: 8,
+  minDivergenceBps: 20,
+  minSurvivingEdgeBps: 10,
   pairsPerScan: 10,
   scanConcurrency: 2,
 };
