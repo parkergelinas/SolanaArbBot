@@ -41,6 +41,7 @@ mod tests {
     #[tokio::test]
     async fn live_signals_endpoint_matches_stream_api_shape() {
         std::env::set_var("SIGNAL_BUFFER_PERSIST", "false");
+        std::env::set_var("CONTROL_API_INSECURE_SKIP_AUTH", "1");
         let bus = Arc::new(SignalBus::with_defaults());
         let mut state = AppState::new(SystemConfig::default(), DeployEnv::Development);
         state.signal_bus = bus.clone();
@@ -97,5 +98,6 @@ mod tests {
         assert!(signals.iter().any(|s| s.kind == SignalKind::Swap));
         assert!(signals.iter().any(|s| s.kind == SignalKind::WhaleAlert));
         std::env::remove_var("SIGNAL_BUFFER_PERSIST");
+        std::env::remove_var("CONTROL_API_INSECURE_SKIP_AUTH");
     }
 }

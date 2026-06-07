@@ -159,8 +159,8 @@ fn parse_swap_log(text: &str) -> Option<MarketEvent> {
         pool: Pubkey::new([0x42; 32]),
         input_mint,
         output_mint,
-        amount_in: if amount_in > 0 { amount_in } else { 1_000_000 },
-        amount_out: if amount_out > 0 { amount_out } else { 998_000 },
+        amount_in: if amount_in > 0 { amount_in as u128 } else { 1_000_000 },
+        amount_out: if amount_out > 0 { amount_out as u128 } else { 998_000 },
     }))
 }
 

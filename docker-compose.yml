@@ -1,0 +1,95 @@
+services:
+
+  # ── Rust: control plane, portfolio, signal hub ──────────────────────────────
+  control-api:
+    build:
+      context: .
+      dockerfile: apps/control-api/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    env_file: .env.production
+    environment:
+      CONTROL_API_HOST: "0.0.0.0"
+      CONTROL_API_PORT: "3001"
+      DEPLOY_ENV: production
+    volumes:
+      - ./config.toml:/app/config.toml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3001/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # ── Rust: real-time market stream + WebSocket broker ────────────────────────
+  stream-api:
+    build:
+      context: .
+      dockerfile: apps/stream-api/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file: .env.production
+    environment:
+      STREAM_API_PORT: "8080"
+      # Point signal hub at the control-api container
+      SIGNAL_HUB_URL: "http://control-api:3001"
+    volumes:
+      - ./config.toml:/app/config.toml:ro
+    depends_on:
+      control-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  # ── Rust: whale detection + wallet tracking WebSocket ───────────────────────
+  intelligence-api:
+    build:
+      context: .
+      dockerfile: backend/intelligence-api/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    env_file: .env.production
+    environment:
+      INTELLIGENCE_PORT: "8090"
+    volumes:
+      - ./config.toml:/app/config.toml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8090/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  # ── TypeScript: execution bot (paper mode by default) ───────────────────────
+  bot:
+    build:
+      context: apps/bot
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3333:3333"
+    env_file: .env.production
+    environment:
+      SOLANA_RPC_URL: "${SOLANA_ARB_RPC_PRIMARY:-https://api.mainnet-beta.solana.com}"
+      SIGNAL_HUB_URL: "http://control-api:3001"
+    volumes:
+      - bot-data:/app/data
+    depends_on:
+      control-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3333/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  bot-data:
