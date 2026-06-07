@@ -17,7 +17,7 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>()((set) => ({
-  isAuthenticated: false,
+  isAuthenticated: true, // Auth disabled — always open
   walletAddress: null,
   isLoading: false,
   error: null,
