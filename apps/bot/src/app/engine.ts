@@ -31,6 +31,8 @@ import {
   StrategyRegistry,
   type ScannableStrategy,
 } from '../signals/index.js';
+import { AdaptiveArbStrategy, DEFAULT_ADAPTIVE_CONFIG } from '../signals/adaptive-arb.js';
+import { CapitalTracker } from '../capital/tracker.js';
 import { PumpTokenRegistry } from '../market/pump-token-registry.js';
 
 import type { Strategy } from '../signals/types.js';
@@ -87,6 +89,7 @@ export class BotEngine {
   private inFlightCount = 0;
   private readonly scannable: ScannableStrategy[] = [];
   private pumpStrategy: PumpEdgeStrategy | null = null;
+  private adaptiveCapitalTracker: import('../capital/tracker.js').CapitalTracker | null = null;
 
   private riskState: StrategyRiskState = {
     sessionLossUsd: 0,
@@ -134,10 +137,10 @@ export class BotEngine {
       { pairsPerScan: this.env.pairsPerScan, scanConcurrency: 3 },
     );
 
-    // Only activate route-divergence / round-trip scanners when cross-dex arb
-    // is NOT the primary strategy — they compete for the same Jupiter API quota
-    // and route-divergence is proven to have no real edge on native Solana pairs.
-    if (!this.env.enableCrossDexArb) {
+    // Only activate route-divergence / round-trip scanners when neither cross-dex
+    // nor adaptive arb is the primary strategy — they compete for the same Jupiter
+    // API quota and route-divergence is proven to have no real edge on native pairs.
+    if (!this.env.enableCrossDexArb && !this.env.enableAdaptiveArb) {
       this.scannable.push(routeDiv, roundTrip);
       this.registry.register(routeDiv);
       this.registry.register(roundTrip);
@@ -181,6 +184,31 @@ export class BotEngine {
       );
       this.scannable.push(crossDex);
       this.registry.register(crossDex);
+    }
+
+    if (this.env.enableAdaptiveArb) {
+      const pumpRegistry = this.env.enablePumpSpreads ? new PumpTokenRegistry() : null;
+      pumpRegistry?.start();
+
+      const capitalTracker = new CapitalTracker(
+        this.env.sqlitePath.replace('.db', '-capital.db'),
+        this.env.startingCapitalSol,
+        65, // initial SOL price estimate; overridden by live price in evaluate()
+      );
+      this.adaptiveCapitalTracker = capitalTracker;
+
+      const adaptive = new AdaptiveArbStrategy(
+        this.stack.client,
+        capitalTracker,
+        {
+          ...DEFAULT_ADAPTIVE_CONFIG,
+          maxTradeSolCap: this.env.maxTradeSolCap,
+          pairsPerScan: this.env.pairsPerScan,
+        },
+        pumpRegistry,
+      );
+      this.scannable.push(adaptive);
+      this.registry.register(adaptive);
     }
 
     this.executor = new LiveExecutor(this.env, this.stack.client, this.journal);
@@ -523,6 +551,12 @@ export class BotEngine {
       isHealthy: () => this.running && !this.hardenedExecutor.deadManSwitch.isHalted(),
       journal: this.journal,
       getStats: () => this.getStats(),
+      getCapital: this.adaptiveCapitalTracker
+        ? () => {
+            const params = this.adaptiveCapitalTracker!.getAdaptiveParams(this.lastSolPriceUsd);
+            return { capitalSol: params.capitalSol, stage: params.stage };
+          }
+        : undefined,
     });
 
     // Start price polling for the cross-DEX detector.

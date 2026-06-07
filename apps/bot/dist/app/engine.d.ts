@@ -24,6 +24,7 @@ export declare class BotEngine {
     private inFlightCount;
     private readonly scannable;
     private pumpStrategy;
+    private adaptiveCapitalTracker;
     private riskState;
     /** Dedicated Connection for priority-fee sampling (separate from JupiterClient internals). */
     private readonly connection;

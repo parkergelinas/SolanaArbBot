@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, ThHTMLAttributes } from 'react';
 
 interface DsTableProps {
   children: ReactNode;
@@ -23,16 +23,18 @@ export function DsTh({
   children,
   align = 'left',
   className = '',
+  ...props
 }: {
   children: ReactNode;
   align?: 'left' | 'right' | 'center';
   className?: string;
-}) {
+} & Omit<ThHTMLAttributes<HTMLTableCellElement>, 'children' | 'align' | 'className'>) {
   return (
     <th
-      className={`px-2 py-1.5 text-[9px] uppercase tracking-[0.12em] font-medium text-ds-text-muted ${
+      className={`px-2 py-1.5 text-[9px] uppercase tracking-[0.12em] font-medium text-ds-text-muted whitespace-nowrap ${
         align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
       } ${className}`}
+      {...props}
     >
       {children}
     </th>

@@ -40,6 +40,12 @@ export interface BotEnv {
     enablePumpEdge: boolean;
     /** Helius API key for pump launch monitoring. */
     heliusApiKey?: string;
+    /** Enable adaptive arb strategy (capital-aware, auto-scaling). */
+    enableAdaptiveArb: boolean;
+    /** Starting capital in SOL for the adaptive strategy tracker. */
+    startingCapitalSol: number;
+    /** Hard cap on single trade size in SOL. */
+    maxTradeSolCap: number;
     /** Enable cross-DEX arb strategy (Raydium vs Orca price comparison). */
     enableCrossDexArb: boolean;
     /** Min spread bps between Raydium and Orca to signal a core-pair trade. */
