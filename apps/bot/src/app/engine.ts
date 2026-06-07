@@ -4,6 +4,8 @@ import { getTotalPnlUsd } from '../db/sqlite.js';
 import { HardenedExecutor } from '../execution/hardened-executor.js';
 import { startMonitoringServer } from '../monitoring/server.js';
 import { alertHalt, checkPnlAlert } from '../monitoring/alerts.js';
+import { OpportunityDetector, type PoolSubscription } from '../detector/opportunity-detector.js';
+import type { ArbOpportunity } from '../detector/types.js';
 
 import { createMarketStack } from '../market-data/index.js';
 import { pairRegistryFromEnv } from '../market/pair-registry.js';
@@ -31,6 +33,27 @@ import type { Strategy } from '../signals/types.js';
 
 import { TradeJournal } from '../state/journal.js';
 
+// ── Well-known Orca Whirlpool pool metadata ───────────────────────────────────
+// Keyed by on-chain pool address. Add more pools here as needed.
+const WELL_KNOWN_ORCA_POOLS: Record<string, Omit<PoolSubscription, 'poolAddress'>> = {
+  // SOL/USDC — Orca Whirlpool 0.05% fee tier (mainnet)
+  'HJPjoWUrhoZzkNfRpHuieeFk9WcZWjwy6PBjZ81ngndJ': {
+    dexName: 'orca',
+    tokenMintA: SOL_MINT,
+    tokenMintB: USDC_MINT,
+    decimalsA: 9,
+    decimalsB: 6,
+  },
+  // SOL/USDC — Orca Whirlpool 0.3% fee tier (mainnet)
+  'EGZ7tiLeH62TPV1gL8WwbXGzEPa9zmcpVnnkPKKnrE2U': {
+    dexName: 'orca',
+    tokenMintA: SOL_MINT,
+    tokenMintB: USDC_MINT,
+    decimalsA: 9,
+    decimalsB: 6,
+  },
+};
+
 import { computeAnalytics } from '../analytics/metrics.js';
 
 import { LiveExecutor } from '../execution/index.js';
@@ -55,6 +78,7 @@ export class BotEngine {
   private readonly pairRegistry = pairRegistryFromEnv(this.stack.client, this.env);
   private readonly executor: LiveExecutor;
   private readonly hardenedExecutor: HardenedExecutor;
+  private readonly opportunityDetector: OpportunityDetector;
   private stopMonitor: (() => void) | null = null;
   private inFlightCount = 0;
   private readonly scannable: ScannableStrategy[] = [];
@@ -125,6 +149,34 @@ export class BotEngine {
       minProfitLamports: this.env.minProfitLamports,
     });
 
+    // ── Cross-DEX opportunity detector (Orca WebSocket + Jupiter polling) ──
+    this.opportunityDetector = new OpportunityDetector(this.env.rpcUrl, {
+      minProfitLamports: this.env.minProfitLamports,
+      solPriceUsd: 170, // updated from live market state on every scan
+      priorityFeeLamports: 50_000,
+      maxPriceStaleMs: 15_000,
+      swapFeeBps: 30,
+    });
+
+    // Register Orca Whirlpool subscriptions (env pools + defaults)
+    const poolsToWatch = this.env.orcaPoolAddresses.length > 0
+      ? this.env.orcaPoolAddresses
+      : Object.keys(WELL_KNOWN_ORCA_POOLS);
+    for (const addr of poolsToWatch) {
+      const meta = WELL_KNOWN_ORCA_POOLS[addr];
+      if (!meta) {
+        logger.warn({ addr }, 'engine: Orca pool not in well-known map — skipping (add metadata to WELL_KNOWN_ORCA_POOLS)');
+        continue;
+      }
+      this.opportunityDetector.watchOrcaPool({ poolAddress: addr, ...meta });
+    }
+
+    this.opportunityDetector.on('opportunity', (opp: ArbOpportunity) => {
+      this.handleExternalOpportunity(opp).catch((err) =>
+        logger.error({ err }, 'engine: handleExternalOpportunity error'),
+      );
+    });
+
     // Propagate dead-man's-switch halt to the engine loop
     this.hardenedExecutor.deadManSwitch.on('halt', async (evt) => {
       logger.error(evt, 'engine: dead-man-switch triggered halt');
@@ -185,6 +237,9 @@ export class BotEngine {
       alwaysInclude: [SOL_MINT, USDC_MINT, ...uniqueMints.slice(0, 50)],
       tokenLimit: 200,
     });
+
+    // Keep the cross-DEX detector's fee math current with live SOL price
+    this.opportunityDetector.updateSolPrice(state.solPriceUsd);
 
     for (const strat of this.scannable) {
       state = await strat.scan(state);
@@ -248,6 +303,8 @@ export class BotEngine {
 
     if (result.success) {
       this.stats.executed += 1;
+      // Decay failure rate on each success (halved toward zero, floor 0)
+      this.failureRate = Math.max(0, this.failureRate - 0.1);
       logger.info(
         { pair: decision.pairLabel, profit: result.realizedProfitUsd, sig: result.signature },
         'bot: trade executed',
@@ -287,6 +344,73 @@ export class BotEngine {
     return routeDiv ?? this.registry.best(state, ctx);
   }
 
+  /**
+   * Execute a cross-DEX opportunity emitted by the OpportunityDetector.
+   * Runs outside the scan loop (event-driven), so uses its own inFlightCount slot.
+   */
+  private async handleExternalOpportunity(opp: ArbOpportunity): Promise<void> {
+    if (!this.running) return;
+    if (this.hardenedExecutor.deadManSwitch.isHalted()) return;
+
+    const decision: import('../strategy/types.js').TradeDecision = {
+      strategyId: 'cross_dex_arb',
+      pairLabel: `${opp.dex1}→${opp.dex2}:${opp.tokenIn.slice(0, 6)}`,
+      inputMint: opp.tokenIn,
+      outputMint: opp.tokenOut,
+      // Size using current dynamic trade amount (SOL-denominated pairs assumed)
+      amountInAtomic: String(Math.floor(this.tradeAmountUi * 1e9)),
+      expectedOutAtomic: '0',
+      netProfitUsd: opp.profitUsd,
+      grossSpreadBps: opp.grossSpreadBps,
+      routeQualityScore: 0.8,
+      freshnessScore: 1.0,
+      metadata: {
+        source: 'cross_dex_detector',
+        dex1: opp.dex1,
+        dex2: opp.dex2,
+        profitToRiskRatio: opp.profitToRiskRatio,
+      },
+    };
+
+    const risk = checkStrategyRisk(decision, this.riskState, DEFAULT_RISK_LIMITS);
+    if (risk.verdict !== 'allow') {
+      logger.debug(
+        { verdict: risk.verdict, reason: risk.reason },
+        'engine: cross-dex opp blocked by risk layer',
+      );
+      return;
+    }
+
+    this.stats.actionable += 1;
+    this.inFlightCount += 1;
+
+    const result = this.env.paperMode
+      ? await this.executor.execute(decision)
+      : await this.hardenedExecutor.execute(decision);
+
+    this.inFlightCount -= 1;
+
+    this.riskState = recordExecutionOutcome(
+      this.riskState,
+      decision,
+      result.realizedProfitUsd ?? 0,
+      result.success,
+    );
+
+    if (result.success) {
+      this.stats.executed += 1;
+      this.failureRate = Math.max(0, this.failureRate - 0.1);
+      logger.info(
+        { pair: decision.pairLabel, profit: result.realizedProfitUsd, sig: result.signature },
+        'bot: cross-dex trade executed',
+      );
+    } else {
+      this.stats.rejected += 1;
+      this.failureRate = Math.min(1, this.failureRate + 0.05);
+      logger.warn({ pair: decision.pairLabel, error: result.error }, 'bot: cross-dex trade failed');
+    }
+  }
+
   async runLoop(maxIterations?: number): Promise<void> {
     this.running = true;
 
@@ -298,12 +422,31 @@ export class BotEngine {
       isHealthy: () => this.running && !this.hardenedExecutor.deadManSwitch.isHalted(),
     });
 
+    // Start Jupiter price polling for the cross-DEX detector
+    // Adapter: PriceV3Response → Record<mint, usdPrice>
+    const pairMints = [...new Set(
+      this.pairRegistry.allPairs.map((p) => p.baseMint),
+    )];
+    this.opportunityDetector.startJupiterPolling(
+      async (mints) => {
+        const resp = await this.stack.client.getPrices(mints);
+        const out: Record<string, number> = {};
+        for (const [mint, entry] of Object.entries(resp)) {
+          if (entry.usdPrice != null && entry.usdPrice > 0) out[mint] = entry.usdPrice;
+        }
+        return out;
+      },
+      pairMints,
+      3_000,
+    );
+
     logger.info(
       {
         paperMode: this.env.paperMode,
         jito: this.env.jitoEnabled,
         monitor: this.env.monitorPort,
         scanInterval: this.env.scanIntervalMs,
+        jupiterPollMints: pairMints.length,
       },
       'bot: run loop started',
     );
@@ -319,6 +462,7 @@ export class BotEngine {
     }
 
     this.pumpStrategy?.stop();
+    this.opportunityDetector.stopAll();
     this.stopMonitor?.();
     logger.info(this.getStats(), 'bot: run loop stopped');
   }
@@ -341,12 +485,14 @@ export class BotEngine {
     }
 
     this.pumpStrategy?.stop();
+    this.opportunityDetector.stopAll();
     this.stopMonitor?.();
   }
 
   stop(): void {
     this.running = false;
     this.pumpStrategy?.stop();
+    this.opportunityDetector.stopAll();
     this.stopMonitor?.();
   }
 }

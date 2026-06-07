@@ -41,7 +41,7 @@ impl EngineConfig {
                 .unwrap_or_else(|_| "https://api.jup.ag/swap/v1".into()),
             audit_path: std::env::var("EXECUTION_AUDIT_PATH").ok(),
             wallet_pubkey: std::env::var("EXECUTION_WALLET_PUBKEY")
-                .unwrap_or_else(|_| "11111111111111111111111111111111".into()),
+                .unwrap_or_else(|_| "127fFEvPQ4FtaLQGmNC9MNQBPA6UJ9HftndJNxJNDVJE".into()),
             quote_cache_ttl_ms: env_u64("QUOTE_CACHE_TTL_MS", 200),
             quote_mint: std::env::var("QUOTE_MINT")
                 .unwrap_or_else(|_| "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".into()),
