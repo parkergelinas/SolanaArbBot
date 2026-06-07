@@ -12,6 +12,7 @@ import {
   ComputeBudgetProgram,
   Connection,
   Keypair,
+  TransactionInstruction,
   TransactionMessage,
   VersionedTransaction,
 } from '@solana/web3.js';
@@ -133,11 +134,15 @@ export class HardenedExecutor {
         'jupiter_quote_timeout',
       );
 
-      // 2. Estimate dynamic priority fee from recent blocks
-      const priorityFeeLamports = await this.estimatePriorityFee();
+      // 2. Estimate dynamic priority fee from recent blocks (returns micro-lamports per CU)
+      const priorityFeeMicroLamports = await this.estimatePriorityFee();
 
-      // 3. Guard: abort if gas + tip would exceed expected profit
-      const totalFeeLamports = priorityFeeLamports + (this.jitoEnabled ? this.jitoTipLamports : 0);
+      // 3. Guard: abort if estimated gas + tip would exceed expected profit.
+      //    Convert the per-CU rate to an estimated total fee using a typical Jupiter
+      //    swap CU budget (200,000 CU).  This is a conservative pre-simulation estimate.
+      const TYPICAL_SWAP_CUS = 200_000;
+      const estimatedPriorityFeeL = Math.ceil(priorityFeeMicroLamports * TYPICAL_SWAP_CUS / 1_000_000);
+      const totalFeeLamports = estimatedPriorityFeeL + (this.jitoEnabled ? this.jitoTipLamports : 0);
       if (this.minProfitLamports > 0 && totalFeeLamports > this.minProfitLamports) {
         return {
           success: false,
@@ -145,14 +150,16 @@ export class HardenedExecutor {
         };
       }
 
-      // 4. Build swap transaction from Jupiter
+      // 4. Build swap transaction from Jupiter.
+      //    Pass micro-lamports as `prioritizationFeeLamports` — Jupiter v6 treats this
+      //    field as the per-CU priority fee (despite the confusing "Lamports" suffix).
       const swap = await withTimeout(
         this.client.getSwapTransaction({
           quoteResponse: quote,
           userPublicKey: wallet.publicKey.toBase58(),
           wrapAndUnwrapSol: true,
           dynamicComputeUnitLimit: false, // we set CU limit ourselves after simulation
-          prioritizationFeeLamports: priorityFeeLamports,
+          prioritizationFeeLamports: priorityFeeMicroLamports,
         }),
         8_000,
         'jupiter_swap_timeout',
@@ -190,10 +197,10 @@ export class HardenedExecutor {
           usedJito = true;
         } catch (err) {
           logger.warn({ err }, 'jito tx build failed — falling back to standard RPC');
-          finalTx = await this.rebuildWithCuLimit(tx, wallet, simulatedCUs);
+          finalTx = await this.rebuildWithCuLimit(tx, wallet, simulatedCUs, priorityFeeMicroLamports);
         }
       } else {
-        finalTx = await this.rebuildWithCuLimit(tx, wallet, simulatedCUs);
+        finalTx = await this.rebuildWithCuLimit(tx, wallet, simulatedCUs, priorityFeeMicroLamports);
       }
 
       // 8. Submit
@@ -205,7 +212,7 @@ export class HardenedExecutor {
           this.jitoAvailable = false;
           setTimeout(() => { this.jitoAvailable = true; }, 30_000);
           logger.warn({ error: bundleResult.error }, 'jito bundle rejected; falling back');
-          finalTx = await this.rebuildWithCuLimit(tx, wallet, simulatedCUs);
+          finalTx = await this.rebuildWithCuLimit(tx, wallet, simulatedCUs, priorityFeeMicroLamports);
           usedJito = false;
         } else {
           signature = bundleResult.bundleId; // bundle ID used as signature for logging
@@ -219,7 +226,7 @@ export class HardenedExecutor {
               jito: true,
               jitoTipLamports: this.jitoTipLamports,
               computeUnits: simulatedCUs,
-              priorityFeeLamports,
+              priorityFeeMicroLamports,
             },
           };
         }
@@ -257,7 +264,7 @@ export class HardenedExecutor {
           hops: quote.routePlan?.length ?? 0,
           jito: false,
           computeUnits: simulatedCUs,
-          priorityFeeLamports,
+          priorityFeeMicroLamports,
         },
       };
     } catch (err) {
@@ -266,11 +273,12 @@ export class HardenedExecutor {
     }
   }
 
-  /** Rebuild VersionedTransaction with correct CU limit, sign it (no Jito tip). */
+  /** Rebuild VersionedTransaction with correct CU limit and priority fee, sign it (no Jito tip). */
   private async rebuildWithCuLimit(
     originalTx: VersionedTransaction,
     payer: Keypair,
     simulatedCUs: number,
+    priorityFeeMicroLamports = 0,
   ): Promise<VersionedTransaction> {
     const { addressTableLookups } = originalTx.message;
 
@@ -290,15 +298,21 @@ export class HardenedExecutor {
       (ix) => !ix.programId.equals(ComputeBudgetProgram.programId),
     );
 
+    const budgetIxs: TransactionInstruction[] = [
+      ComputeBudgetProgram.setComputeUnitLimit({
+        units: Math.ceil(simulatedCUs * CU_BUFFER_FACTOR),
+      }),
+    ];
+    if (priorityFeeMicroLamports > 0) {
+      budgetIxs.push(
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: priorityFeeMicroLamports }),
+      );
+    }
+
     const message = new TransactionMessage({
       payerKey: payer.publicKey,
       recentBlockhash: decomp.recentBlockhash,
-      instructions: [
-        ComputeBudgetProgram.setComputeUnitLimit({
-          units: Math.ceil(simulatedCUs * CU_BUFFER_FACTOR),
-        }),
-        ...filteredIxs,
-      ],
+      instructions: [...budgetIxs, ...filteredIxs],
     }).compileToV0Message(altAccounts);
 
     const tx = new VersionedTransaction(message);
@@ -306,14 +320,13 @@ export class HardenedExecutor {
     return tx;
   }
 
+  /** Returns p75 of recent slot prioritization fees in micro-lamports per compute unit. */
   private async estimatePriorityFee(): Promise<number> {
     try {
       const fees = await this.connection.getRecentPrioritizationFees();
       if (fees.length === 0) return 50_000;
       const sorted = fees.map((f) => f.prioritizationFee).sort((a, b) => a - b);
       const idx = Math.floor(sorted.length * PRIORITY_FEE_PERCENTILE);
-      // Returned value is in micro-lamports; convert to lamports for the tip instruction.
-      // Jupiter's prioritizationFeeLamports is in lamports.
       const microLamports = sorted[idx] ?? 50_000;
       return Math.max(5_000, Math.min(500_000, microLamports));
     } catch {
@@ -359,8 +372,8 @@ export class HardenedExecutor {
         profit_usd: result.realizedProfitUsd ?? null,
         success: result.success ? 1 : 0,
         failure_reason: result.error ?? null,
-        priority_fee_lamports: typeof meta.priorityFeeLamports === 'number'
-          ? meta.priorityFeeLamports : null,
+        priority_fee_lamports: typeof meta.priorityFeeMicroLamports === 'number'
+          ? meta.priorityFeeMicroLamports : null,
         jito_tip_lamports: meta.jito ? this.jitoTipLamports : null,
         compute_units_used: typeof meta.computeUnits === 'number' ? meta.computeUnits : null,
         simulation_passed: result.success ? 1 : 0,

@@ -115,11 +115,12 @@ export class BotEngine {
       this.tradeAmountUi,
       this.pairRegistry,
       {
-        minDivergenceBps: 12,
-        minSurvivingEdgeBps: 8,
+        minDivergenceBps: Number(process.env.BOT_MIN_DIVERGENCE_BPS ?? '5'),
+        minSurvivingEdgeBps: Number(process.env.BOT_MIN_SURVIVING_EDGE_BPS ?? '3'),
         pairsPerScan: this.env.pairsPerScan,
         scanConcurrency: 2,
       },
+      this.env.paperMode, // enable paper-mode quote simulator fallback
     );
 
     const roundTrip = new RoundTripQuoteArbStrategy(
@@ -476,23 +477,28 @@ export class BotEngine {
       getStats: () => this.getStats(),
     });
 
-    // Start Jupiter price polling for the cross-DEX detector
-    // Adapter: PriceV3Response → Record<mint, usdPrice>
+    // Start price polling for the cross-DEX detector.
+    // In paper mode we skip the Jupiter price poll entirely to avoid hammering
+    // the rate-limited public API. DexScreener (via buildState fallback) covers
+    // price discovery for the scan loop — the cross-DEX detector is event-driven
+    // so it doesn't need proactive price refreshes during paper sessions.
     const pairMints = [...new Set(
       this.pairRegistry.allPairs.map((p) => p.baseMint),
     )];
-    this.opportunityDetector.startJupiterPolling(
-      async (mints) => {
-        const resp = await this.stack.client.getPrices(mints);
-        const out: Record<string, number> = {};
-        for (const [mint, entry] of Object.entries(resp)) {
-          if (entry.usdPrice != null && entry.usdPrice > 0) out[mint] = entry.usdPrice;
-        }
-        return out;
-      },
-      pairMints,
-      3_000,
-    );
+    if (!this.env.paperMode) {
+      this.opportunityDetector.startJupiterPolling(
+        async (mints) => {
+          const resp = await this.stack.client.getPrices(mints);
+          const out: Record<string, number> = {};
+          for (const [mint, entry] of Object.entries(resp)) {
+            if (entry.usdPrice != null && entry.usdPrice > 0) out[mint] = entry.usdPrice;
+          }
+          return out;
+        },
+        pairMints,
+        3_000,
+      );
+    }
 
     logger.info(
       {
@@ -500,7 +506,7 @@ export class BotEngine {
         jito: this.env.jitoEnabled,
         monitor: this.env.monitorPort,
         scanInterval: this.env.scanIntervalMs,
-        jupiterPollMints: pairMints.length,
+        jupiterPollMints: this.env.paperMode ? 0 : pairMints.length,
       },
       'bot: run loop started',
     );

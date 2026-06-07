@@ -8,6 +8,7 @@ import {
   tokenQualityFromMeta,
 } from './state.js';
 import { STATIC_SOLANA_TOKENS } from './solana-mint-map.js';
+import { fetchDexScreenerPrices } from './dexscreener-client.js';
 
 /** Minimal JupiterTokenMeta stubs from the static list — used as 429 fallback. */
 function staticFallbackTokens(): JupiterTokenMeta[] {
@@ -129,6 +130,22 @@ export class MarketDataLayer {
       decimals[mint] = meta?.decimals ?? (mint === 'So11111111111111111111111111111111111111112' ? 9 : 6);
       if (meta) {
         quality[mint] = tokenQualityFromMeta(meta, 0, now);
+      }
+    }
+
+    // ── DexScreener price fallback ────────────────────────────────────────
+    // When Jupiter prices are unavailable (429/offline), fetch from DexScreener.
+    // This keeps state.pricesUsd and state.solPriceUsd populated so strategies
+    // can run in paper mode without depending on Jupiter's price API.
+    const missingPrices = priceMints.filter((m) => !pricesUsd[m]);
+    if (missingPrices.length > 0) {
+      try {
+        const dsPrices = await fetchDexScreenerPrices(missingPrices);
+        for (const [mint, price] of Object.entries(dsPrices)) {
+          if (price > 0) pricesUsd[mint] = price;
+        }
+      } catch {
+        // Silent — partial prices are fine; bot will use whatever is available
       }
     }
 

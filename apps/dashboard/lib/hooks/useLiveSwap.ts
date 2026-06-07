@@ -150,7 +150,7 @@ export function useLiveSwap(): UseLiveSwapReturn {
       dispatch({ type: 'QUOTING' });
 
       try {
-        const [quote, priorityFeeLamports] = await Promise.all([
+        const [quote, priorityFeeMicroLamports] = await Promise.all([
           getJupiterQuote({ inputMint, outputMint, amount: amountAtomic, slippageBps, swapMode }),
           estimatePriorityFee(connection),
         ]);
@@ -158,6 +158,10 @@ export function useLiveSwap(): UseLiveSwapReturn {
         // Ignore stale result if the user already cancelled.
         if (ctrl.signal.aborted) return;
 
+        // Convert μL/CU rate to estimated total lamports using a typical Jupiter
+        // swap CU budget (200,000 CU).  This is what Jupiter receives and what we
+        // display in the confirm dialog.
+        const priorityFeeLamports = Math.ceil(priorityFeeMicroLamports * 200_000 / 1_000_000);
         dispatch({ type: 'READY', quote, priorityFeeLamports });
       } catch (err) {
         if (ctrl.signal.aborted) return;
