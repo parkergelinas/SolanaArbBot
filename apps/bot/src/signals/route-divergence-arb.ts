@@ -17,10 +17,10 @@ export interface RouteDivergenceConfig {
 }
 
 export const DEFAULT_ROUTE_DIVERGENCE_CONFIG: RouteDivergenceConfig = {
-  minDivergenceBps: 20,
-  minSurvivingEdgeBps: 10,
-  pairsPerScan: 10,
-  scanConcurrency: 2,
+  minDivergenceBps: Number(process.env.BOT_MIN_DIVERGENCE_BPS ?? '8'),
+  minSurvivingEdgeBps: Number(process.env.BOT_MIN_SURVIVING_EDGE_BPS ?? '4'),
+  pairsPerScan: Number(process.env.BOT_PAIRS_PER_SCAN ?? '10'),
+  scanConcurrency: 3,
 };
 
 function constructionToPair(

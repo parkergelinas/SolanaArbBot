@@ -31,6 +31,9 @@ describe('computeDynamicSize', () => {
       recentFailureRate: 0.4,
       minAmountUi: 0.1,
       maxAmountUi: 10,
+      solPriceUsd: 150,
+      jitoActive: false,
+      priorityFeeMicroLamports: 5_000,
     });
     const large = computeDynamicSize({
       baseAmountUi: 1,
@@ -41,8 +44,31 @@ describe('computeDynamicSize', () => {
       recentFailureRate: 0,
       minAmountUi: 0.1,
       maxAmountUi: 10,
+      solPriceUsd: 150,
+      jitoActive: false,
+      priorityFeeMicroLamports: 5_000,
     });
-    expect(small).toBeLessThan(large);
+    expect(small.amountUi).toBeLessThan(large.amountUi);
+  });
+
+  it('returns SizingResult with ceiling label and rationale', () => {
+    const result = computeDynamicSize({
+      baseAmountUi: 1,
+      spreadBps: 40,
+      liquidityUsd: 500_000,
+      volatilityPct: 2,
+      routeQualityScore: 0.85,
+      recentFailureRate: 0,
+      minAmountUi: 0.1,
+      maxAmountUi: 10,
+      solPriceUsd: 150,
+      jitoActive: false,
+      priorityFeeMicroLamports: 5_000,
+    });
+    expect(result.amountUi).toBeGreaterThanOrEqual(0.1);
+    expect(result.ceiling).toMatch(/^(jito|mev_threshold|config_max|min_clamp)$/);
+    expect(result.rationale).toContain('SOL');
+    expect(result.mevSafeSol).toBeGreaterThan(0);
   });
 });
 

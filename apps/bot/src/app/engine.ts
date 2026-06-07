@@ -472,6 +472,8 @@ export class BotEngine {
       rpcUrl: this.env.rpcUrl,
       walletPublicKey: this.env.walletPublicKey,
       isHealthy: () => this.running && !this.hardenedExecutor.deadManSwitch.isHalted(),
+      journal: this.journal,
+      getStats: () => this.getStats(),
     });
 
     // Start Jupiter price polling for the cross-DEX detector
