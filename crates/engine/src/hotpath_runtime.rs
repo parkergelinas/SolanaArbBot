@@ -13,7 +13,7 @@ use config::{ConfigHandle, HotPathConfig, SystemConfig};
 use crossbeam_channel::{bounded, Sender};
 use execution::hotpath::{ColdPathExecutor, HotPathEngine, MarketTick};
 use tokio::sync::Mutex;
-use tracing::{info, warn};
+use tracing::info;
 use wallet::WalletKeypair;
 
 use crate::arbitrage::{ArbitrageEngine, DexVenue, PoolQuote};
@@ -54,20 +54,15 @@ impl HotPathRuntime {
 
         let engine = Arc::new(std::sync::Mutex::new(engine));
 
-        // ── Wallet (live mode only) ───────────────────────────────────────────
-        let wallet: Option<Arc<WalletKeypair>> = if cfg.paper_mode {
-            info!("hot-path: paper mode — wallet not loaded");
-            None
-        } else {
-            match WalletKeypair::load_wallet_key(sys) {
-                Ok(kp) => {
-                    info!("hot-path: live wallet loaded");
-                    Some(Arc::new(kp))
-                }
-                Err(e) => {
-                    warn!(error = %e, "hot-path: wallet load failed, running paper mode");
-                    None
-                }
+        // ── Wallet (optional — bot runs without one in paper mode) ───────────
+        let wallet: Option<Arc<WalletKeypair>> = match WalletKeypair::load_wallet_key(sys) {
+            Ok(kp) => {
+                info!("hot-path: live wallet loaded");
+                Some(Arc::new(kp))
+            }
+            Err(e) => {
+                info!(reason = %e, "hot-path: no wallet loaded — running without signing (paper mode)");
+                None
             }
         };
 

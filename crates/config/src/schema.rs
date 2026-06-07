@@ -1955,6 +1955,10 @@ pub struct WalletConfig {
     /// When `true`, the wallet crate validates the cluster genesis hash against
     /// `expected_network` on startup.
     pub validate_network_on_start: bool,
+
+    /// If set, the loaded keypair's public key must match this base58 address.
+    /// Prevents accidentally loading the wrong keypair for live trading.
+    pub expected_pubkey: Option<String>,
 }
 
 impl Default for WalletConfig {
@@ -1967,6 +1971,7 @@ impl Default for WalletConfig {
             expected_network: "devnet".to_owned(),
             min_sol_balance: 0.1,
             validate_network_on_start: true,
+            expected_pubkey: None,
         }
     }
 }

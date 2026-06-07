@@ -10,6 +10,6 @@ license.workspace = true
 serde = { version = "1.0.228", features = ["derive"] }
 # toml 0.5 is used instead of 0.8 to avoid the toml_edit → indexmap 2.14.0
 # transitive dependency that requires Rust edition 2024.
-toml = { version = "0.8", default-features = false, features = ["indexmap"] }
+toml = { version = "0.8", default-features = false, features = ["indexmap", "parse", "display"] }
 thiserror = { workspace = true }
 tracing = { workspace = true }

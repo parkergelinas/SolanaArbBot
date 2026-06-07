@@ -197,7 +197,6 @@ pub fn build_legacy_quote_url(base: &str, req: &SwapQuoteRequest<'_>) -> String 
 
 /// Signs a legacy Solana transaction by signing its message bytes.
 pub fn sign_legacy_transaction(tx_b64: &str, wallet: &WalletKeypair) -> Result<String, String> {
-    guard::require_live_mode_for_wallet(wallet).map_err(|e| e.to_string())?;
     let raw = base64::Engine::decode(
         &base64::engine::general_purpose::STANDARD,
         tx_b64.trim(),

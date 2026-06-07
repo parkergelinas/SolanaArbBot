@@ -67,9 +67,11 @@ mod tests {
             momentum_accel_x1000: 1100,
             min_strength_x1000: 400,
             cooldown_slots: 75,
+            global_cooldown_slots: 5,
             max_exposure_x100: 2_000_00,
             default_trade_lamports: 100_000_000,
             default_trade_usd_x100: 200_00,
+            max_loss_lamports: 1_000_000,
         }
     }
 
