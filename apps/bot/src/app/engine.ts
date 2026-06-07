@@ -131,15 +131,17 @@ export class BotEngine {
       { pairsPerScan: this.env.pairsPerScan, scanConcurrency: 3 },
     );
 
-    const meanRev = new MeanReversionStrategy({
-      ...DEFAULT_MEAN_REVERSION_CONFIG,
-      enabled: this.env.enableMeanReversion,
-    });
-
     this.scannable.push(routeDiv, roundTrip);
     this.registry.register(routeDiv);
     this.registry.register(roundTrip);
-    this.registry.register(meanRev);
+
+    if (this.env.enableMeanReversion) {
+      const meanRev = new MeanReversionStrategy({
+        ...DEFAULT_MEAN_REVERSION_CONFIG,
+        enabled: true,
+      });
+      this.registry.register(meanRev);
+    }
 
     if (this.env.enablePumpEdge) {
       this.pumpStrategy = new PumpEdgeStrategy(
