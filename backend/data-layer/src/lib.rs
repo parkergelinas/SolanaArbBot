@@ -13,5 +13,7 @@ pub mod pipeline;
 pub mod router;
 pub mod types;
 
+pub use ingest::geyser::{pool_price_channel, PoolPriceReceiver, PoolPriceSender};
+pub use ingest::pumpswap::{new_pool_channel, NewPoolEvent, NewPoolReceiver, NewPoolSender};
 pub use pipeline::{spawn_pipeline, PipelineConfig, PipelineHandles};
 pub use types::*;

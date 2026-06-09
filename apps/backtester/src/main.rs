@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use backtester::{
-    generate_dataset, run_pipeline, strategy_config, PipelineReport,
+    generate_dataset, load_from_csv, run_pipeline, strategy_config, PipelineReport,
 };
 use config::ConfigHandle;
 use tracing::info;
@@ -33,15 +33,20 @@ fn main() {
         Arc::new(strategy_config())
     };
 
-    let duration_secs = cli.hours * 3600;
-    info!(
-        hours = cli.hours,
-        interval_secs = cli.interval,
-        events_est = duration_secs / cli.interval,
-        "generating synthetic replay dataset"
-    );
-
-    let dataset = generate_dataset(duration_secs, cli.interval);
+    let dataset = if let Some(ref csv_path) = cli.dataset_path {
+        info!(path = %csv_path.display(), "loading dataset from CSV");
+        load_from_csv(csv_path.to_str().unwrap_or(""))
+            .expect("failed to load dataset from CSV")
+    } else {
+        let duration_secs = cli.hours * 3600;
+        info!(
+            hours = cli.hours,
+            interval_secs = cli.interval,
+            events_est = duration_secs / cli.interval,
+            "generating synthetic replay dataset"
+        );
+        generate_dataset(duration_secs, cli.interval)
+    };
     info!(
         events = dataset.events.len(),
         pools = dataset.pool_count,
@@ -162,6 +167,8 @@ struct Cli {
     train_fraction: f64,
     config: Option<PathBuf>,
     output: Option<PathBuf>,
+    /// When set, load events from a CSV file instead of generating synthetic data.
+    dataset_path: Option<PathBuf>,
 }
 
 impl Cli {
@@ -172,6 +179,7 @@ impl Cli {
         let mut train_fraction = 0.80;
         let mut config = None;
         let mut output = Some(PathBuf::from("data/backtest_results.json"));
+        let mut dataset_path: Option<PathBuf> = None;
 
         let mut i = 0;
         while i < args.len() {
@@ -196,6 +204,10 @@ impl Cli {
                     output = Some(PathBuf::from(&args[i + 1]));
                     i += 2;
                 }
+                "--dataset-path" | "-d" if i + 1 < args.len() => {
+                    dataset_path = Some(PathBuf::from(&args[i + 1]));
+                    i += 2;
+                }
                 "--help" => {
                     print_help();
                     std::process::exit(0);
@@ -214,6 +226,7 @@ impl Cli {
             train_fraction,
             config,
             output,
+            dataset_path,
         }
     }
 }
@@ -228,6 +241,7 @@ Options:
   --train-fraction <F>   Train/holdout split (default: 0.80)
   --config <PATH>        Optional config.toml (default: strategy_config)
   --output <PATH>        JSON output path (default: data/backtest_results.json)
+  --dataset-path <PATH>  Load events from CSV instead of generating synthetic data
   --help                 Show this help
 "
     );

@@ -52,6 +52,21 @@ pub enum PipelineEvent {
     EnrichedSwap(EnrichedSwapEvent),
 }
 
+/// Real-time pool price emitted by the Yellowstone Geyser stream.
+#[derive(Clone, Debug)]
+pub struct PoolPrice {
+    /// Base-58 encoded pool account address.
+    pub pool_address: String,
+    /// DEX identifier (e.g. "orca_whirlpool", "raydium_amm").
+    pub dex: String,
+    /// Spot price of token_a in terms of token_b.
+    pub price: f64,
+    /// On-chain liquidity (raw u128 from the decoded account).
+    pub liquidity: u128,
+    /// Unix timestamp in milliseconds when the account update was observed.
+    pub timestamp_ms: u64,
+}
+
 impl PipelineEvent {
     pub fn enriched(&self) -> &EnrichedSwapEvent {
         match self {

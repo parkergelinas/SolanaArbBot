@@ -505,6 +505,97 @@ pub fn fetch_blockhash_blocking(rpc_endpoint: &str) -> Result<[u8; 32], String> 
     })
 }
 
+// ── High-level bundle submission with VersionedTransaction ───────────────────
+
+/// Jito block-engine endpoints for concurrent submission.
+/// Overridable via `JITO_BLOCK_ENGINE_NY` / `JITO_BLOCK_ENGINE_EU` env vars.
+fn jito_ny_endpoint() -> String {
+    std::env::var("JITO_BLOCK_ENGINE_NY")
+        .unwrap_or_else(|_| JITO_ENDPOINTS[0].to_owned())
+}
+
+fn jito_eu_endpoint() -> String {
+    std::env::var("JITO_BLOCK_ENGINE_EU")
+        .unwrap_or_else(|_| JITO_ENDPOINTS[1].to_owned())
+}
+
+/// Submits a [`solana_sdk::transaction::VersionedTransaction`] as a Jito bundle,
+/// prepending a tip-transfer transaction to `96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5`.
+///
+/// - Serializes both transactions to base64.
+/// - Posts to the NY and EU block-engine endpoints concurrently.
+/// - Returns the bundle UUID from whichever endpoint responds first within 1500 ms.
+/// - Logs `warn` on individual endpoint failures.
+///
+/// `wallet` must be a live (non-paper) keypair.  The tip transaction is signed
+/// using [`wallet::WalletKeypair::sign_message`].  The swap transaction is taken
+/// as-is (caller must have already signed it with the appropriate signer set).
+///
+/// `blockhash` must be 32 raw bytes (decoded from a recent `getLatestBlockhash`
+/// RPC response).
+pub async fn submit_bundle(
+    tx: &solana_sdk::transaction::VersionedTransaction,
+    tip_lamports: u64,
+    wallet: &wallet::WalletKeypair,
+    blockhash: &[u8; 32],
+) -> anyhow::Result<String> {
+    use anyhow::anyhow;
+    use base64::Engine as _;
+    use tokio::time::{timeout, Duration};
+
+    let payer_bytes: [u8; 32] = *wallet.pubkey().as_bytes();
+
+    // Build and sign the tip-transfer transaction.
+    let tip_acct = decode_base58_pubkey(JITO_TIP_ACCOUNTS[0]);
+    let tip_msg = build_tip_tx_message(&payer_bytes, &tip_acct, tip_lamports, blockhash);
+    let tip_sig = wallet
+        .sign_message(&tip_msg)
+        .map_err(|e| anyhow!("tip sign: {e}"))?;
+    let tip_tx_bytes = wrap_signed_tx(&tip_msg, &tip_sig);
+
+    // Serialize the swap transaction.
+    let swap_tx_bytes = bincode::serialize(tx)
+        .map_err(|e| anyhow!("swap tx serialize: {e}"))?;
+
+    let tip_b64 = base64::engine::general_purpose::STANDARD.encode(&tip_tx_bytes);
+    let swap_b64 = base64::engine::general_purpose::STANDARD.encode(&swap_tx_bytes);
+    let txs = vec![tip_b64, swap_b64];
+    let params: Vec<&str> = txs.iter().map(String::as_str).collect();
+
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_millis(1_500))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+
+    let id = BUNDLE_COUNTER.fetch_add(1, Ordering::Relaxed);
+
+    let ny_fut = JitoSubmitter::post_bundle(&http, &jito_ny_endpoint(), id, &params);
+    let eu_fut = JitoSubmitter::post_bundle(&http, &jito_eu_endpoint(), id + 1, &params);
+
+    // Race the two endpoints; accept whichever replies first.
+    let (ny_res, eu_res) = tokio::join!(
+        timeout(Duration::from_millis(1_500), ny_fut),
+        timeout(Duration::from_millis(1_500), eu_fut),
+    );
+
+    for (name, result) in [("NY", ny_res), ("EU", eu_res)] {
+        match result {
+            Ok(Ok(uuid)) => {
+                tracing::info!(endpoint = name, uuid = %uuid, "bundle accepted");
+                return Ok(uuid);
+            }
+            Ok(Err(e)) => {
+                tracing::warn!(endpoint = name, error = %e, "bundle endpoint rejected");
+            }
+            Err(_) => {
+                tracing::warn!(endpoint = name, "bundle endpoint timed out");
+            }
+        }
+    }
+
+    Err(anyhow!("all Jito endpoints rejected or timed out"))
+}
+
 fn base64_encode(data: &[u8]) -> String {
     const TABLE: &[u8; 64] =
         b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -666,5 +757,40 @@ mod tests {
         assert_eq!(JITO_COMMITMENT, "processed");
         let cfg = ArbitrageConfig::default();
         assert_eq!(cfg.commitment, "processed");
+    }
+
+    #[tokio::test]
+    async fn submit_bundle_fails_gracefully_on_unreachable_endpoints() {
+        use ed25519_dalek::SigningKey;
+        use solana_sdk::hash::Hash;
+        use solana_sdk::message::v0;
+        use solana_sdk::transaction::VersionedTransaction;
+
+        // Point Jito endpoints at a closed port so every request fails.
+        std::env::set_var("JITO_BLOCK_ENGINE_NY", "http://127.0.0.1:1");
+        std::env::set_var("JITO_BLOCK_ENGINE_EU", "http://127.0.0.1:1");
+
+        // Build a minimal VersionedTransaction.
+        let sk = SigningKey::generate(&mut rand::rngs::OsRng);
+        let vk = sk.verifying_key().to_bytes();
+        let mut raw = [0u8; 64];
+        raw[..32].copy_from_slice(sk.as_bytes());
+        raw[32..].copy_from_slice(&vk);
+        let wallet_kp = wallet::WalletKeypair::from_64_bytes(&raw).unwrap();
+
+        let solana_pk =
+            solana_sdk::pubkey::Pubkey::new_from_array(*wallet_kp.pubkey().as_bytes());
+        let message =
+            v0::Message::try_compile(&solana_pk, &[], &[], Hash::default()).unwrap();
+        let tx = VersionedTransaction {
+            signatures: vec![solana_sdk::signature::Signature::default()],
+            message: solana_sdk::message::VersionedMessage::V0(message),
+        };
+
+        let result = submit_bundle(&tx, 5_000, &wallet_kp, &[0u8; 32]).await;
+        assert!(result.is_err(), "expected Err when all endpoints unreachable");
+
+        std::env::remove_var("JITO_BLOCK_ENGINE_NY");
+        std::env::remove_var("JITO_BLOCK_ENGINE_EU");
     }
 }

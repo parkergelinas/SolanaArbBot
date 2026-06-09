@@ -18,6 +18,33 @@ async fn main() -> anyhow::Result<()> {
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .init();
 
+    // ── Startup environment validation ────────────────────────────────────────
+    // Fail fast with a clear error if required secrets are missing.
+    {
+        const REQUIRED_ENV: &[(&str, &str)] = &[
+            ("SOLANA_ARB_WALLET_KEY", "Solana wallet signing key (base58 64-byte keypair)"),
+            ("GEYSER_GRPC_ENDPOINT", "Yellowstone gRPC endpoint URL"),
+        ];
+        let mut missing = false;
+        for (var, description) in REQUIRED_ENV {
+            if std::env::var(var).is_err() {
+                tracing::error!(
+                    env_var = var,
+                    description,
+                    "required environment variable not set — cannot start"
+                );
+                missing = true;
+            }
+        }
+        if missing {
+            tracing::error!(
+                "one or more required env vars are missing; \
+                 set them and restart the execution engine"
+            );
+            std::process::exit(1);
+        }
+    }
+
     let config = EngineConfig::from_env();
     info!(
         paper_mode = config.paper_mode,

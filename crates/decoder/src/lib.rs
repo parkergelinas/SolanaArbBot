@@ -6,6 +6,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod meteora;
 pub mod orca_clmm;
 pub use orca_clmm as orca;
 pub mod raydium;
@@ -22,6 +23,8 @@ pub enum DexType {
     Raydium,
     /// Orca concentrated-liquidity pools.
     OrcaCLMM,
+    /// Meteora Dynamic Liquidity Market Maker pools.
+    MeteoraDLMM,
 }
 
 /// Structured pool state emitted by DEX decoders.
@@ -51,15 +54,27 @@ pub trait EventPoolDecoder {
 pub struct UnifiedDecoder {
     raydium: raydium::RaydiumDecoder,
     orca: orca::OrcaDecoder,
+    meteora: meteora::MeteoraDecoder,
 }
 
 impl UnifiedDecoder {
     /// Creates a unified decoder.
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             raydium: raydium::RaydiumDecoder::new(),
             orca: orca::OrcaDecoder::new(),
+            meteora: meteora::MeteoraDecoder::default(),
+        }
+    }
+
+    /// Creates a decoder with a configurable SOL/USD price for Meteora TVL estimates.
+    #[must_use]
+    pub fn with_sol_price(sol_price_usd: f64) -> Self {
+        Self {
+            raydium: raydium::RaydiumDecoder::new(),
+            orca: orca::OrcaDecoder::new(),
+            meteora: meteora::MeteoraDecoder::new(sol_price_usd),
         }
     }
 
@@ -77,6 +92,7 @@ impl UnifiedDecoder {
         let result = match dex {
             DexType::Raydium => self.raydium.decode(data),
             DexType::OrcaCLMM => self.orca.decode(data),
+            DexType::MeteoraDLMM => self.meteora.decode(data),
         };
 
         debug!(
@@ -105,6 +121,10 @@ impl UnifiedDecoder {
         let result = match dex {
             DexType::Raydium => self.raydium.decode_event(event),
             DexType::OrcaCLMM => self.orca.decode_event(event),
+            // Meteora DLMM uses account-data decoding; event-based transform not supported.
+            DexType::MeteoraDLMM => Err(common::Error::DecodeError(
+                "Meteora DLMM does not support event-based decoding; use decode() with raw account bytes".into(),
+            )),
         };
 
         debug!(
@@ -122,6 +142,11 @@ impl UnifiedDecoder {
 /// Backwards-compatible alias for existing scaffold code.
 pub type DexDecoder = UnifiedDecoder;
 
+/// Convenience free function: decode Meteora DLMM account bytes with a given SOL price.
+pub fn decode_meteora_dlmm(data: &[u8], sol_price_usd: f64) -> Result<PoolState> {
+    meteora::MeteoraDecoder::new(sol_price_usd).decode(data)
+}
+
 fn unix_timestamp_micros() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -132,7 +157,7 @@ fn unix_timestamp_micros() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{raydium, DexType, UnifiedDecoder};
+    use super::{meteora, raydium, DexType, UnifiedDecoder};
     use crate::orca;
     use common::{MarketEvent, PoolUpdate, Pubkey};
 
@@ -153,7 +178,8 @@ mod tests {
             .expect("decode orca");
 
         assert_eq!(state.dex, DexType::OrcaCLMM);
-        assert_eq!(state.reserves, None);
+        // Whirlpool decoder always computes a reserve proxy from sqrt_price.
+        assert!(state.reserves.is_some());
     }
 
     #[test]
@@ -197,6 +223,24 @@ mod tests {
             .expect("second transform");
 
         assert_eq!(first, second);
+    }
+
+    #[test]
+    fn unified_decoder_routes_meteora_dlmm() {
+        let state = UnifiedDecoder::new()
+            .decode(DexType::MeteoraDLMM, &meteora::tests::meteora_fixture())
+            .expect("decode meteora");
+
+        assert_eq!(state.dex, DexType::MeteoraDLMM);
+        assert_eq!(state.reserves, Some((2_000_000, 3_000_000)));
+        assert_eq!(state.liquidity, 5_000_000);
+    }
+
+    #[tokio::test]
+    async fn decode_meteora_dlmm_free_function() {
+        let state = super::decode_meteora_dlmm(&meteora::tests::meteora_fixture(), 150.0)
+            .expect("decode via free fn");
+        assert_eq!(state.dex, DexType::MeteoraDLMM);
     }
 
     fn pool_update_event(liquidity: u128) -> MarketEvent {

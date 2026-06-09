@@ -7,12 +7,11 @@
 //!
 //! # Design notes
 //!
-//! * This crate does **not** depend on `solana-sdk`.  Solana primitives are
-//!   replaced by the workspace-standard [`common::Pubkey`] and the wallet-local
-//!   [`types::Blockhash`] newtype.
-//! * All RPC communication uses a minimal `reqwest 0.11` JSON-RPC client
-//!   instead of `solana-client`, keeping the dependency tree compatible with
-//!   Cargo 1.83 (no `edition2024` hazard).
+//! * Depends on `solana-sdk 2.x` (edition-2021, ed25519-dalek 2.x compatible)
+//!   solely for [`solana_sdk::transaction::VersionedTransaction`] signing.
+//!   Internal types continue to use [`common::Pubkey`] and [`types::Blockhash`].
+//! * All RPC communication uses a minimal `reqwest` JSON-RPC client
+//!   instead of `solana-client`.
 //!
 //! # Module layout
 //!

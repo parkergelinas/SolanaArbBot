@@ -1,6 +1,7 @@
 pub mod adapter;
 pub mod geyser;
 pub mod mock;
+pub mod pumpswap;
 pub mod rpc;
 
 use adapter::IngestionAdapter;

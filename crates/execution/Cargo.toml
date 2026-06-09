@@ -5,8 +5,11 @@ version.workspace = true
 license.workspace = true
 
 [dependencies]
-base64 = "0.22"
-bs58 = "0.5"
+anyhow  = "1"
+base64  = "0.22"
+bincode = "1"
+bs58    = "0.5"
+solana-sdk = { version = "2", default-features = false }
 common = { path = "../common" }
 config = { path = "../config" }
 graph = { version = "0.1.0", path = "../graph" }
@@ -19,3 +22,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { version = "1.52.3", features = ["rt", "rt-multi-thread", "macros"] }
 tracing = "0.1.44"
+
+[dev-dependencies]
+ed25519-dalek = { version = "2", default-features = false, features = ["alloc", "std", "rand_core"] }
+rand = "0.8"
