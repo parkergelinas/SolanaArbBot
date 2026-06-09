@@ -34,3 +34,8 @@ Thumbs.db
 **/*keypair*.json
 **/*keypair*.txt
 config.toml
+
+# SQLite runtime databases
+*.db
+*.db-shm
+*.db-wal
