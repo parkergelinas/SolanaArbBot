@@ -3,6 +3,23 @@ import { logger } from './logger.js';
 import { closeDb } from './db/sqlite.js';
 
 async function main(): Promise<void> {
+  // ── Scanner mode ─────────────────────────────────────────────────────────
+  if (process.env.SCANNER_MODE === '1') {
+    process.env.BOT_PAPER_MODE = '1';
+    process.env.BOT_LIVE_QUOTES = '1';
+    const { startScannerDaemon } = await import('./scanner/live-collector.js');
+    const daemon = await startScannerDaemon();
+    const shutdown = async (signal: string): Promise<void> => {
+      logger.info({ signal }, 'scanner: shutdown signal received');
+      await daemon.stop();
+      logger.info('scanner: clean exit');
+      process.exit(0);
+    };
+    process.once('SIGTERM', () => void shutdown('SIGTERM'));
+    process.once('SIGINT',  () => void shutdown('SIGINT'));
+    return; // Express server keeps the event loop alive; signals trigger shutdown above
+  }
+
   const engine = new BotEngine();
   const iterations = Number(process.env.BOT_MAX_ITERATIONS ?? '0');
 
