@@ -41,7 +41,7 @@ tokio = { version = "1", features = ["full"] }
 # ── edition2024 firewall ──────────────────────────────────────────────────────
 # Pin every transitive dep that has released an edition2024 build incompatible
 # with Cargo 1.83.  Semver ranges used so we still get bugfixes in safe series.
-indexmap     = ">=2.0,  <2.14"   # 2.14.0 requires edition2024
+indexmap     = ">=2.0, <2.15"   # 2.14.0 requires edition2024
 base64ct     = ">=1.0,  <1.8"    # 1.8.3  requires edition2024
 idna_adapter = ">=1.0,  <1.2"    # 1.2.2  requires edition2024
 
