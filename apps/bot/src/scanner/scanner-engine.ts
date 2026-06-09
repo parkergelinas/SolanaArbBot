@@ -34,7 +34,7 @@ export class ScannerEngine {
 
   constructor(capitalUsd: number) {
     this.capitalUsd = capitalUsd;
-    this.ctx = { minProfitUsd: 0.05, slippageBps: this.env.slippageBps };
+    this.ctx = { minProfitUsd: 0, slippageBps: this.env.slippageBps };
 
     const tradeAmountUi = capitalUsd / 150; // 150 USD/SOL bootstrap estimate
 
@@ -43,8 +43,8 @@ export class ScannerEngine {
       tradeAmountUi,
       this.pairRegistry,
       {
-        minDivergenceBps: Number(process.env.BOT_MIN_DIVERGENCE_BPS ?? '5'),
-        minSurvivingEdgeBps: Number(process.env.BOT_MIN_SURVIVING_EDGE_BPS ?? '3'),
+        minDivergenceBps: Number(process.env.BOT_MIN_DIVERGENCE_BPS ?? '1'),
+        minSurvivingEdgeBps: Number(process.env.BOT_MIN_SURVIVING_EDGE_BPS ?? '1'),
         pairsPerScan: this.env.pairsPerScan,
         scanConcurrency: 2,
       },

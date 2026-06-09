@@ -82,8 +82,11 @@ export async function startScannerDaemon(): Promise<ScannerDaemon> {
   const tick = setInterval(async () => {
     if (scanning) return;
     scanning = true;
+    const tickStart = Date.now();
     try {
       const results = await engine.scan();
+      const elapsed = Date.now() - tickStart;
+      logger.info({ opportunities: results.length, elapsedMs: elapsed }, 'scanner: tick');
       for (const r of results) {
         const opp: Omit<ScannedOpportunity, 'id'> = {
           timestamp: r.timestamp,
@@ -99,11 +102,12 @@ export async function startScannerDaemon(): Promise<ScannerDaemon> {
         };
         insertOpportunity(opp);
         sse.broadcast('opportunity', opp);
+        logger.info(
+          { strategy: r.strategyId, pair: r.pairLabel, spreadBps: r.spreadBps, netPnl: r.netProfitUsd },
+          'scanner: opportunity',
+        );
       }
       sse.broadcast('stats', { clientCount: sse.clientCount, total: getStats().total });
-      if (results.length > 0) {
-        logger.info({ count: results.length }, 'scanner: scan complete');
-      }
     } catch (err) {
       logger.warn({ err }, 'scanner: scan tick error');
     } finally {
