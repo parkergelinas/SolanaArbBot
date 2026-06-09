@@ -41,6 +41,12 @@ export interface BotEnv {
   enablePumpEdge: boolean;
   /** Helius API key for pump launch monitoring. */
   heliusApiKey?: string;
+  /** Enable adaptive arb strategy (capital-aware, auto-scaling). */
+  enableAdaptiveArb: boolean;
+  /** Starting capital in SOL for the adaptive strategy tracker. */
+  startingCapitalSol: number;
+  /** Hard cap on single trade size in SOL. */
+  maxTradeSolCap: number;
   /** Enable cross-DEX arb strategy (Raydium vs Orca price comparison). */
   enableCrossDexArb: boolean;
   /** Min spread bps between Raydium and Orca to signal a core-pair trade. */
@@ -137,6 +143,9 @@ export function loadEnv(): BotEnv {
     logLevel: env('LOG_LEVEL', 'info'),
     sqlitePath: env('SQLITE_PATH', './trades.db'),
 
+    enableAdaptiveArb: env('BOT_ENABLE_ADAPTIVE_ARB', '0') === '1',
+    startingCapitalSol: Number(env('BOT_STARTING_CAPITAL_SOL', '1.0')),
+    maxTradeSolCap: Number(env('BOT_MAX_TRADE_SOL', '10')),
     enableCrossDexArb: env('BOT_ENABLE_CROSS_DEX_ARB', '0') === '1',
     crossDexSpreadBps: Number(env('BOT_CROSS_DEX_SPREAD_BPS', '35')),
     pumpSpreadBps: Number(env('BOT_PUMP_SPREAD_BPS', '80')),

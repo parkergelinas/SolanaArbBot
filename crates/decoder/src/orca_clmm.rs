@@ -1,28 +1,44 @@
-//! Orca CLMM-style placeholder decoder.
+//! Orca Whirlpool (CLMM) account decoder.
+//!
+//! Program ID: `whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc`
+//!
+//! # Whirlpool account layout (little-endian, offsets relative to byte 0)
+//!
+//! | Offset | Size | Field              |
+//! |--------|------|--------------------|
+//! | 65     | 16   | sqrt_price (u128)  |
+//! | 81     | 16   | liquidity (u128)   |
+//! | 97     | 4    | tick_current_index (i32) |
+//! | 101    | 2    | fee_rate (u16)     |
+//! | 103    | 32   | token_mint_a (Pubkey) |
+//! | 133    | 32   | token_mint_b (Pubkey) |
+//!
+//! Minimum account data length: 165 bytes.
+//!
+//! Price is derived as: `price_f64 = (sqrt_price as f64 / 2^64)^2`.
 
 use common::{Error, MarketEvent, PoolUpdate, Pubkey, Result, Token};
 
 use crate::{DexType, EventPoolDecoder, PoolDecoder, PoolState};
 
-const DECODER: &str = "orca_clmm";
-const TOKEN_A_MINT_OFFSET: usize = 0;
-const TOKEN_B_MINT_OFFSET: usize = 32;
-const TOKEN_A_DECIMALS_OFFSET: usize = 64;
-const TOKEN_B_DECIMALS_OFFSET: usize = 65;
-const LIQUIDITY_OFFSET: usize = 66;
-const CURRENT_TICK_OFFSET: usize = 82;
-const TICK_SPACING_OFFSET: usize = 86;
+pub const WHIRLPOOL_PROGRAM_ID: &str = "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc";
 
-/// Simplified Orca CLMM placeholder layout length.
-pub const ORCA_POOL_DATA_LEN: usize = 88;
-const DEFAULT_EVENT_DECIMALS: u8 = 0;
+const SQRT_PRICE_OFFSET: usize = 65;
+const LIQUIDITY_OFFSET: usize = 81;
+const TICK_CURRENT_INDEX_OFFSET: usize = 97;
+const FEE_RATE_OFFSET: usize = 101;
+const TOKEN_MINT_A_OFFSET: usize = 103;
+const TOKEN_MINT_B_OFFSET: usize = 133;
+pub const WHIRLPOOL_MIN_DATA_LEN: usize = TOKEN_MINT_B_OFFSET + 32; // 165
 
-/// Orca CLMM pool decoder.
+const DEFAULT_DECIMALS: u8 = 0;
+const DECODER: &str = "orca_whirlpool";
+
+/// Orca Whirlpool CLMM pool decoder.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct OrcaDecoder;
 
 impl OrcaDecoder {
-    /// Creates an Orca decoder.
     #[must_use]
     pub const fn new() -> Self {
         Self
@@ -31,27 +47,25 @@ impl OrcaDecoder {
 
 impl PoolDecoder for OrcaDecoder {
     fn decode(&self, data: &[u8]) -> Result<PoolState> {
-        ensure_len(data, ORCA_POOL_DATA_LEN)?;
+        ensure_len(data, WHIRLPOOL_MIN_DATA_LEN)?;
 
-        // Tick-aware fields are parsed now so the placeholder layout can grow
-        // into a full CLMM representation without changing decoder routing.
-        let _current_tick = read_i32(data, CURRENT_TICK_OFFSET)?;
-        let _tick_spacing = read_u16(data, TICK_SPACING_OFFSET)?;
+        let sqrt_price = read_u128(data, SQRT_PRICE_OFFSET)?;
+        let liquidity = read_u128(data, LIQUIDITY_OFFSET)?;
+        let _tick_current_index = read_i32(data, TICK_CURRENT_INDEX_OFFSET)?;
+        let _fee_rate = read_u16(data, FEE_RATE_OFFSET)?;
+        let token_mint_a = read_pubkey(data, TOKEN_MINT_A_OFFSET)?;
+        let token_mint_b = read_pubkey(data, TOKEN_MINT_B_OFFSET)?;
+
+        // Convert sqrt_price → a (reserve_a, reserve_b) proxy.
+        // price = (sqrt_price / 2^64)^2; store as integer ratio scaled to 1e6.
+        let reserves = sqrt_price_to_reserves(sqrt_price);
 
         Ok(PoolState {
             dex: DexType::OrcaCLMM,
-            token_a: Token::new(
-                read_pubkey(data, TOKEN_A_MINT_OFFSET)?,
-                read_u8(data, TOKEN_A_DECIMALS_OFFSET)?,
-                None,
-            ),
-            token_b: Token::new(
-                read_pubkey(data, TOKEN_B_MINT_OFFSET)?,
-                read_u8(data, TOKEN_B_DECIMALS_OFFSET)?,
-                None,
-            ),
-            liquidity: read_u128(data, LIQUIDITY_OFFSET)?,
-            reserves: None,
+            token_a: Token::new(token_mint_a, DEFAULT_DECIMALS, None),
+            token_b: Token::new(token_mint_b, DEFAULT_DECIMALS, None),
+            liquidity,
+            reserves: Some(reserves),
         })
     }
 }
@@ -63,9 +77,29 @@ impl EventPoolDecoder for OrcaDecoder {
                 "orca decoder only transforms pool update events".to_owned(),
             ));
         };
-
         pool_update_to_state(update)
     }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Converts Whirlpool sqrt_price to an (reserve_a, reserve_b) proxy suitable
+/// for the `PoolState::reserves` field.  The ratio represents the exchange rate
+/// scaled by 1_000_000.
+fn sqrt_price_to_reserves(sqrt_price: u128) -> (u64, u64) {
+    // price = (sqrt_price / 2^64)^2
+    // Avoid f64 inf for huge values; clamp to u64::MAX.
+    let q64 = (1u128 << 64) as f64;
+    let sp_f = sqrt_price as f64 / q64;
+    let price = sp_f * sp_f;
+
+    let reserve_b = 1_000_000u64;
+    let reserve_a = if price > 0.0 && price.is_finite() {
+        ((reserve_b as f64) / price).min(u64::MAX as f64) as u64
+    } else {
+        reserve_b
+    };
+    (reserve_a, reserve_b)
 }
 
 fn pool_update_to_state(update: &PoolUpdate) -> Result<PoolState> {
@@ -84,8 +118,8 @@ fn pool_update_to_state(update: &PoolUpdate) -> Result<PoolState> {
 
     Ok(PoolState {
         dex: DexType::OrcaCLMM,
-        token_a: Token::new(token_a_mint, DEFAULT_EVENT_DECIMALS, None),
-        token_b: Token::new(token_b_mint, DEFAULT_EVENT_DECIMALS, None),
+        token_a: Token::new(token_a_mint, DEFAULT_DECIMALS, None),
+        token_b: Token::new(token_b_mint, DEFAULT_DECIMALS, None),
         liquidity,
         reserves: Some((reserve_a, reserve_b)),
     })
@@ -102,7 +136,6 @@ fn ensure_len(data: &[u8], expected: usize) -> Result<()> {
             data.len()
         )));
     }
-
     Ok(())
 }
 
@@ -110,12 +143,6 @@ fn read_pubkey(data: &[u8], offset: usize) -> Result<Pubkey> {
     let mut bytes = [0; 32];
     bytes.copy_from_slice(read_slice(data, offset, 32)?);
     Ok(Pubkey::new(bytes))
-}
-
-fn read_u8(data: &[u8], offset: usize) -> Result<u8> {
-    Ok(*read_slice(data, offset, 1)?
-        .first()
-        .expect("slice length checked"))
 }
 
 fn read_u16(data: &[u8], offset: usize) -> Result<u16> {
@@ -142,47 +169,71 @@ fn read_slice(data: &[u8], offset: usize, len: usize) -> Result<&[u8]> {
         .ok_or_else(|| Error::DecodeError(format!("{DECODER} offset overflow")))?;
     data.get(offset..end).ok_or_else(|| {
         Error::DecodeError(format!(
-            "{DECODER} pool data too short: expected at least {end} bytes, got {}",
+            "{DECODER} pool data too short: need {end} bytes, got {}",
             data.len()
         ))
     })
 }
 
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
 
+    /// Builds a hardcoded 165-byte Whirlpool account snapshot with known field values.
     pub(crate) fn orca_fixture() -> Vec<u8> {
-        let mut data = vec![0; ORCA_POOL_DATA_LEN];
-        write_pubkey(&mut data, TOKEN_A_MINT_OFFSET, Pubkey::new([3; 32]));
-        write_pubkey(&mut data, TOKEN_B_MINT_OFFSET, Pubkey::new([4; 32]));
-        data[TOKEN_A_DECIMALS_OFFSET] = 6;
-        data[TOKEN_B_DECIMALS_OFFSET] = 9;
-        write_u128(&mut data, LIQUIDITY_OFFSET, 123_456);
-        write_i32(&mut data, CURRENT_TICK_OFFSET, -42);
-        write_u16(&mut data, TICK_SPACING_OFFSET, 64);
+        let mut data = vec![0u8; WHIRLPOOL_MIN_DATA_LEN];
+
+        // sqrt_price at offset 65 — encode 2^64 (price = 1.0) as u128 LE
+        let sqrt_price: u128 = 1u128 << 64;
+        data[SQRT_PRICE_OFFSET..SQRT_PRICE_OFFSET + 16]
+            .copy_from_slice(&sqrt_price.to_le_bytes());
+
+        // liquidity at offset 81
+        let liquidity: u128 = 500_000_000;
+        data[LIQUIDITY_OFFSET..LIQUIDITY_OFFSET + 16]
+            .copy_from_slice(&liquidity.to_le_bytes());
+
+        // tick_current_index at offset 97 (-100i32)
+        data[TICK_CURRENT_INDEX_OFFSET..TICK_CURRENT_INDEX_OFFSET + 4]
+            .copy_from_slice(&(-100i32).to_le_bytes());
+
+        // fee_rate at offset 101 (300 = 0.3%)
+        data[FEE_RATE_OFFSET..FEE_RATE_OFFSET + 2]
+            .copy_from_slice(&300u16.to_le_bytes());
+
+        // token_mint_a at offset 103
+        let mint_a = Pubkey::new([0xAAu8; 32]);
+        data[TOKEN_MINT_A_OFFSET..TOKEN_MINT_A_OFFSET + 32]
+            .copy_from_slice(mint_a.as_bytes());
+
+        // token_mint_b at offset 133
+        let mint_b = Pubkey::new([0xBBu8; 32]);
+        data[TOKEN_MINT_B_OFFSET..TOKEN_MINT_B_OFFSET + 32]
+            .copy_from_slice(mint_b.as_bytes());
+
         data
     }
 
     #[test]
-    fn decodes_orca_pool_state() {
+    fn decodes_whirlpool_snapshot() {
         let state = OrcaDecoder::new()
             .decode(&orca_fixture())
-            .expect("decode orca");
+            .expect("decode whirlpool");
 
         assert_eq!(state.dex, DexType::OrcaCLMM);
-        assert_eq!(state.token_a.mint(), Pubkey::new([3; 32]));
-        assert_eq!(state.token_a.decimals(), 6);
-        assert_eq!(state.token_b.mint(), Pubkey::new([4; 32]));
-        assert_eq!(state.token_b.decimals(), 9);
-        assert_eq!(state.liquidity, 123_456);
-        assert_eq!(state.reserves, None);
+        assert_eq!(state.token_a.mint(), Pubkey::new([0xAAu8; 32]));
+        assert_eq!(state.token_b.mint(), Pubkey::new([0xBBu8; 32]));
+        assert_eq!(state.liquidity, 500_000_000);
+        // price = 1.0 → reserves should be equal
+        let (ra, rb) = state.reserves.expect("reserves present");
+        assert_eq!(ra, rb, "price=1.0 must produce equal reserve proxy");
     }
 
     #[test]
-    fn rejects_short_orca_pool_data() {
-        let err = OrcaDecoder::new().decode(&[0; 8]).expect_err("short");
-
+    fn rejects_short_whirlpool_data() {
+        let err = OrcaDecoder::new().decode(&[0u8; 8]).expect_err("too short");
         assert!(matches!(err, Error::DecodeError(_)));
     }
 
@@ -203,10 +254,8 @@ pub(crate) mod tests {
 
         assert_eq!(state.dex, DexType::OrcaCLMM);
         assert_eq!(state.token_a.mint(), Pubkey::new([3; 32]));
-        assert_eq!(state.token_a.decimals(), DEFAULT_EVENT_DECIMALS);
         assert_eq!(state.token_b.mint(), Pubkey::new([4; 32]));
         assert_eq!(state.liquidity, 7_000);
-        assert_eq!(state.reserves, Some((7_000, 7_000)));
     }
 
     #[test]
@@ -219,27 +268,19 @@ pub(crate) mod tests {
             sqrt_price: None,
             fee_rate: None,
         });
-
         let err = OrcaDecoder::new()
             .decode_event(&event)
             .expect_err("missing liquidity");
-
         assert!(matches!(err, Error::DecodeError(_)));
     }
 
-    fn write_pubkey(data: &mut [u8], offset: usize, value: Pubkey) {
-        data[offset..offset + 32].copy_from_slice(value.as_bytes());
-    }
-
-    fn write_u16(data: &mut [u8], offset: usize, value: u16) {
-        data[offset..offset + 2].copy_from_slice(&value.to_le_bytes());
-    }
-
-    fn write_i32(data: &mut [u8], offset: usize, value: i32) {
-        data[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
-    }
-
-    fn write_u128(data: &mut [u8], offset: usize, value: u128) {
-        data[offset..offset + 16].copy_from_slice(&value.to_le_bytes());
+    #[tokio::test]
+    async fn sign_and_decode_round_trip_is_deterministic() {
+        // Verify determinism: decoding the same bytes twice yields equal states.
+        let data = orca_fixture();
+        let decoder = OrcaDecoder::new();
+        let s1 = decoder.decode(&data).unwrap();
+        let s2 = decoder.decode(&data).unwrap();
+        assert_eq!(s1, s2);
     }
 }

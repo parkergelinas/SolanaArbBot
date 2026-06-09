@@ -87,6 +87,52 @@ and a different approach is needed.
 
 ---
 
+---
+
+## Strategy C: Cross-DEX Arb (Raydium vs Orca)
+**Status:** Validated. Real spreads confirmed: core pairs 1–20 bps, pump pairs 50–500 bps (unconfirmed).
+**Key finding:** SOL/USDC = 0.25 bps. Core pairs have no real edge at Stage 1 capital. Pump pairs are the only viable source at 1–3 SOL.
+**Config:** `.env.cross-dex` — `BOT_ENABLE_CROSS_DEX_ARB=1`
+**TX cost floor:** ~$0.065/trade — minimum profitable trade = $0.065 net
+
+---
+
+## Strategy D: Adaptive Arb (ACTIVE — capital-building strategy)
+**Status:** Built. Paper validation running.
+**Config:** `.env.adaptive`
+
+### How it adapts
+| Stage | Capital | Trade size | Min spread | Min profit | Notes |
+|-------|---------|-----------|-----------|-----------|-------|
+| 1 | 1–3 SOL | 0.5 SOL | 100 bps | $0.01 | Pump pairs only |
+| 2 | 3–10 SOL | capital×50% | 60 bps | $0.03 | Pump + LST |
+| 3 | 10–30 SOL | capital×60% | 35 bps | $0.08 | Core pairs viable |
+| 4 | 30+ SOL | capital×70% | 25 bps | $0.15 | Full suite |
+
+### Edge sources
+1. **Pump.fun graduated tokens** (first 24–48h on Raydium) — 50–500 bps, DexScreener discovery
+2. **LST de-peg** (mSOL/jitoSOL/bSOL) — 2–15 bps, reliable, low-risk
+3. **Cross-DEX core pairs** — 1–20 bps, only viable at Stage 3+
+
+### Capital persistence
+`CapitalTracker` stores balance in SQLite, survives restarts, compounds automatically.
+
+### Live execution
+Requires `JITO_ENABLED=1` for atomic two-tx bundle (buy on cheaperDex + sell on dearerDex).
+Without Jito: paper mode only (gap risk between legs in live mode).
+
+### Honest expected trajectory
+```
+Start:  1.0 SOL ($65)
+Month 1: $0.01–$0.10/trade, 2–10 trades/day (pump pairs only) → +$0.02–$1/day
+Month 2: Balance may be 1.5–3 SOL → Stage 2 parameters unlock
+Month 3: 3–5 SOL → core pairs start generating $0.03–$0.15/trade
+Month 6: 10+ SOL → Stage 3, $0.08–$0.50/trade, consistent daily P&L
+```
+Timeline compresses sharply if pump pair spreads are wide and frequent.
+
+---
+
 ## Live-Quotes Session
 **Started:** 2026-06-07 09:09:39
 **Mode:** BOT_PAPER_MODE=1 + BOT_LIVE_QUOTES=1

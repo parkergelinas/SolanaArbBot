@@ -20,7 +20,7 @@ pub mod simulate;
 pub mod verify;
 
 pub use combined::{run_combined_backtest, CombinedBacktestResult, StrategyKind};
-pub use dataset::{generate_dataset, ReplayDataset, ReplayEvent};
+pub use dataset::{fetch_jupiter_history, generate_dataset, load_from_csv, ReplayDataset, ReplayEvent};
 pub use metrics::{BacktestMetrics, StrategyMetrics};
 pub use optimize::{optimize_params, OptimizedParams, OptimizationResult};
 pub use quote_arb::run_quote_arb_backtest;

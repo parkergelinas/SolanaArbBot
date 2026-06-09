@@ -29,6 +29,10 @@ zeroize = { version = "1", features = ["derive"] }
 bs58    = "0.5"
 base64  = "0.22"
 
+# Solana SDK — needed for VersionedTransaction signing.
+# solana-sdk 2.x uses ed25519-dalek 2.x, compatible with this crate.
+solana-sdk = { version = "2", default-features = false }
+
 # Async HTTP JSON-RPC (rustls — avoids openssl in the wallet crate).
 reqwest = { workspace = true }
 

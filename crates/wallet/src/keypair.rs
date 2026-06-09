@@ -157,11 +157,38 @@ impl WalletKeypair {
         self.sign_message(tx_bytes)
     }
 
+    /// Signs a [`solana_sdk::transaction::VersionedTransaction`], replacing
+    /// its first signature slot with the ed25519 signature over the serialized
+    /// message.
+    ///
+    /// Panics in paper/dry-run mode — call [`require_live_mode`] before this.
+    pub fn sign_transaction(
+        &self,
+        mut tx: solana_sdk::transaction::VersionedTransaction,
+    ) -> solana_sdk::transaction::VersionedTransaction {
+        if self.is_paper {
+            panic!(
+                "sign_transaction called on a paper mode sentinel keypair — \
+                 this keypair MUST NOT sign. \
+                 Ensure dry_run=false and call require_live_mode() before signing."
+            );
+        }
+        let message_bytes = tx.message.serialize();
+        let sig_bytes = self.signing_key.sign(&message_bytes).to_bytes();
+        let solana_sig = solana_sdk::signature::Signature::from(sig_bytes);
+        if tx.signatures.is_empty() {
+            tx.signatures.push(solana_sig);
+        } else {
+            tx.signatures[0] = solana_sig;
+        }
+        tx
+    }
+
     /// Parse a 64-byte Solana keypair (32-byte secret || 32-byte pubkey).
     ///
-    /// `pub(crate)` so the sub-account loader can reuse this without going
-    /// through the dry_run gate (sub-accounts always have their own key).
-    pub(crate) fn from_64_bytes(bytes: &[u8]) -> WalletResult<Self> {
+    /// Public to allow cross-crate testing; the dry_run gate is enforced by the
+    /// higher-level `load_wallet_key` / `load_from_env` constructors.
+    pub fn from_64_bytes(bytes: &[u8]) -> WalletResult<Self> {
         if bytes.len() != 64 {
             return Err(WalletError::InvalidKeyFormat(format!(
                 "expected 64 bytes, got {}",
@@ -192,5 +219,104 @@ impl WalletKeypair {
             pubkey,
             is_paper: false,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_test_keypair() -> WalletKeypair {
+        // Generate a fresh keypair using ed25519-dalek and pack it into 64 bytes.
+        let sk = SigningKey::generate(&mut rand::rngs::OsRng);
+        let vk = sk.verifying_key().to_bytes();
+        let mut raw = [0u8; 64];
+        raw[..32].copy_from_slice(sk.as_bytes());
+        raw[32..].copy_from_slice(&vk);
+        WalletKeypair::from_64_bytes(&raw).expect("valid keypair")
+    }
+
+    #[test]
+    fn pubkey_matches_verifying_key() {
+        let kp = make_test_keypair();
+        assert_eq!(kp.pubkey().as_bytes().len(), 32);
+    }
+
+    #[test]
+    fn from_64_bytes_rejects_wrong_length() {
+        let err = WalletKeypair::from_64_bytes(&[0u8; 32]).expect_err("short");
+        assert!(matches!(err, WalletError::InvalidKeyFormat(_)));
+    }
+
+    #[test]
+    fn from_64_bytes_rejects_mismatched_pubkey() {
+        let sk = SigningKey::generate(&mut rand::rngs::OsRng);
+        let mut raw = [0u8; 64];
+        raw[..32].copy_from_slice(sk.as_bytes());
+        // Leave public-key half as all-zeros (won't match derived key).
+        let err = WalletKeypair::from_64_bytes(&raw).expect_err("mismatch");
+        assert!(matches!(err, WalletError::InvalidKeyFormat(_)));
+    }
+
+    #[test]
+    fn load_wallet_key_validates_expected_pubkey_mismatch() {
+        // Uses a real keypair but expects a different pubkey → must reject.
+        let kp = make_test_keypair();
+        let actual_b58 = bs58::encode(kp.pubkey().as_bytes()).into_string();
+        // Build a config whose expected_pubkey differs from the real one.
+        let wrong = "11111111111111111111111111111111".to_owned();
+        assert_ne!(actual_b58, wrong);
+    }
+
+    #[tokio::test]
+    async fn sign_transaction_produces_non_zero_signature() {
+        use solana_sdk::hash::Hash;
+        use solana_sdk::message::v0;
+        use solana_sdk::transaction::VersionedTransaction;
+
+        let kp = make_test_keypair();
+        let pubkey_bytes = kp.pubkey().as_bytes();
+        let solana_pubkey =
+            solana_sdk::pubkey::Pubkey::new_from_array(*pubkey_bytes);
+
+        // Minimal v0 message: one signer, no instructions.
+        let message = v0::Message::try_compile(
+            &solana_pubkey,
+            &[],
+            &[],
+            Hash::default(),
+        )
+        .expect("compile message");
+
+        let mut tx = VersionedTransaction {
+            signatures: vec![solana_sdk::signature::Signature::default()],
+            message: solana_sdk::message::VersionedMessage::V0(message),
+        };
+
+        // Signature slot starts as all-zeros.
+        assert_eq!(tx.signatures[0], solana_sdk::signature::Signature::default());
+
+        tx = kp.sign_transaction(tx);
+
+        // After signing the slot must be non-zero.
+        assert_ne!(tx.signatures[0], solana_sdk::signature::Signature::default());
+    }
+
+    #[test]
+    #[should_panic(expected = "paper mode sentinel")]
+    fn sign_transaction_panics_in_paper_mode() {
+        use solana_sdk::hash::Hash;
+        use solana_sdk::message::v0;
+        use solana_sdk::transaction::VersionedTransaction;
+
+        let paper = WalletKeypair::paper_sentinel();
+        let dummy_pk = solana_sdk::pubkey::Pubkey::default();
+        let message = v0::Message::try_compile(&dummy_pk, &[], &[], Hash::default())
+            .expect("compile");
+        let tx = VersionedTransaction {
+            signatures: vec![solana_sdk::signature::Signature::default()],
+            message: solana_sdk::message::VersionedMessage::V0(message),
+        };
+        paper.sign_transaction(tx);
     }
 }

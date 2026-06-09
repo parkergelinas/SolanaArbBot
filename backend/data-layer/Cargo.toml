@@ -7,7 +7,7 @@ description = "Solana real-time data layer: ingest → parse → normalize → e
 
 [features]
 default = []
-yellowstone = ["tonic", "prost"]
+yellowstone = ["tonic", "prost", "yellowstone-grpc-client", "yellowstone-grpc-proto"]
 
 [dependencies]
 tokio       = { version = "1", features = ["full"] }
@@ -20,10 +20,13 @@ crossbeam-channel = "0.5"
 tracing     = "0.1"
 thiserror   = { workspace = true }
 anyhow      = "1"
+bs58        = "0.5"
 
 # Optional Yellowstone gRPC (enable with --features yellowstone)
-tonic = { version = "0.12", optional = true, features = ["transport"] }
-prost = { version = "0.13", optional = true }
+tonic                  = { version = "0.12",  optional = true, features = ["transport"] }
+prost                  = { version = "0.13",  optional = true }
+yellowstone-grpc-client = { version = "2",   optional = true }
+yellowstone-grpc-proto  = { version = "2",   optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

@@ -13,6 +13,9 @@ import { logger } from '../logger.js';
 import type { TradeJournal } from '../state/journal.js';
 import type { EngineStats } from '../app/engine.js';
 import { computeAnalytics } from '../analytics/metrics.js';
+import { buildDashboardHtml } from './dashboard.js';
+import { runBacktest } from '../backtest/engine.js';
+import { runAutoTuner } from '../analytics/auto-tuner.js';
 
 export interface MonitoringServerOptions {
   port?: number;
@@ -24,6 +27,8 @@ export interface MonitoringServerOptions {
   journal?: TradeJournal;
   /** Live engine stats for /scan-stats endpoint. */
   getStats?: () => EngineStats;
+  /** Returns current capital state for the UI capital-stage card. */
+  getCapital?: () => { capitalSol: number; stage: string } | null;
 }
 
 const STARTED_AT = Date.now();
@@ -36,6 +41,13 @@ export function startMonitoringServer(opts: MonitoringServerOptions = {}): () =>
     ? new Connection(opts.rpcUrl, 'confirmed')
     : null;
   const walletPubkey = opts.walletPublicKey ?? process.env.BOT_WALLET_PUBKEY;
+
+  // ── GET / ─────────────────────────────────────────────────────────────────
+  // Human-readable HTML dashboard with auto-refresh.
+  app.get('/', (_req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(buildDashboardHtml());
+  });
 
   // ── GET /health ────────────────────────────────────────────────────────────
   app.get('/health', (_req: Request, res: Response) => {
@@ -144,12 +156,50 @@ export function startMonitoringServer(opts: MonitoringServerOptions = {}): () =>
       '$1+':       realized.filter((v) => v >= 1.00).length,
     };
 
+    const capital = opts.getCapital?.() ?? null;
+
     res.json({
       ...snap,
       sessionPnlUsd: Number(sessionPnl.toFixed(6)),
       tradesPerHour: Number(tradesPerHour.toFixed(1)),
       uptimeMinutes: Number((uptimeSec / 60).toFixed(1)),
       profitDistribution: buckets,
+      // Capital stage — populated when adaptive arb is active
+      capitalSol: capital?.capitalSol ?? null,
+      capitalStage: capital?.stage ?? null,
+    });
+  });
+
+  // ── GET /backtest ──────────────────────────────────────────────────────────
+  // Parameter sweep backtest on the current session's spread observations.
+  app.get('/backtest', (req: Request, res: Response) => {
+    if (!opts.journal) { res.json({ error: 'journal_unavailable' }); return; }
+    const events = [...opts.journal.all()];
+    const solPrice = Number(req.query['solPrice'] ?? '150');
+    const tradeSizeUi = Number(req.query['tradeSizeUi'] ?? '0.5');
+    const uptimeSec = (Date.now() - STARTED_AT) / 1000;
+    const hoursOfData = uptimeSec / 3600;
+
+    const sweep = runBacktest(events, tradeSizeUi, solPrice, hoursOfData);
+    const tuner = runAutoTuner(events, solPrice);
+
+    res.json({
+      sweep: {
+        breakEvenBps: sweep.breakEvenBps,
+        thresholdGapBps: sweep.thresholdGapBps,
+        totalObservations: sweep.observations.length,
+        recommendations: sweep.recommendations,
+        topConfigs: sweep.configs.slice(0, 5).map((c) => ({
+          minSpreadBps: c.config.minSpreadBps,
+          minProfitUsd: c.config.minProfitUsd,
+          triggeredTrades: c.triggeredTrades,
+          triggerRatePct: (c.triggerRate * 100).toFixed(1) + '%',
+          estimatedTotalProfitUsd: Number(c.estimatedTotalProfitUsd.toFixed(4)),
+          avgNetProfitPerTrade: Number(c.avgNetProfitPerTrade.toFixed(4)),
+          estimatedAprPct: Number(c.estimatedAprPct.toFixed(1)),
+        })),
+      },
+      autoTuner: tuner,
     });
   });
 

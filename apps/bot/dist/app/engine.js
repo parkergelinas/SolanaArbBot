@@ -11,6 +11,8 @@ import { pairRegistryFromEnv } from '../market/pair-registry.js';
 import { computeDynamicSize } from '../sizing/dynamic.js';
 import { checkStrategyRisk, DEFAULT_RISK_LIMITS, recordExecutionOutcome, } from '../risk/index.js';
 import { DEFAULT_MEAN_REVERSION_CONFIG, MeanReversionStrategy, PumpEdgeStrategy, RouteDivergenceArbStrategy, RoundTripQuoteArbStrategy, CrossDexArbStrategy, DEFAULT_CROSS_DEX_CONFIG, StrategyRegistry, } from '../signals/index.js';
+import { AdaptiveArbStrategy, DEFAULT_ADAPTIVE_CONFIG } from '../signals/adaptive-arb.js';
+import { CapitalTracker } from '../capital/tracker.js';
 import { PumpTokenRegistry } from '../market/pump-token-registry.js';
 import { TradeJournal } from '../state/journal.js';
 // ── Well-known Orca Whirlpool pool metadata ───────────────────────────────────
@@ -52,6 +54,7 @@ export class BotEngine {
     inFlightCount = 0;
     scannable = [];
     pumpStrategy = null;
+    adaptiveCapitalTracker = null;
     riskState = {
         sessionLossUsd: 0,
         consecutiveQuoteFailures: 0,
@@ -82,10 +85,10 @@ export class BotEngine {
         }, this.env.paperMode, // paper execution (no on-chain txns)
         this.env.liveQuotes);
         const roundTrip = new RoundTripQuoteArbStrategy(this.stack.client, this.tradeAmountUi, this.pairRegistry, { pairsPerScan: this.env.pairsPerScan, scanConcurrency: 3 });
-        // Only activate route-divergence / round-trip scanners when cross-dex arb
-        // is NOT the primary strategy — they compete for the same Jupiter API quota
-        // and route-divergence is proven to have no real edge on native Solana pairs.
-        if (!this.env.enableCrossDexArb) {
+        // Only activate route-divergence / round-trip scanners when neither cross-dex
+        // nor adaptive arb is the primary strategy — they compete for the same Jupiter
+        // API quota and route-divergence is proven to have no real edge on native pairs.
+        if (!this.env.enableCrossDexArb && !this.env.enableAdaptiveArb) {
             this.scannable.push(routeDiv, roundTrip);
             this.registry.register(routeDiv);
             this.registry.register(roundTrip);
@@ -115,6 +118,19 @@ export class BotEngine {
             }, pumpRegistry);
             this.scannable.push(crossDex);
             this.registry.register(crossDex);
+        }
+        if (this.env.enableAdaptiveArb) {
+            const pumpRegistry = this.env.enablePumpSpreads ? new PumpTokenRegistry() : null;
+            pumpRegistry?.start();
+            const capitalTracker = new CapitalTracker(this.env.sqlitePath.replace('.db', '-capital.db'), this.env.startingCapitalSol, 65);
+            this.adaptiveCapitalTracker = capitalTracker;
+            const adaptive = new AdaptiveArbStrategy(this.stack.client, capitalTracker, {
+                ...DEFAULT_ADAPTIVE_CONFIG,
+                maxTradeSolCap: this.env.maxTradeSolCap,
+                pairsPerScan: this.env.pairsPerScan,
+            }, pumpRegistry);
+            this.scannable.push(adaptive);
+            this.registry.register(adaptive);
         }
         this.executor = new LiveExecutor(this.env, this.stack.client, this.journal);
         this.hardenedExecutor = new HardenedExecutor(this.env, this.stack.client, this.journal, {
@@ -390,6 +406,12 @@ export class BotEngine {
             isHealthy: () => this.running && !this.hardenedExecutor.deadManSwitch.isHalted(),
             journal: this.journal,
             getStats: () => this.getStats(),
+            getCapital: this.adaptiveCapitalTracker
+                ? () => {
+                    const params = this.adaptiveCapitalTracker.getAdaptiveParams(this.lastSolPriceUsd);
+                    return { capitalSol: params.capitalSol, stage: params.stage };
+                }
+                : undefined,
         });
         // Start price polling for the cross-DEX detector.
         // In paper mode we skip the Jupiter price poll entirely to avoid hammering

@@ -17,5 +17,10 @@ export interface MonitoringServerOptions {
     journal?: TradeJournal;
     /** Live engine stats for /scan-stats endpoint. */
     getStats?: () => EngineStats;
+    /** Returns current capital state for the UI capital-stage card. */
+    getCapital?: () => {
+        capitalSol: number;
+        stage: string;
+    } | null;
 }
 export declare function startMonitoringServer(opts?: MonitoringServerOptions): () => void;

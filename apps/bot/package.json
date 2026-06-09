@@ -12,7 +12,11 @@
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "backtest": "tsx --env-file=.env src/backtest/run-backtest.ts",
+    "backtest:quick": "BACKTEST_DURATION_HR=0.33 tsx --env-file=.env src/backtest/run-backtest.ts",
+    "backtest:3hr": "BACKTEST_DURATION_HR=3 tsx --env-file=.env src/backtest/run-backtest.ts",
+    "backtest:6hr": "BACKTEST_DURATION_HR=6 tsx --env-file=.env src/backtest/run-backtest.ts"
   },
   "dependencies": {
     "@solana/web3.js": "^1.98.4",
