@@ -1,14 +1,19 @@
 //! Execution engine — async tokio service, paper mode by default.
+//!
+//! # Live trading
+//! Set `EXECUTION_LIVE=true` and rebuild with `--features live-signing`.
+//! Requires OpenSSL (Linux: install via package manager; Windows: `choco install openssl`).
 
 use std::sync::Arc;
 
+use axum::{routing::post, Json, Router};
 use tokio::sync::mpsc;
 use tracing::info;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use execution_engine::{
     audit::AuditLog, config::EngineConfig, jupiter::JupiterExecutor, orders::OrderStore,
-    router::ExecutionRouter, subscriber,
+    router::ExecutionRouter, signals::TradeSignal, subscriber,
 };
 
 #[tokio::main]
@@ -18,34 +23,20 @@ async fn main() -> anyhow::Result<()> {
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .init();
 
-    // ── Startup environment validation ────────────────────────────────────────
-    // Fail fast with a clear error if required secrets are missing.
-    {
-        const REQUIRED_ENV: &[(&str, &str)] = &[
-            ("SOLANA_ARB_WALLET_KEY", "Solana wallet signing key (base58 64-byte keypair)"),
-            ("GEYSER_GRPC_ENDPOINT", "Yellowstone gRPC endpoint URL"),
-        ];
-        let mut missing = false;
-        for (var, description) in REQUIRED_ENV {
-            if std::env::var(var).is_err() {
-                tracing::error!(
-                    env_var = var,
-                    description,
-                    "required environment variable not set — cannot start"
-                );
-                missing = true;
-            }
-        }
-        if missing {
+    let config = EngineConfig::from_env();
+
+    // ── Live-mode env validation ───────────────────────────────────────────────
+    // Only enforce hard requirements when actually submitting transactions.
+    // Paper / demo mode has full fallback paths and needs neither.
+    if config.execution_live {
+        if std::env::var("SOLANA_ARB_WALLET_KEY").is_err() {
             tracing::error!(
-                "one or more required env vars are missing; \
-                 set them and restart the execution engine"
+                env_var = "SOLANA_ARB_WALLET_KEY",
+                "required for live trading — set wallet signing key and restart"
             );
             std::process::exit(1);
         }
     }
-
-    let config = EngineConfig::from_env();
     info!(
         paper_mode = config.paper_mode,
         execution_live = config.execution_live,
@@ -54,15 +45,40 @@ async fn main() -> anyhow::Result<()> {
     );
 
     if config.execution_live {
-        tracing::warn!("EXECUTION_LIVE=true — real swap transactions may be built");
+        tracing::warn!("EXECUTION_LIVE=true — real swap transactions will be built and submitted");
     }
+
+    // ── Wallet loading ────────────────────────────────────────────────────────
+    // Wallet is only loaded when the `live-signing` feature is compiled in AND
+    // EXECUTION_LIVE=true.  In all other cases paper mode is active.
+    #[cfg(feature = "live-signing")]
+    let wallet = if config.execution_live {
+        let mut sys_cfg = config::SystemConfig::default();
+        sys_cfg.features.dry_run = false;
+        match wallet::WalletKeypair::load_from_env("SOLANA_ARB_WALLET_KEY", &sys_cfg) {
+            Ok(kp) => {
+                info!("live wallet keypair loaded");
+                Some(Arc::new(kp))
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "wallet load failed in live mode — aborting");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        info!("paper mode — wallet keypair not loaded");
+        None
+    };
+
+    #[cfg(not(feature = "live-signing"))]
+    let wallet = ();
 
     let orders = Arc::new(OrderStore::new());
     let audit = Arc::new(AuditLog::new(config.audit_path.clone()));
-    let jupiter = Arc::new(JupiterExecutor::new(config.clone()));
+    let jupiter = Arc::new(JupiterExecutor::new(config.clone(), wallet));
     jupiter.prewarm().await?;
 
-    let (signal_tx, signal_rx) = mpsc::unbounded_channel();
+    let (signal_tx, signal_rx) = mpsc::unbounded_channel::<TradeSignal>();
     let (lifecycle_tx, mut lifecycle_rx) = mpsc::unbounded_channel();
 
     let router = Arc::new(ExecutionRouter::new(
@@ -78,6 +94,44 @@ async fn main() -> anyhow::Result<()> {
         while lifecycle_rx.recv().await.is_some() {}
     });
 
+    // ── HTTP signal ingest ────────────────────────────────────────────────────
+    // Arb-engine posts TradeSignalOut JSON here when EXECUTION_ENGINE_URL is set.
+    // TradeSignalOut and TradeSignal share the same JSON schema, so no
+    // field mapping is needed.
+    let http_port: u16 = std::env::var("EXECUTION_HTTP_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8090);
+
+    {
+        let signal_tx_http = signal_tx.clone();
+        tokio::spawn(async move {
+            let app = Router::new().route(
+                "/api/signals",
+                post(move |Json(payload): Json<TradeSignal>| {
+                    let tx = signal_tx_http.clone();
+                    async move {
+                        if tx.send(payload).is_err() {
+                            return axum::http::StatusCode::SERVICE_UNAVAILABLE;
+                        }
+                        axum::http::StatusCode::ACCEPTED
+                    }
+                }),
+            );
+
+            match tokio::net::TcpListener::bind(format!("0.0.0.0:{http_port}")).await {
+                Ok(listener) => {
+                    info!(port = http_port, "execution-engine HTTP signal ingest listening");
+                    axum::serve(listener, app).await.ok();
+                }
+                Err(e) => {
+                    tracing::warn!(port = http_port, error = %e, "HTTP signal ingest failed to bind");
+                }
+            }
+        });
+    }
+
+    // ── Signal source selection ───────────────────────────────────────────────
     let demo_interval: u64 = std::env::var("DEMO_SIGNAL_INTERVAL_MS")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -96,21 +150,17 @@ async fn main() -> anyhow::Result<()> {
         subscriber::spawn_intelligence_stub(signal_tx.clone());
     }
 
-    if std::env::var("ALPHA_ENGINE_ENABLED")
-        .map(|v| v == "true" || v == "1")
-        .unwrap_or(false)
-    {
-        let (alpha_tx, alpha_rx) = mpsc::unbounded_channel();
-        subscriber::spawn_alpha_channel_bridge(alpha_rx, signal_tx.clone());
-        info!("alpha-engine channel bridge enabled — wire alpha_tx from in-process spawn");
-        let _ = alpha_tx;
-    } else if let Ok(arb_url) = std::env::var("ARB_WS_URL") {
+    if let Ok(arb_url) = std::env::var("ARB_WS_URL") {
+        // Primary arb→execution WS path: arb-engine broadcasts ArbSignal, execution-engine
+        // subscribes and converts to TradeSignal.  Set ARB_WS_URL=ws://127.0.0.1:8091/arb
         subscriber::spawn_arb_ws_subscriber(arb_url, signal_tx.clone());
     } else {
         subscriber::spawn_demo_signal_feed(signal_tx, demo_interval);
     }
 
-    info!("execution-engine running — awaiting signals");
+    info!(
+        "execution-engine running — HTTP ingest on :{http_port}, awaiting signals"
+    );
     tokio::signal::ctrl_c().await?;
     info!("shutting down");
     Ok(())

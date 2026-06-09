@@ -69,7 +69,11 @@ async fn latency_budget_test() {
     let config = test_config(mock_uri);
     let orders = Arc::new(OrderStore::new());
     let audit = Arc::new(AuditLog::new(None));
-    let jupiter = Arc::new(JupiterExecutor::new(config.clone()));
+    #[cfg(feature = "live-signing")]
+    let wallet_handle = None;
+    #[cfg(not(feature = "live-signing"))]
+    let wallet_handle = ();
+    let jupiter = Arc::new(JupiterExecutor::new(config.clone(), wallet_handle));
     let router = Arc::new(ExecutionRouter::new(
         config,
         orders.clone(),

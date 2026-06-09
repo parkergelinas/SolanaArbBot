@@ -19,7 +19,7 @@ serde_json = "1"
 
 # Cryptography — use only the features needed (no pkcs8, no fast).
 # default-features = false avoids pulling in extra deps transitively.
-ed25519-dalek = { version = "2", default-features = false, features = ["alloc", "std", "rand_core"] }
+ed25519-dalek = { version = ">=2.2, <3", default-features = false, features = ["alloc", "std", "rand_core"] }
 rand          = "0.8"
 
 # Memory safety

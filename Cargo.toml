@@ -45,6 +45,7 @@ members = [
     "apps/control-api",
     "apps/stream-api",
     "apps/hotpath",
+    "apps/polymarket-scanner",
 
     # ── Integration tests ────────────────────────────────────────────────────
     "tests",

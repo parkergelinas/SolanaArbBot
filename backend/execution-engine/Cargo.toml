@@ -9,6 +9,20 @@ description = "Low-latency trade execution: signals → strategies → Jupiter �
 name = "execution-engine"
 path = "src/main.rs"
 
+[features]
+default = []
+# Enable live Solana signing + Jito bundle submission.
+# Requires OpenSSL to be installed (solana-sdk → solana-secp256r1-program → openssl).
+# Build with: cargo build -p execution-engine --features live-signing
+live-signing = [
+    "dep:wallet",
+    "dep:config",
+    "dep:solana-sdk",
+    "dep:base64",
+    "dep:bincode",
+    "dep:bs58",
+]
+
 [dependencies]
 tokio       = { version = "1", features = ["full"] }
 reqwest     = { workspace = true }
@@ -22,6 +36,15 @@ anyhow      = "1"
 uuid        = { version = "1.11", features = ["v4"] }
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
+axum        = { version = "0.7", features = ["macros"] }
+
+# Optional live-signing deps (requires OpenSSL — see [features] above)
+wallet      = { path = "../../crates/wallet",              optional = true }
+config      = { path = "../../crates/config",              optional = true }
+solana-sdk  = { version = "2", default-features = false,   optional = true }
+base64      = { version = "0.22",                          optional = true }
+bincode     = { version = "1",                             optional = true }
+bs58        = { version = "0.5",                           optional = true }
 
 
 [dev-dependencies]

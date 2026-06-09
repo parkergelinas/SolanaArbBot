@@ -48,7 +48,7 @@ fn from_swap_with_meta(
     };
     let strategy_tag = strategy_tag_for(alert_type, strength, confidence, Some(notional_usd));
     let (token_in, token_out) = infer_pair(&swap.token);
-    let pair = format!("{}/{}", symbol_for_mint(&token_in), token_symbol);
+    let pair = format!("{}/{}", symbol_for_mint(&token_in), symbol_for_mint_or(&token_out, token_symbol));
     let price = if swap.amount_sol > 0.0 {
         notional_usd / swap.amount_sol
     } else {
@@ -101,6 +101,14 @@ fn symbol_for_mint(mint: &str) -> &str {
         SOL_MINT => "SOL",
         USDC_MINT => "USDC",
         _ => "TOKEN",
+    }
+}
+
+fn symbol_for_mint_or<'a>(mint: &str, fallback: &'a str) -> &'a str {
+    match mint {
+        SOL_MINT => "SOL",
+        USDC_MINT => "USDC",
+        _ => fallback,
     }
 }
 

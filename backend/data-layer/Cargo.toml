@@ -7,7 +7,11 @@ description = "Solana real-time data layer: ingest → parse → normalize → e
 
 [features]
 default = []
-yellowstone = ["tonic", "prost", "yellowstone-grpc-client", "yellowstone-grpc-proto"]
+# Yellowstone gRPC feature — requires manual dep resolution before enabling.
+# yellowstone-grpc-client and yellowstone-grpc-proto v2.0.0 conflict with
+# ed25519-dalek >= 2.2 via solana-program → curve25519-dalek v3 → zeroize < 1.4.
+# Re-enable once yellowstone-grpc-proto ships a version using solana-sdk >= 2.1.
+yellowstone = ["tonic", "prost"]
 
 [dependencies]
 tokio       = { version = "1", features = ["full"] }
@@ -22,11 +26,9 @@ thiserror   = { workspace = true }
 anyhow      = "1"
 bs58        = "0.5"
 
-# Optional Yellowstone gRPC (enable with --features yellowstone)
-tonic                  = { version = "0.12",  optional = true, features = ["transport"] }
-prost                  = { version = "0.13",  optional = true }
-yellowstone-grpc-client = { version = "2",   optional = true }
-yellowstone-grpc-proto  = { version = "2",   optional = true }
+# Optional gRPC transport (enable with --features yellowstone)
+tonic = { version = "0.12", optional = true, features = ["transport"] }
+prost = { version = "0.13", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

@@ -7,4 +7,5 @@ export const APP_ROUTES = [
   { href: '/backtests', label: 'Backtests' },
   { href: '/config', label: 'Config' },
   { href: '/risk', label: 'Risk' },
+  { href: '/polymarket', label: 'Polymarket' },
 ] as const;

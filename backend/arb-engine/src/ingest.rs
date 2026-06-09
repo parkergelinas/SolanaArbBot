@@ -144,6 +144,74 @@ pub fn spawn_signal_hub_price_feed(config: Arc<ArbConfig>, price_tx: Sender<Pool
     });
 }
 
+/// Polls Jupiter's price API for aggregated SOL/USDC spot prices and emits
+/// synthetic per-DEX prices to arb detection.  Bridges the gap between mock
+/// feed and a real Geyser stream; useful when `GEYSER_GRPC_ENDPOINT` is set
+/// but the `yellowstone` feature is not compiled in.
+///
+/// Activated by `GEYSER_GRPC_ENDPOINT` env var being present.
+/// Poll interval defaults to `ARB_MOCK_INTERVAL_MS` (clamped to ≥ 1 000 ms).
+pub fn spawn_live_price_poll(config: Arc<ArbConfig>, price_tx: Sender<PoolPrice>) {
+    let interval_ms = config.mock_interval_ms.max(1_000);
+    std::thread::spawn(move || {
+        let rt = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(r) => r,
+            Err(_) => return,
+        };
+        rt.block_on(async move {
+            let client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(5))
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new());
+
+            let sol_mint = "So11111111111111111111111111111111111111112";
+            let url =
+                format!("https://lite-api.jup.ag/price/v2?ids={sol_mint}&vsToken=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+
+            info!(poll_ms = interval_ms, "live Jupiter price poll started (Geyser stub fallback)");
+
+            loop {
+                if let Ok(resp) = client.get(&url).send().await {
+                    if let Ok(body) = resp.json::<serde_json::Value>().await {
+                        if let Some(price) = body
+                            .pointer(&format!("/data/{sol_mint}/price"))
+                            .and_then(|v| v.as_str())
+                            .and_then(|s| s.parse::<f64>().ok())
+                            .or_else(|| {
+                                body.pointer(&format!("/data/{sol_mint}/price"))
+                                    .and_then(|v| v.as_f64())
+                            })
+                        {
+                            // Emit prices for each tracked DEX with a tiny synthetic skew
+                            // so the detection engine sees cross-DEX spread candidates.
+                            // In live Geyser mode these would be real per-pool prices.
+                            let dexes = [("raydium", 0.0f64), ("orca", 0.001), ("meteora", -0.0005)];
+                            let ts = unix_ms();
+                            for (dex, skew) in dexes {
+                                let pp = PoolPrice {
+                                    dex: dex.into(),
+                                    token_a: SOL.into(),
+                                    token_b: USDC.into(),
+                                    price: price * (1.0 + skew),
+                                    liquidity: 500_000.0,
+                                    timestamp: ts,
+                                };
+                                if price_tx.send(pp).is_err() {
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(interval_ms)).await;
+            }
+        });
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

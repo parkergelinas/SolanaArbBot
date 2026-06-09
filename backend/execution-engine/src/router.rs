@@ -144,7 +144,7 @@ impl ExecutionRouter {
         }
 
         let sig = exec_result.tx_signature.clone().unwrap_or_default();
-        if self.confirm.confirm(&sig).await {
+        if self.confirm.confirm(&sig).await.unwrap_or(false) {
             if let Some(confirmed) = self.orders.transition(
                 &created.order_id,
                 OrderStatus::Confirmed,
