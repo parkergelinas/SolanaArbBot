@@ -23,7 +23,7 @@
     "@solana/wallet-adapter-trust": "^0.1.17",
     "@solana/web3.js": "^1.98.4",
     "@tanstack/react-virtual": "^3.14.2",
-    "bs58": "^5.0.0",
+    "bs58": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.40.0",
